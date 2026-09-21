@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net8.0 rather than net10.0 on purpose. The 1.4.4 mod toolchain targets
+      net8.0 and the 1.4.5 one targets net10.0; a net8.0 assembly is
+      referenceable from both, so the core stays usable whichever line a
+      consuming mod is built against.
+    -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Testaria</RootNamespace>
+    <AssemblyName>Testaria.Core</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Game-independent core of Testaria: assertions, results, and the box arena. Carries no tModLoader reference by design.</Description>
+  </PropertyGroup>
+
+</Project>
