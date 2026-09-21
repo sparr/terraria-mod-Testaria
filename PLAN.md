@@ -62,10 +62,29 @@ Everything in this section was verified against a tModLoader checkout or the liv
 
 **Tier 0 must not be allowed to pretend it can do Tier 1.** The moment a test touches `Main`, `ModContent`, `ContentSamples`, or `Language`, it depends on state that only a completed load pass establishes. In a bare test host those statics are default-initialized rather than absent, so such a test will often *pass silently against garbage*. That is the single most likely way this framework produces false confidence, and it is worse than having no framework at all.
 
+**This is measured, not predicted.** A probe project using the `BuildMod=false` pattern against tModLoader 1.4.5, with no game started, gives:
+
+| Touched | Result |
+| --- | --- |
+| `ItemID.CopperShortsword`, `ItemID.Count` | Works. Consts are inlined at compile time |
+| `TileID.Sets.Falling.Length` | Works, returns 754 |
+| `new Item()` | Works, constructs fine |
+| `Main.maxTilesX`, `Main.worldSurface` | **Throws** `TypeInitializationException` |
+| `ContentSamples.ItemsByType.Count` | **Returns 0** |
+| `ContentSamples.NpcsByNetId.Count` | **Returns 0** |
+| `new Item().Name` | **Returns `""`** |
+| `ModLoader.Mods.Length` | **Returns 0** |
+| `Lang.GetItemNameValue(3507)` | **Returns `""`** |
+| `ItemID.Sets.Deprecated.Length` | **Returns 6196**, the vanilla count, never resized for mods |
+
+The split matters more than any individual row. `Main` fails *loudly*, so the obvious mistake is self-correcting. Everything else answers anyway, with an empty collection, an empty string, or a vanilla-sized array. A test asserting `Assert.Empty(...)` over `ContentSamples`, or comparing against `ItemID.Count`, or checking a localized name, goes **green while proving nothing at all**.
+
+So the danger is not `Main`. It is `ContentSamples`, `ModLoader.Mods`, `Lang`, `ModContent`, and the `*ID.Sets` arrays, and mitigations should target those.
+
 Mitigations, in order of preference:
 
 1. Ship Tier 0 helpers in a package that does **not** transitively reference `tModLoader.dll`, so the dangerous types are simply not in scope. This is the clean answer where it is achievable.
-2. Where a reference is unavoidable, ship a Roslyn analyzer that errors on use of the loader-dependent surface from a Tier 0 assembly. tModLoader already ships analyzers this way (`tMLMod.targets:86-87`), so the pattern is familiar to users.
+2. Where a reference is unavoidable, ship a Roslyn analyzer that errors on use of the loader-dependent surface from a Tier 0 assembly. tModLoader already ships analyzers this way (`tMLMod.targets:86-87`), so the pattern is familiar to users. The measurements above give it a concrete target list: `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`. `Main` need not be on it, since it already throws.
 3. At minimum, document the boundary loudly and provide a `[RequiresLoadedGame]` marker that fails fast rather than silently.
 
 ### 2.3 The tick problem, and what Tier 2 must look like
