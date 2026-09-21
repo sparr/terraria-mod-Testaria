@@ -1,0 +1,38 @@
+using Terraria;
+
+namespace Testaria;
+
+/// <summary>
+/// Reads the live world's band boundaries out of <see cref="Main"/>.
+/// <para/>
+/// This adapter is the only place that knows how Terraria spells its layer
+/// boundaries. <see cref="WorldGeometry"/> takes them as plain numbers
+/// precisely so that the core never has to reference the game.
+/// </summary>
+public static class TerrariaWorldGeometry
+{
+	/// <summary>
+	/// Fraction of <see cref="Main.worldSurface"/> above which the world counts
+	/// as space.
+	/// <para/>
+	/// Terraria has no named constant for this; the value matches the
+	/// comparison the game uses for sky height. Listed in PLAN.md section 7
+	/// among the numbers to verify against real behaviour rather than trust.
+	/// </summary>
+	public const double SpaceFraction = 0.35;
+
+	/// <summary>
+	/// Snapshots the current world's geometry.
+	/// <para/>
+	/// Call this after a world is loaded. The values change between worlds, and
+	/// a spanning test's box height depends on them, which is why the arena
+	/// must be rebuilt per world rather than cached across them.
+	/// </summary>
+	public static WorldGeometry Current() => WorldGeometry.FromTerrariaValues(
+		Main.maxTilesX,
+		Main.maxTilesY,
+		Main.worldSurface,
+		Main.rockLayer,
+		Main.UnderworldLayer,
+		SpaceFraction);
+}

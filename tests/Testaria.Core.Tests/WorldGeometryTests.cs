@@ -154,3 +154,68 @@ public class WorldGeometryTests
 		XAssert.NotEqual(small.Span(Band.All).Height, large.Span(Band.All).Height);
 	}
 }
+
+public class WorldGeometryFromTerrariaValuesTests
+{
+	// Representative values for Terraria's three world sizes. worldSurface and
+	// rockLayer are doubles in the game, hence the fractional inputs.
+	[Theory]
+	[InlineData(4200, 1200, 249.0, 399.0, 1000)]
+	[InlineData(6400, 1800, 375.0, 600.0, 1600)]
+	[InlineData(8400, 2400, 500.0, 800.0, 2200)]
+	public void Produces_a_geometry_whose_bands_partition_the_world(
+		int maxX, int maxY, double surface, double rock, int underworld)
+	{
+		WorldGeometry geo = WorldGeometry.FromTerrariaValues(maxX, maxY, surface, rock, underworld);
+
+		for (int y = 0; y < geo.MaxTilesY; y++)
+			XAssert.NotEqual(Band.None, geo.BandAt(y));
+
+		XAssert.Equal(maxX, geo.MaxTilesX);
+		XAssert.Equal(underworld, geo.UnderworldTop);
+	}
+
+	[Fact]
+	public void Truncates_rather_than_rounds_the_fractional_boundaries()
+	{
+		// Terraria compares against the raw double, so a boundary that lands
+		// mid-tile belongs to the band above it.
+		WorldGeometry geo = WorldGeometry.FromTerrariaValues(4200, 1200, 249.9, 399.9, 1000);
+
+		XAssert.Equal(249, geo.UndergroundTop);
+		XAssert.Equal(399, geo.CavernTop);
+	}
+
+	[Fact]
+	public void Space_fraction_places_the_space_boundary_proportionally()
+	{
+		WorldGeometry geo = WorldGeometry.FromTerrariaValues(4200, 1200, 400.0, 600.0, 1000, spaceFraction: 0.25);
+
+		XAssert.Equal(100, geo.SurfaceTop);
+	}
+
+	[Fact]
+	public void A_space_fraction_of_zero_leaves_no_space_band()
+	{
+		WorldGeometry geo = WorldGeometry.FromTerrariaValues(4200, 1200, 400.0, 600.0, 1000, spaceFraction: 0);
+
+		XAssert.True(geo.BandBounds(Band.Space).IsEmpty);
+		XAssert.Equal(Band.Surface, geo.BandAt(0));
+	}
+
+	[Theory]
+	[InlineData(-0.1)]
+	[InlineData(1.1)]
+	public void An_out_of_range_space_fraction_is_rejected(double fraction)
+		=> XAssert.Throws<ArgumentOutOfRangeException>(
+			() => WorldGeometry.FromTerrariaValues(4200, 1200, 400.0, 600.0, 1000, fraction));
+
+	[Fact]
+	public void Inconsistent_game_values_are_rejected_rather_than_producing_negative_bands()
+	{
+		// If Main is read before a world finishes loading these can be zero or
+		// inconsistent; failing loudly beats an arena built on nonsense.
+		XAssert.Throws<ArgumentException>(
+			() => WorldGeometry.FromTerrariaValues(4200, 1200, 600.0, 400.0, 1000));
+	}
+}

@@ -15,6 +15,21 @@ public sealed record WorldGeometry
 	private static readonly Band[] TopToBottom =
 		[Band.Space, Band.Surface, Band.Underground, Band.Cavern, Band.Underworld];
 
+	/// <summary>
+	/// Fraction of <c>Main.worldSurface</c> above which the game treats the
+	/// world as sky, and therefore where <see cref="Band.Space"/> ends.
+	/// <para/>
+	/// Terraria has no named constant for this. The value is the literal the
+	/// game compares against, <c>y &lt; Main.worldSurface * 0.35</c>, which
+	/// appears in <c>NPC.SpawnNPC</c> and the water candle check among others.
+	/// Everything that decides where space stops has to use this same number,
+	/// including a world Testaria generates itself: the game keeps applying
+	/// its own comparison whatever boundaries a layout picks, so choosing a
+	/// different one would only make the arena disagree with the game about
+	/// which rows are sky.
+	/// </summary>
+	public const double SpaceFraction = 0.35;
+
 	/// <summary>Creates a geometry, validating that the boundaries descend in order.</summary>
 	/// <param name="maxTilesX">World width in tiles, <c>Main.maxTilesX</c>.</param>
 	/// <param name="maxTilesY">World height in tiles, <c>Main.maxTilesY</c>.</param>
@@ -62,6 +77,42 @@ public sealed record WorldGeometry
 
 	/// <summary>First row of <see cref="Band.Underworld"/>.</summary>
 	public int UnderworldTop { get; }
+
+	/// <summary>
+	/// Builds a geometry from the values Terraria keeps, converting as it goes.
+	/// <para/>
+	/// The arithmetic lives here rather than in the game-facing adapter so that
+	/// it can be tested without a loaded world. The adapter's whole job is then
+	/// reading fields off <c>Main</c> and handing them over.
+	/// </summary>
+	/// <param name="maxTilesX">World width, <c>Main.maxTilesX</c>.</param>
+	/// <param name="maxTilesY">World height, <c>Main.maxTilesY</c>.</param>
+	/// <param name="worldSurface">Surface depth, <c>Main.worldSurface</c>. Kept as a double because Terraria stores it as one.</param>
+	/// <param name="rockLayer">Rock layer depth, <c>Main.rockLayer</c>.</param>
+	/// <param name="underworldLayer">Underworld depth, <c>Main.UnderworldLayer</c>.</param>
+	/// <param name="spaceFraction">
+	/// Fraction of <paramref name="worldSurface"/> above which the world counts
+	/// as space. Defaults to <see cref="SpaceFraction"/>.
+	/// </param>
+	public static WorldGeometry FromTerrariaValues(
+		int maxTilesX,
+		int maxTilesY,
+		double worldSurface,
+		double rockLayer,
+		int underworldLayer,
+		double spaceFraction = SpaceFraction)
+	{
+		if (spaceFraction is < 0 or > 1)
+			throw new ArgumentOutOfRangeException(nameof(spaceFraction), spaceFraction, "Space fraction must lie between 0 and 1.");
+
+		return new WorldGeometry(
+			maxTilesX,
+			maxTilesY,
+			(int)(worldSurface * spaceFraction),
+			(int)worldSurface,
+			(int)rockLayer,
+			underworldLayer);
+	}
 
 	/// <summary>The rectangle covering a single band, full world width.</summary>
 	public TileRect BandBounds(Band band)

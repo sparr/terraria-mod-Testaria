@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      BuildMod=false keeps the tModLoader assembly references but skips the
+      .tmod packaging target, which is how a non-mod project builds against
+      tModLoader. tModLoader uses this pattern for its own analyzer test
+      project; see PLAN.md section 1.1.5.
+    -->
+    <BuildMod>false</BuildMod>
+    <OutputTmlReferences>true</OutputTmlReferences>
+
+    <!-- tMLMod.targets only sets these when BuildMod is true, so set them here. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+
+    <RootNamespace>Testaria</RootNamespace>
+    <AssemblyName>Testaria.Game</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+    <Description>The tModLoader-facing half of Testaria. Everything here needs a loaded game.</Description>
+  </PropertyGroup>
+
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
+
+  <!--
+    Without a tModLoader install this project compiles to an empty assembly
+    rather than failing, so that a checkout with no game still builds and the
+    core's own tests still run.
+  -->
+  <ItemGroup Condition="'$(TestariaHasTml)' != 'true'">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Testaria.Core\Testaria.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="TestariaReportTml" BeforeTargets="Build">
+    <Message Importance="high" Condition="'$(TestariaHasTml)' == 'true'" Text="Testaria: building against tModLoader at $(tModLoaderSteamPath)" />
+    <Message Importance="high" Condition="'$(TestariaHasTml)' != 'true'" Text="Testaria: no tModLoader install found, Testaria.Game will be empty. Set TML_PATH to build it." />
+  </Target>
+
+</Project>
