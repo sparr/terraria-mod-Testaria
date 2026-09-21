@@ -2,7 +2,7 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-> **Status: pre-alpha.** Nothing here is usable yet. The design is settled (see [`PLAN.md`](PLAN.md)); implementation is in progress, starting from the game-independent core outward.
+> **Status: pre-alpha.** No tier runs end to end yet. The design is settled (see [`PLAN.md`](PLAN.md)) and the game-independent core is built and self-tested; the in-game layer is blocked on a toolchain question, noted below.
 
 ## What this is
 
@@ -35,6 +35,30 @@ tests/
 ```
 
 More projects arrive as the tiers land. See `PLAN.md` section 4.2 for the full artifact matrix.
+
+## What is built
+
+All of it in `Testaria.Core`, all of it free of any tModLoader reference, and all of it self-tested.
+
+| Piece | What it does |
+| --- | --- |
+| `Assert`, `AssertionException` | xUnit-shaped assertion vocabulary. Separate from xUnit because no stock runner can host inside a mod's `AssemblyLoadContext` |
+| `TestResult`, `TestRunResult`, `JUnitXmlWriter` | Results and JUnit XML reporting, the one format every CI system reads without a custom reporter |
+| `TileRect`, `Band`, `WorldGeometry` | Tile geometry and the depth band model, including band spans for tests that cross a boundary |
+| `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
+| `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
+
+Still to come: the tick scheduler and `Wait` primitives, the runner, and everything in Tiers 1 through 3, which needs the game.
+
+## Known blocker: which tModLoader to build against
+
+`PLAN.md` section 6 settles on targeting tModLoader's 1.4.5 line. That line is not yet obtainable as a prebuilt artifact:
+
+- The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, C# 12), even though Terraria 1.4.5.8 itself has shipped.
+- No GitHub release carries a 1.4.5 asset; the release tags all come from the 1.4.4 branch.
+- 1.4.5 is available only by opting into the `1.4.5-dev` Steam beta branch, or by running tModLoader's `setup-cli.sh` to decompile and patch from source.
+
+Nothing in `Testaria.Core` is affected, since it references neither. The in-game layer cannot start until this is resolved one way or the other.
 
 ## Building
 
