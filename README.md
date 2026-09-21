@@ -15,6 +15,14 @@ tModLoader has no test-authoring API. The closest thing in the tModLoader reposi
 | 2 | World | tModLoader `-server`, world loaded | NPC AI over ticks, world gen, tile framing, drop tables |
 | 3 | Multi-process | server plus client(s) | Netcode and sync, UI, rendering, input |
 
+Tests are marked with attributes, and discovery finds them by reflection.
+
+| Attribute | What it marks |
+| --- | --- |
+| `[LoadedTest]` | A tier 1 test: needs a completed load pass, but no world |
+| `[GameTest]` | A tier 2 test: needs a world and a tick loop, and is given a box of its own |
+| `[FreshWorld]` | A test no box can isolate, which needs a freshly generated world instead |
+
 The single most important rule the framework enforces is the **Tier 0 boundary**: the moment a test touches `Main`, `ModContent`, or `ContentSamples`, it depends on state that only a completed load pass establishes. In a bare test host those statics are default-initialized rather than absent, so such a test will often pass silently against garbage. `Testaria.Core` therefore carries no reference to tModLoader at all, which makes that boundary structural rather than advisory.
 
 ## Repository layout

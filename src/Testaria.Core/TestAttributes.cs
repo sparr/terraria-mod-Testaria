@@ -1,0 +1,86 @@
+namespace Testaria;
+
+/// <summary>
+/// Base for every Testaria test marker. Not used directly; pick the
+/// attribute matching the tier the test actually needs.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public abstract class TestariaTestAttribute : Attribute
+{
+	/// <param name="tier">The environment this test needs.</param>
+	protected TestariaTestAttribute(TestTier tier) => Tier = tier;
+
+	/// <summary>The environment this test needs.</summary>
+	public TestTier Tier { get; }
+
+	/// <summary>
+	/// When set, the test is reported as skipped with this reason rather than
+	/// run. Reported rather than omitted, so that a suite never silently
+	/// shrinks.
+	/// </summary>
+	public string? Skip { get; set; }
+
+	/// <summary>
+	/// Ticks the test body may run before it is abandoned. Zero means the
+	/// runner's default. Measured in ticks rather than seconds because the
+	/// simulation is what is being timed, not the wall clock.
+	/// </summary>
+	public int Timeout { get; set; }
+}
+
+/// <summary>
+/// A test needing a completed load pass but no world. Content registration,
+/// recipes, ID sets, config serialization, localization coverage.
+/// </summary>
+public sealed class LoadedTestAttribute : TestariaTestAttribute
+{
+	/// <summary>Marks a Tier 1 test.</summary>
+	public LoadedTestAttribute() : base(TestTier.Loaded) { }
+}
+
+/// <summary>
+/// A test needing a world and a tick loop, run inside a leased box.
+/// <para/>
+/// Declare <see cref="Spans"/> when the subject of the test is a band
+/// boundary itself, such as falling from the surface into the cavern. Height
+/// is then dictated by the world rather than by the author, so it is ignored.
+/// </summary>
+public sealed class GameTestAttribute : TestariaTestAttribute
+{
+	/// <summary>Marks a Tier 2 test.</summary>
+	public GameTestAttribute() : base(TestTier.World) { }
+
+	/// <summary>The single band the box sits in. Ignored when <see cref="Spans"/> is set.</summary>
+	public Band Band { get; set; } = Band.Surface;
+
+	/// <summary>
+	/// Bands the box must cross. Gaps are filled, since a column cannot
+	/// physically skip a band.
+	/// </summary>
+	public Band Spans { get; set; } = Band.None;
+
+	/// <summary>Requested interior width in tiles, before size class rounding.</summary>
+	public int Width { get; set; } = 80;
+
+	/// <summary>
+	/// Requested interior height in tiles, before size class rounding. Ignored
+	/// for a spanning box.
+	/// </summary>
+	public int Height { get; set; } = 48;
+
+	/// <summary>Builds the arena request this attribute describes.</summary>
+	public BoxRequest ToRequest()
+		=> Spans == Band.None
+			? BoxRequest.Banded(Band, Width, Height)
+			: BoxRequest.Spanning(Spans, Width);
+}
+
+/// <summary>
+/// Runs the test in a freshly generated world rather than a leased box.
+/// <para/>
+/// The escape hatch for tests that a box cannot isolate, such as anything
+/// asserting on world-global state. Correct but slow, since it costs a world
+/// generation, so it is opt-in.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class FreshWorldAttribute : Attribute;
