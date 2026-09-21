@@ -47,8 +47,9 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `TileRect`, `Band`, `WorldGeometry` | Tile geometry and the depth band model, including band spans for tests that cross a boundary |
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
 | `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
+| `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
 
-Still to come: the tick scheduler and `Wait` primitives, the runner, and everything in Tiers 1 through 3, which needs the game.
+Still to come: the runner that ties discovery, the arena, and the scheduler together, and everything in Tiers 1 through 3, which needs the game.
 
 ## Known blocker: which tModLoader to build against
 
@@ -56,7 +57,9 @@ Still to come: the tick scheduler and `Wait` primitives, the runner, and everyth
 
 - The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, C# 12), even though Terraria 1.4.5.8 itself has shipped.
 - No GitHub release carries a 1.4.5 asset; the release tags all come from the 1.4.4 branch.
-- 1.4.5 is available only by opting into the `1.4.5-dev` Steam beta branch, or by running tModLoader's `setup-cli.sh` to decompile and patch from source.
+- 1.4.5 is available only by opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`, per [tModLoader issue #5070](https://github.com/tModLoader/tModLoader/issues/5070)), or by running tModLoader's `setup-cli.sh` to decompile and patch from source.
+
+Note that the `preview` branches are **not** 1.4.5. Preview is the monthly CI channel on the 1.4.4 line: `preview-v2026.08` installs `net8.0` with `LangVersion 12.0`. The 1.4.5 "Preview" phase for modders has not started yet.
 
 Nothing in `Testaria.Core` is affected, since it references neither. The in-game layer cannot start until this is resolved one way or the other.
 
