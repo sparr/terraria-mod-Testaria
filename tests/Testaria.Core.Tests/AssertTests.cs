@@ -1,6 +1,4 @@
-using Xunit;
 using TAssert = Testaria.Assert;
-using XAssert = Xunit.Assert;
 
 namespace Testaria.Tests;
 
