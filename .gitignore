@@ -1,0 +1,22 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+artifacts/
+TestResults/
+*.trx
+*.binlog
+
+# tModLoader build artifacts
+*.tmod
+compile_temp/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
