@@ -49,6 +49,7 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
 | `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
 | `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
+| `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
 
 Still to come: the runner that ties discovery, the arena, and the scheduler together, and everything in Tiers 1 through 3, which needs the game.
 

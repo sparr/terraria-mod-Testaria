@@ -9,8 +9,16 @@ on:
 
 jobs:
   core:
-    name: Core and self-tests
-    runs-on: ubuntu-latest
+    # Testaria has to run wherever Terraria does, and the portability rules in
+    # PortableFileName are asserted rather than observed, so assert them on all
+    # three. Path.GetInvalidFileNameChars alone differs enough between Linux
+    # and Windows to let a broken name through on one and not the other.
+    name: Core and self-tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -34,5 +42,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: '**/TestResults/*.trx'
