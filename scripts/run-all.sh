@@ -49,7 +49,7 @@ if [ "${SKIP_CALIBRATION:-0}" = "1" ]; then
 elif [ -f "$HOME/.local/share/Terraria/tModLoader-dev/Mods/ExampleMod.tmod" ]; then
 	step "calibration against ExampleMod" env \
 		ENABLED="Testaria ExampleMod TestariaExampleTest" \
-		RUN_NAME="ExampleModCalibration" \
+		RUN_NAME="ExampleModSuite" \
 		BLANK=1 "$HERE/run-tests.sh"
 else
 	echo

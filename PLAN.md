@@ -488,6 +488,22 @@ Worth recording, because it says something about the gap this framework fills. A
 
 So the ecosystem's central project has a test suite that CI does not run, and no way at all to test a mod's behaviour in a running game. That is the hole, and it is larger than "mods lack a test framework".
 
+### 8.3b A real suite for ExampleMod
+
+Thirty-nine tests across registration, localization, items, NPCs, tiles and recipes, all passing. Broad rather than deep on purpose: assertions are written as invariants over whole content sets rather than claims about particular items, so they keep their meaning as the subject changes and say something about the mod rather than about one line of it.
+
+Two things about the framework only a suite this shape can settle.
+
+**The framework has no parameterised tests.** A suite over 149 items is either one loop reported as a single result or 149 hand-written methods. The plan's artifact list mentions a `[Theory]` equivalent; nothing was built. The loops here work but report coarsely: one failure hides the rest, and the report names a test rather than a case. This is the clearest remaining gap in the authoring surface.
+
+**Three obvious assertions are wrong about Terraria rather than about ExampleMod**, which is exactly what calibrating against a known-good subject is for:
+
+- Damage of `-1` is vanilla's sentinel for "not a weapon", used by plenty of accessories. Asserting `damage >= 0` fails on `RubyEarrings`, which is fine.
+- Not every NPC stands alone. Worm segments despawn at once without a head, correctly. A blanket "every NPC survives spawning" test is wrong; spawning is testable, surviving is the NPC's own business.
+- A recipe consuming its own output is legal and sometimes deliberate, so the test names such recipes rather than forbidding them.
+
+Each is the test being wrong, not the subject. A framework calibrated against something that can be assumed correct turns that ambiguity into information.
+
 ### 8.4 Complex mods are a load test, not a graduation
 
 Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaustion, mod-count interactions, world generation at scale, long reload times. That deserves to be a named milestone aimed at the **arena**, run deliberately, rather than something stumbled into while trying to test gameplay.

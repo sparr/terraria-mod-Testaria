@@ -175,6 +175,11 @@ errors, skipped = int(root.get("errors", 0)), int(root.get("skipped", 0))
 print(f"{tests} tests: {tests - fails - errors - skipped} passed, {fails} failed, {errors} errored, {skipped} skipped")
 for case in root.iter("testcase"):
     for bad in list(case.findall("failure")) + list(case.findall("error")):
-        print(f"  {bad.tag.upper()} {case.get('classname')}.{case.get('name')}: {bad.get('message', '').splitlines()[0]}")
+        # The whole message, not just its first line. Assertion messages put
+        # the useful part, the expected and actual values, on later lines, so
+        # truncating to line one reliably prints the least useful sentence.
+        print(f"  {bad.tag.upper()} {case.get('classname')}.{case.get('name')}:")
+        for line in (bad.get("message", "") or "(no message)").splitlines():
+            print(f"      {line}")
 sys.exit(1 if fails or errors else 0)
 PY
