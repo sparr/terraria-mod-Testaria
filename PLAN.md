@@ -440,6 +440,14 @@ Neither shows up until a real mod is the subject, which is the whole argument fo
 
 **Spawned entities need an owner, or the game reclaims them.** `NPC.CheckActive` reclaims anything outside `activeRangeX/Y` of a player, and a headless server has no players, so *everything* is out of range. Measured directly: ExampleMod's critter is alive on the next tick and gone a second later. That is the game behaving correctly, so the answer belongs in the framework: a `GlobalNPC.CheckActive` returning false for entities a live test owns. It is also the first working piece of the ownership warden from section 2.4.
 
+### 8.3a Continuous integration for the game tiers
+
+The core's self-tests need only the SDK and already run on ubuntu, windows and macos. Everything above Tier 0 needs a tModLoader install on the 1.4.5 line, which a CI job has to obtain for itself.
+
+Measured rather than inferred. The GitHub API reports `target_commitish: 1.4.5` on recent releases, which looks promising, but downloading the newest release asset and reading it shows `net8.0` and `LangVersion 12.0`: it is a 1.4.4 build. There is no published 1.4.5 artifact, so a job cannot simply fetch one.
+
+What remains is obtaining the game and building the loader from it, which is what tModLoader's own CI does for the same reason. That recipe is section 8.7's to ship. Until then the game tiers are verified locally by `scripts/run-all.sh` and CI covers the core alone.
+
 ### 8.4 Complex mods are a load test, not a graduation
 
 Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaustion, mod-count interactions, world generation at scale, long reload times. That deserves to be a named milestone aimed at the **arena**, run deliberately, rather than something stumbled into while trying to test gameplay.

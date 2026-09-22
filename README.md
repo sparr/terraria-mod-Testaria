@@ -2,7 +2,7 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-> **Status: pre-alpha.** No tier runs end to end yet. The design is settled (see [`PLAN.md`](PLAN.md)), the game-independent core is built and self-tested, and the project now compiles against tModLoader 1.4.5.
+> **Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started. The design lives in [`PLAN.md`](PLAN.md).
 
 ## What this is
 
@@ -49,9 +49,31 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
 | `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
 | `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
+| `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
+| `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
 
-Still to come: the runner that ties discovery, the arena, and the scheduler together, and everything in Tiers 1 through 3, which needs the game.
+## Running it
+
+```
+scripts/run-all.sh
+```
+
+Four gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), and calibration against ExampleMod. Green alone proves little, since a framework that cannot report failure looks exactly like one that works.
+
+Calibration needs `scripts/build-examplemod.sh` to have been run once.
+
+Individual gates:
+
+```
+dotnet test                      # core only, no game needed
+BLANK=1 scripts/run-tests.sh     # the self-test mod in a live server
+scripts/check-red.sh             # prove failures are reported as failures
+```
+
+`run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
+
+Still to come: Tier 3 (multi-process netcode and UI), the inbound half of the ownership warden, and parallel box execution.
 
 ## Building against tModLoader
 
