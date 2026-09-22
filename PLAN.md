@@ -47,6 +47,17 @@ Everything in this section was verified against a tModLoader checkout or the liv
 - **SpongePowered/McTester** is the cautionary tale of an integration test framework for a game that did not survive its platform's churn.
 - **`gold-meridian/tml-build`** is the closest ecosystem neighbor: an MSBuild SDK for tModLoader shipped on NuGet as `Tomat.Terraria.ModLoader.Sdk`, which installs tModLoader itself for CI and packages `.tmod` on build. It is a possible foundation for the toolchain tier, but note it is **AGPL-3.0**, so vendoring code from it would be viral. Interoperate, do not copy.
 
+### 1.4 Where to read the game
+
+Two sources cover the game completely between them, and neither requires running tModLoader's `setup-cli.sh`:
+
+- **Vanilla behaviour**: a decompile of the shipped game, per version, covering `Terraria`, `TerrariaServer`, and `ReLogic` along with the resources extracted from them. Any of the usual C# decompilers produces one from an install; tModLoader's `setup-cli decompile` produces the same thing in the form its patches expect.
+- **tModLoader's own additions**: `patches/tModLoader/Terraria/` in a tModLoader checkout holds TML's added files in full rather than as diffs, so it reads directly.
+
+Claims about game internals in this document are checked against the decompiled C#, including the two load-bearing ones: the server loop's `Netplay.HasFullyConnectedClients` gate around `Update`, and `NPC.CheckActive` iterating all 255 player slots so that nothing survives when none are active. Reading the decompile is much faster than reading IL; prefer it.
+
+Note the split when it matters: the decompile is *vanilla*, while tModLoader is a patched rebuild that inserts its own hooks, such as the `NPCLoader.CheckActive` call that makes the despawn fix possible at all.
+
 ## 2. Scope
 
 ### 2.1 The four tiers
