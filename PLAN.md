@@ -354,16 +354,40 @@ Three clocks, kept deliberately separate:
 8. **Upstreaming.** The TML team currently has only hand-driven failure-case mods in `test/Test Local/`. If this framework works, they may want it in-tree. Keeping it MIT and structurally separable from any one mod preserves that option at no cost.
 9. **Test mods under `ModSources`.** `ModSources` lives under the shared stable save path, so all build purposes (Stable, Preview, Dev) share it. A test mod placed there is visible to every tModLoader install on the machine, which is convenient for iteration and surprising if unexpected.
 
-## 8. First milestone
+## 8. Milestones
 
-Deliberately Tier 1, not Tier 0: a Tier 0 suite is already achievable today with a stock MSTest project and `BuildMod=false`, so building it first proves nothing that section 1.1.5 does not already prove. The novel value starts the moment a test needs the loader to have run.
+### 8.1 Close the loop before adding anything
 
-Milestone 1, which exercises the entire spine end to end:
+Deliberately Tier 1 rather than Tier 0, since a Tier 0 suite already works with a stock test project and proves nothing section 1.1.5 does not. The gap this milestone closes is not features: the core is heavily self-tested and the game layer is compile-verified only, so **nothing runs inside the game** until this is done. It exercises the spine rather than lengthening it.
 
-1. `Testaria` as a minimal library mod: a `[GameTest]` attribute, reflection discovery over loaded mod assemblies, and a runner that executes discovered tests in sequence.
-2. A `ModCommand` with `CommandType.Console`, so a `-server` process can be driven from stdin.
-3. A minimal `Assert` surface and a JUnit XML writer targeting `<SavePath>/Testaria/`.
-4. A shell script that downloads a tModLoader release, provisions a scratch save directory via `-tmlsavedirectory`, drops in the `.tmod` files, writes `enabled.json`, launches `-server` with `-autocreate`, pipes the run command, and exits nonzero on failure.
-5. One real assertion against `ExampleMod`, proving the loop is closed.
+1. Package `Testaria` as an actual `.tmod`.
+2. A throwaway self-test mod: one Tier 1 test, one Tier 2 boxed test.
+3. The harness: provision a scratch save directory via `-tmlsavedirectory`, drop in the `.tmod` files, write `enabled.json`, launch `-server` with `-autocreate`, pipe `testaria run`, map the result to an exit code.
+4. Run it green.
 
-That yields a red or green result in CI. Everything after it is filling in tiers against a spine that is already known to work.
+### 8.2 Then make it go red, on purpose
+
+The step most easily skipped, and the one that matters most. **A framework that can only report green is indistinguishable from one that works.** Until a real failure has been watched propagating the whole way, from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code, there is no evidence the thing reports anything at all.
+
+Four deliberate failures, four confirmed reports: a failed assertion, a timeout, an errored test, and a discovery error.
+
+This is also when the numbers in section 7 stop being guesses. The `SceneMetrics` scan radius, the default box size, the quarantine duration, the arena region split, the `FreshWorld` crossover, and the `SpaceFraction` constant in the world geometry adapter all get their first real data here, in a mod we control and can probe deliberately.
+
+### 8.3 Only then, an existing mod
+
+The first real-mod test is a measurement instrument, and an instrument is calibrated against a known standard before it measures an unknown. Testing someone else's mod before the harness is proven means debugging two unknowns at once: a framework bug, or a misunderstanding of their mod.
+
+Selection criteria, in priority order. Note that size is a distant fourth, and is not the axis that matters:
+
+1. **Source available.** Non-negotiable. Without it a failure is uninterpretable.
+2. **Crosses the tiers under test.** Content registration *and* an NPC with real behaviour. A library or utility mod exercises Tier 1 only and says nothing about the arena, which is the riskiest subsystem here.
+3. **Fast to load.** Load time is paid on every iteration.
+4. Size.
+
+**ExampleMod is the right first target**, though not because it is simple: at 563 files and 46,000 lines it is not. It is *broad and shallow*. Every individual piece, `ExampleCritter` or `ExampleCustomAISlimeNPC` or `ExampleRecipes`, is a minimal and deliberately documented demonstration, so a test targets one NPC out of it rather than the mod. And because the tModLoader team maintains it, a test that cannot be made to work is a framework bug rather than a mod quirk, which is exactly what a calibration standard has to guarantee.
+
+After that, one small open-source third-party mod. **That first third-party mod is a framework experiment, not a contribution.** Framing it as improving someone's coverage creates pressure to care about their test quality before this framework has earned any trust, and nothing goes near anyone's repository without explicit instruction regardless.
+
+### 8.4 Complex mods are a load test, not a graduation
+
+Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaustion, mod-count interactions, world generation at scale, long reload times. That deserves to be a named milestone aimed at the **arena**, run deliberately, rather than something stumbled into while trying to test gameplay.

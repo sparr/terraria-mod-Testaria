@@ -1,0 +1,10 @@
+author = Clarence "Sparr" Risher
+displayName = Testaria
+version = 0.1
+homepage = https://github.com/sparr/terraria-mod-Testaria
+side = NoSync
+dllReferences = Testaria.Core
+includeSource = true
+hideCode = false
+hideResources = false
+buildIgnore = *.csproj, *.user, obj\*, bin\*, .vs\*, .git\*

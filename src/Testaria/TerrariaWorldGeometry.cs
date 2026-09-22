@@ -15,11 +15,12 @@ public static class TerrariaWorldGeometry
 	/// Fraction of <see cref="Main.worldSurface"/> above which the world counts
 	/// as space.
 	/// <para/>
-	/// Terraria has no named constant for this; the value matches the
-	/// comparison the game uses for sky height. Listed in PLAN.md section 7
-	/// among the numbers to verify against real behaviour rather than trust.
+	/// Kept here as an alias so that game-facing code has it to hand, but owned
+	/// by <see cref="WorldGeometry.SpaceFraction"/>: a blank world has to
+	/// compute its own space boundary from the same number, and that layout is
+	/// built in the core where <see cref="Main"/> cannot be seen.
 	/// </summary>
-	public const double SpaceFraction = 0.35;
+	public const double SpaceFraction = WorldGeometry.SpaceFraction;
 
 	/// <summary>
 	/// Snapshots the current world's geometry.

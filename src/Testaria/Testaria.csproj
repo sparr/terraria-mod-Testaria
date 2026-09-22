@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      The folder name is the mod name: ModCompile derives it with
+      Path.GetFileName(modFolder) (ModCompile.cs:230). So this directory must
+      be called Testaria, and the assembly name must match it.
+    -->
+    <AssemblyName>Testaria</AssemblyName>
+    <RootNamespace>Testaria</RootNamespace>
+
+    <!--
+      Package a .tmod only when a tModLoader install is present. Without one,
+      this builds as a plain library so that a checkout with no game still
+      builds and the core's tests still run.
+    -->
+    <BuildMod>$(TestariaHasTml)</BuildMod>
+    <OutputTmlReferences>false</OutputTmlReferences>
+
+    <!-- tMLMod.targets sets these only when BuildMod is true, to the same values. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+    <Description>The tModLoader-facing half of Testaria, and the mod itself. Content types must live here: autoloading only reads the mod's own assembly.</Description>
+  </PropertyGroup>
+
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
+
+  <ItemGroup Condition="'$(TestariaHasTml)' != 'true'">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+  <!--
+    Testaria.Core ships inside the .tmod as lib/Testaria.Core.dll, named in
+    build.txt as a dllReference. The project reference puts it next to the
+    built assembly, where DllRefPath finds it via the -eac output folder
+    (ModCompile.cs:495-500); ModCompile then packs it (ModCompile.cs:294-297).
+    The core has no autoloadable types, so it losing nothing by not being the
+    mod's own assembly.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Testaria.Core\Testaria.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="TestariaReportTml" BeforeTargets="Build">
+    <Message Importance="high" Condition="'$(TestariaHasTml)' == 'true'" Text="Testaria: building mod against tModLoader at $(tModLoaderSteamPath)" />
+    <Message Importance="high" Condition="'$(TestariaHasTml)' != 'true'" Text="Testaria: no tModLoader install found, mod will not be built. Set TML_PATH to build it." />
+  </Target>
+
+</Project>

@@ -30,7 +30,7 @@ The single most important rule the framework enforces is the **Tier 0 boundary**
 ```
 src/
   Testaria.Core/        Game-independent core. No tModLoader reference, by design.
-  Testaria.Game/        The tModLoader-facing half. Needs a 1.4.5 install to build.
+  Testaria/             The tModLoader-facing half. Needs a 1.4.5 install to build.
 tests/
   Testaria.Core.Tests/  Self-tests for the core. Plain `dotnet test`, no game required.
 ```
@@ -55,9 +55,9 @@ Still to come: the runner that ties discovery, the arena, and the scheduler toge
 
 ## Building against tModLoader
 
-`Testaria.Core` and its tests need nothing but the .NET SDK. `Testaria.Game` needs a tModLoader install on the **1.4.5 line** (`net10.0`, C# 14).
+`Testaria.Core` and its tests need nothing but the .NET SDK. The `Testaria` mod project needs a tModLoader install on the **1.4.5 line** (`net10.0`, C# 14).
 
-The build looks for one automatically in the usual Steam library locations; set `TML_PATH` to point elsewhere. Without an install, `Testaria.Game` compiles to an empty assembly and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
+The build looks for one automatically in the usual Steam library locations; set `TML_PATH` to point elsewhere. Without an install, the mod project skips building the `.tmod` and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
 
 To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the password `iamacontributor` to unlock the branch, then select **`1.4.5-dev`**. Note that the `preview-*` branches are **not** 1.4.5, they are the monthly CI channel on the 1.4.4 line and install `net8.0` with `LangVersion 12.0`. See [tModLoader issue #5070](https://github.com/tModLoader/tModLoader/issues/5070).
 
