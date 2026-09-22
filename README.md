@@ -22,6 +22,8 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[LoadedTest]` | A tier 1 test: needs a completed load pass, but no world |
 | `[GameTest]` | A tier 2 test: needs a world and a tick loop, and is given a box of its own |
 | `[FreshWorld]` | A test no box can isolate, which needs a freshly generated world instead |
+| `[Case]` | One set of arguments for a parameterised test, reported as a case of its own |
+| `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
 
 The single most important rule the framework enforces is the **Tier 0 boundary**: the moment a test touches `Main`, `ModContent`, or `ContentSamples`, it depends on state that only a completed load pass establishes. In a bare test host those statics are default-initialized rather than absent, so such a test will often pass silently against garbage. `Testaria.Core` therefore carries no reference to tModLoader at all, which makes that boundary structural rather than advisory.
 
@@ -69,6 +71,27 @@ Both build as generated. The in-game one finds your tModLoader install itself, w
 The attributes, `Assert`, `Wait`, `ITestContext` and `Band` live in `Testaria.Core`, an ordinary NuGet package, so a test mod compiles against that alone. A `.tmod` cannot ship NuGet output, but it does not need to: the package is a compile-time reference, and at run time the same assembly is already present because the Testaria mod carries it and `modReferences` names it.
 
 `TestContext`, which places tiles and spawns entities, lives in the mod assembly rather than the package, because it touches Terraria types. The generated project shows how to reference it.
+
+## Parameterised tests
+
+A test with parameters and a source of values runs once per case, each reported and filterable by name. There is no separate `[Theory]` marker: the tier attribute already marks a method as a test, so having data parameters is what makes it parameterised. A leading `ITestContext` is the context, not data.
+
+```csharp
+[LoadedTest]
+[Case(1)]
+[Case(2)]
+public void Small_numbers_are_positive(int value) => Assert.True(value > 0);
+
+public static IEnumerable<string> Items => Subject.NamesOf<ModItem>();
+
+[LoadedTest]
+[CaseSource(nameof(Items))]
+public void Every_item_has_a_display_name(string name) { ... }
+```
+
+`[CaseSource]` is the reason this exists. Cases that only appear once the game has loaded, every item a mod registers, every recipe it adds, cannot be written out by hand, and discovery runs in the game for every tier above zero. The ExampleMod suite goes from 39 tests to **924** that way.
+
+They are `Case` and `CaseSource` rather than xUnit's `InlineData` and `MemberData` because tier 0 projects use xUnit and `Testaria.Core` together by design, and same-named types in both would make `using Xunit; using Testaria;` ambiguous.
 
 ## Running it
 

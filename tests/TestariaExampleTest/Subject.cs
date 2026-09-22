@@ -31,4 +31,18 @@ internal static class Subject
 	/// <summary>Every piece of content of a given kind that the subject registers.</summary>
 	public static IReadOnlyList<T> Content<T>() where T : ILoadable
 		=> [.. Require().GetContent<T>()];
+
+	/// <summary>
+	/// The internal names of a kind of content, or nothing if the subject is
+	/// absent.
+	/// <para/>
+	/// For use as a [CaseSource], which runs during discovery. Skipping there
+	/// would report a broken source rather than an absent mod, so this returns
+	/// empty instead and lets the framework report a skip for having no cases.
+	/// <para/>
+	/// Names rather than the objects themselves, because the name is what a
+	/// case label should read as and what a filter should be able to match.
+	/// </summary>
+	public static IEnumerable<string> NamesOf<T>() where T : ILoadable, IModType
+		=> ModLoader.TryGetMod(Name, out Mod mod) ? mod.GetContent<T>().Select(c => c.Name).Order() : [];
 }

@@ -4,7 +4,7 @@ using System.Reflection;
 namespace Testaria;
 
 /// <summary>
-/// Finds tests by reflection.
+/// Finds tests by reflection, expanding parameterised ones into a case each.
 /// <para/>
 /// Reflection over already-loaded types rather than a VSTest adapter, because
 /// mod assemblies load from memory into a per-mod <c>AssemblyLoadContext</c>
@@ -44,28 +44,133 @@ public static class TestDiscovery
 				}
 
 				bool freshWorld = typeFreshWorld || method.GetCustomAttribute<FreshWorldAttribute>() is not null;
+				bool wantsContext = WantsContext(method);
+				int dataParameters = method.GetParameters().Length - (wantsContext ? 1 : 0);
 
-				tests.Add(new TestCase {
+				TestCase Build(IReadOnlyList<object?> arguments, string? skip = null) => new() {
 					Method = method,
+					Arguments = arguments,
 					Tier = marker.Tier,
 					BodyKind = typeof(IEnumerator).IsAssignableFrom(method.ReturnType) ? TestBodyKind.Coroutine : TestBodyKind.Immediate,
-					WantsContext = method.GetParameters().Length == 1,
-					SkipReason = marker.Skip,
+					WantsContext = wantsContext,
+					SkipReason = skip ?? marker.Skip,
 					TimeoutTicks = marker.Timeout,
-					// A box is granted regardless of FreshWorld. The two are
-					// orthogonal: a fresh world isolates a test from other
-					// tests and from world-global state, while a box gives it
-					// a defined, bounded place to work and the box-relative
-					// coordinates that go with it. Withholding the box left a
-					// fresh-world test with an empty Interior and no usable
-					// workspace at all.
 					Box = marker is GameTestAttribute game ? game.ToRequest() : null,
 					FreshWorld = freshWorld,
-				});
+				};
+
+				if (dataParameters == 0) {
+					tests.Add(Build([], null));
+					continue;
+				}
+
+				ExpandCases(type, method, location, dataParameters, Build, tests, errors);
 			}
 		}
 
 		return new DiscoveryResult { Tests = tests, Errors = errors };
+	}
+
+	/// <summary>
+	/// Turns a parameterised method into one case per argument set.
+	/// <para/>
+	/// A source that fails is reported rather than skipped. A parameterised
+	/// test whose cases silently fail to materialise leaves a suite that looks
+	/// smaller than it is, which is the same hazard as a malformed test
+	/// vanishing.
+	/// </summary>
+	private static void ExpandCases(
+		Type type,
+		MethodInfo method,
+		string location,
+		int dataParameters,
+		Func<IReadOnlyList<object?>, string?, TestCase> build,
+		List<TestCase> tests,
+		List<TestDiscoveryError> errors)
+	{
+		List<object?[]> cases = [];
+		int sources = 0;
+
+		foreach (CaseAttribute inline in method.GetCustomAttributes<CaseAttribute>()) {
+			sources++;
+			cases.Add(inline.Data);
+		}
+
+		foreach (CaseSourceAttribute source in method.GetCustomAttributes<CaseSourceAttribute>()) {
+			sources++;
+
+			try {
+				cases.AddRange(ReadMemberData(type, source.MemberName));
+			}
+			catch (Exception ex) {
+				errors.Add(Error(location, $"The data source '{source.MemberName}' could not be read: {ex.GetType().Name}: {ex.Message}"));
+				return;
+			}
+		}
+
+		if (sources == 0) {
+			errors.Add(Error(location, $"This test takes {dataParameters} argument(s) but no [Case] or [CaseSource] supplies any."));
+			return;
+		}
+
+		if (cases.Count == 0) {
+			// Reported as skipped rather than as an error or as nothing. A
+			// source can legitimately be empty, when the content it enumerates
+			// is not installed, and a test that quietly disappears would leave
+			// the suite looking complete.
+			tests.Add(build([], "Its data source produced no cases, so there was nothing to run."));
+			return;
+		}
+
+		int index = 0;
+		foreach (object?[] arguments in cases) {
+			index++;
+
+			if (arguments.Length != dataParameters) {
+				errors.Add(Error(location, $"Case {index} supplies {arguments.Length} argument(s) but the test takes {dataParameters}."));
+				continue;
+			}
+
+			tests.Add(build(arguments, null));
+		}
+	}
+
+	/// <summary>Reads a static field, property or parameterless method as case data.</summary>
+	private static IEnumerable<object?[]> ReadMemberData(Type type, string memberName)
+	{
+		const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.FlattenHierarchy;
+
+		object? value = type.GetProperty(memberName, Flags)?.GetValue(null)
+			?? type.GetField(memberName, Flags)?.GetValue(null)
+			?? type.GetMethod(memberName, Flags, Type.EmptyTypes)?.Invoke(null, null)
+			?? throw new MissingMemberException($"no static property, field or parameterless method named '{memberName}' on {type.Name}");
+
+		// A string is IEnumerable, of characters, so an unguarded check would
+		// quietly turn one into a case per letter rather than reporting it.
+		if (value is string or not IEnumerable)
+			throw new InvalidCastException($"'{memberName}' is {value.GetType().Name}, not a sequence of object arrays");
+
+		var rows = (IEnumerable)value;
+
+		List<object?[]> cases = [];
+		foreach (object? row in rows) {
+			cases.Add(row switch {
+				object?[] array => array,
+				// A single-argument source is tidier written without the
+				// surrounding array, so accept both shapes.
+				null => [null],
+				_ => [row],
+			});
+		}
+
+		return cases;
+	}
+
+	private static bool WantsContext(MethodInfo method)
+	{
+		ParameterInfo[] parameters = method.GetParameters();
+
+		return parameters.Length > 0 && typeof(ITestContext).IsAssignableFrom(parameters[0].ParameterType);
 	}
 
 	private static TestDiscoveryError? Validate(Type type, MethodInfo method, string location)
@@ -91,11 +196,21 @@ public static class TestDiscovery
 			return Error(location, $"Test methods must return void or IEnumerator, but this returns {method.ReturnType.Name}. Return IEnumerator to run across ticks.");
 
 		ParameterInfo[] parameters = method.GetParameters();
-		if (parameters.Length > 1)
-			return Error(location, $"Test methods take no parameters or one ITestContext, but this takes {parameters.Length}.");
+		bool wantsContext = WantsContext(method);
+		int dataParameters = parameters.Length - (wantsContext ? 1 : 0);
 
-		if (parameters.Length == 1 && !typeof(ITestContext).IsAssignableFrom(parameters[0].ParameterType))
-			return Error(location, $"The single parameter must be assignable from ITestContext, but is {parameters[0].ParameterType.Name}.");
+		// A context may only lead. Anywhere else it is data the runner cannot
+		// supply, and saying so beats a confusing argument count error later.
+		for (int i = wantsContext ? 1 : 0; i < parameters.Length; i++) {
+			if (typeof(ITestContext).IsAssignableFrom(parameters[i].ParameterType))
+				return Error(location, $"An ITestContext must be the first parameter, but one appears at position {i + 1}.");
+		}
+
+		bool hasData = method.GetCustomAttributes<CaseAttribute>().Any()
+			|| method.GetCustomAttributes<CaseSourceAttribute>().Any();
+
+		if (dataParameters == 0 && hasData)
+			return Error(location, "This test has [Case] or [CaseSource] but takes no arguments to receive them.");
 
 		return null;
 	}

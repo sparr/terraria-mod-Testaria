@@ -23,8 +23,20 @@ public sealed record TestCase
 	/// <summary>The test method.</summary>
 	public required MethodInfo Method { get; init; }
 
-	/// <summary>The method's name, as reported.</summary>
-	public string Name => Method.Name;
+	/// <summary>
+	/// Arguments for this case, in parameter order and excluding the context.
+	/// Empty for an ordinary test.
+	/// </summary>
+	public IReadOnlyList<object?> Arguments { get; init; } = [];
+
+	/// <summary>
+	/// The method's name, with the case's arguments appended when it has any.
+	/// <para/>
+	/// Each case is named rather than numbered, so a report says which case
+	/// failed rather than merely that one did, and so a filter can single one
+	/// out.
+	/// </summary>
+	public string Name => Method.Name + TestCaseLabel.For(Arguments);
 
 	/// <summary>The declaring type's full name, as reported.</summary>
 	public string ClassName => Method.DeclaringType?.FullName ?? "<unknown>";

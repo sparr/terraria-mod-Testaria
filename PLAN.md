@@ -494,7 +494,7 @@ Thirty-nine tests across registration, localization, items, NPCs, tiles and reci
 
 Two things about the framework only a suite this shape can settle.
 
-**The framework has no parameterised tests.** A suite over 149 items is either one loop reported as a single result or 149 hand-written methods. The plan's artifact list mentions a `[Theory]` equivalent; nothing was built. The loops here work but report coarsely: one failure hides the rest, and the report names a test rather than a case. This is the clearest remaining gap in the authoring surface.
+**Parameterised tests are what a suite of invariants needs.** A loop over a content set inside one test reports a single result, so one failure hides the rest and the report names the test rather than the case. `[Case]` and `[CaseSource]` expand each case into its own result, which takes this suite from 39 tests to 924, each named and filterable individually. See section 8.3c.
 
 **Three obvious assertions are wrong about Terraria rather than about ExampleMod**, which is exactly what calibrating against a known-good subject is for:
 
@@ -503,6 +503,22 @@ Two things about the framework only a suite this shape can settle.
 - A recipe consuming its own output is legal and sometimes deliberate, so the test names such recipes rather than forbidding them.
 
 Each is the test being wrong, not the subject. A framework calibrated against something that can be assumed correct turns that ambiguity into information.
+
+### 8.3c Parameterised tests
+
+A test with parameters and a source of values runs once per case. There is deliberately no separate `[Theory]` marker: the tier attribute already marks a method as a test, so having data parameters is what makes it parameterised, and a leading `ITestContext` is the context rather than data.
+
+`[CaseSource]` is the reason it earns its place. Cases that only exist once the game has loaded cannot be written out by hand, and discovery runs in the game for every tier above zero, so a source can enumerate them. The ExampleMod suite expands from 39 tests to **924**, each named by its arguments and filterable individually: `Has_a_sensible_value_and_damage("RubyEarrings")` can be run on its own out of all 924.
+
+Three decisions worth keeping.
+
+**Named `Case` and `CaseSource`, not `InlineData` and `MemberData`.** Mirroring xUnit's vocabulary is the usual rule here, but tier 0 projects use xUnit *and* `Testaria.Core` together by design, and same-named types in both make `using Xunit; using Testaria;` ambiguous, so the test project does not compile.
+
+**Cases are named by their arguments rather than numbered.** Numbering would make a report say which case failed only in the sense that a line number does. Naming is also what lets a filter address one case.
+
+**An empty source reports a skip, not an error and not silence.** A source can legitimately be empty, when the content it enumerates is not installed. Reporting nothing would leave the suite looking complete; reporting a failure would blame nobody in particular.
+
+One case the error path has to handle: **a `string` is `IEnumerable`**, so an unguarded source check turns a string into one case per letter instead of reporting it.
 
 ### 8.4 Complex mods are a load test, not a graduation
 

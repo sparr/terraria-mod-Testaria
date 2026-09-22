@@ -203,17 +203,27 @@ public sealed class TestRunner
 		return true;
 	}
 
+	/// <summary>
+	/// The context first, if the test wants one, then the case's arguments in
+	/// declaration order.
+	/// </summary>
 	private object?[] BuildArguments(TestCase test)
 	{
 		if (!test.WantsContext)
-			return [];
+			return [.. test.Arguments];
 
 		if (options.CreateContext is null)
 			throw new InvalidOperationException("This test asks for an ITestContext but the runner has no CreateContext configured.");
 
 		context = options.CreateContext(lease);
 
-		return [context];
+		object?[] arguments = new object?[test.Arguments.Count + 1];
+		arguments[0] = context;
+
+		for (int i = 0; i < test.Arguments.Count; i++)
+			arguments[i + 1] = test.Arguments[i];
+
+		return arguments;
 	}
 
 	private object? Instantiate(Type type)

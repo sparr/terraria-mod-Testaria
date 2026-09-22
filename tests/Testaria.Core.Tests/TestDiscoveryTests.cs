@@ -120,12 +120,15 @@ public class TestDiscoveryTests
 			e => e.Location.EndsWith(nameof(Malformed.TooManyParameters), StringComparison.Ordinal));
 
 	[Fact]
-	public void A_parameter_that_is_not_a_test_context_is_an_error()
+	public void A_data_parameter_with_no_source_is_an_error()
 	{
+		// A non-context parameter is data now, so the fault is not the
+		// parameter's type but that nothing supplies a value for it.
 		TestDiscoveryError error = Discover<Malformed>().Errors
 			.Single(e => e.Location.EndsWith(nameof(Malformed.WrongParameterType), StringComparison.Ordinal));
 
-		XAssert.Contains("ITestContext", error.Message);
+		XAssert.Contains("[Case]", error.Message);
+		XAssert.Contains("[CaseSource]", error.Message);
 	}
 
 	[Fact]
