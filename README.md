@@ -53,6 +53,22 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
 
+## Getting started on your own mod
+
+Two templates, because tier 0 and the tiers above it run in different places:
+
+```
+dotnet new install Testaria.Templates
+dotnet new testaria-mod-tests  -n MyModTests --subject MyMod   # tiers 1 and 2, in-game
+dotnet new testaria-unit-tests -n MyUnitTests                  # tier 0, no game
+```
+
+Both build as generated. The in-game one finds your tModLoader install itself, which is the fiddly part to get right by hand and most of why the templates exist; set `TML_PATH` if it guesses wrong. Their placeholder tests are meant to go green once and then be replaced: a scaffold that passes end to end proves your install path, scratch directory and world provisioning all work before you have written a line.
+
+The attributes, `Assert`, `Wait`, `ITestContext` and `Band` live in `Testaria.Core`, an ordinary NuGet package, so a test mod compiles against that alone. A `.tmod` cannot ship NuGet output, but it does not need to: the package is a compile-time reference, and at run time the same assembly is already present because the Testaria mod carries it and `modReferences` names it.
+
+`TestContext`, which places tiles and spawns entities, lives in the mod assembly rather than the package, because it touches Terraria types. The generated project shows how to reference it.
+
 ## Running it
 
 ```

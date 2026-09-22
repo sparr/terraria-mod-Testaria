@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Clarence \"Sparr\" Risher",
+  "classifications": [ "Terraria", "tModLoader", "Test" ],
+  "identity": "Testaria.UnitTests",
+  "name": "Testaria unit test project (tier 0)",
+  "shortName": "testaria-unit-tests",
+  "description": "An ordinary xUnit project for tier 0 tests: pure logic, no game, milliseconds.",
+  "tags": { "language": "C#", "type": "project" },
+  "sourceName": "TestariaUnitTests",
+  "preferNameDirectory": true
+}

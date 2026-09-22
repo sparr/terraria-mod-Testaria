@@ -24,6 +24,12 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!--
+      Prerelease on purpose. build.txt versions are 2 to 4 integers with no
+      prerelease tag (PLAN.md section 6), so the .tmod side carries 0.1 while
+      NuGet carries the honest SemVer.
+    -->
+    <Version>0.1.0-alpha.1</Version>
     <Product>Testaria</Product>
     <Authors>Clarence "Sparr" Risher</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

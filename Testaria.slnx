@@ -3,6 +3,9 @@
     <Project Path="src/Testaria.Core/Testaria.Core.csproj" />
     <Project Path="src/Testaria/Testaria.csproj" />
   </Folder>
+  <Folder Name="/templates/">
+    <Project Path="templates/Testaria.Templates.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Testaria.Core.Tests/Testaria.Core.Tests.csproj" />
   </Folder>

@@ -1,0 +1,7 @@
+author = you
+displayName = TestariaModTests
+version = 0.1
+side = NoSync
+modReferences = Testaria, SUBJECT_MOD
+includeSource = true
+buildIgnore = *.csproj, *.user, obj\*, bin\*, .vs\*, .git\*

@@ -11,7 +11,15 @@
     <RootNamespace>Testaria</RootNamespace>
     <AssemblyName>Testaria.Core</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Description>Game-independent core of Testaria: assertions, results, and the box arena. Carries no tModLoader reference by design.</Description>
+    <Description>Game-independent core of Testaria, a testing framework for Terraria mods: assertions, test results and JUnit reporting, tile geometry, and the box arena. Carries no tModLoader reference by design, which is what keeps unit tests from silently depending on loader state.</Description>
+    <PackageTags>terraria;tmodloader;testing;modding</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
 </Project>

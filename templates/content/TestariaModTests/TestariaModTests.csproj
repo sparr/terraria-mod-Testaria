@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Finds a tModLoader install so the mod can be built. Set TML_PATH to
+    override; otherwise the usual Steam library locations are tried. This is
+    the part that is fiddly to get right by hand, which is most of why this
+    template exists.
+  -->
+  <PropertyGroup>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.local/share/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.steam/steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AssemblyName>TestariaModTests</AssemblyName>
+    <RootNamespace>TestariaModTests</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="Exists('$(tModLoaderSteamPath)/tMLMod.targets')" />
+
+  <!--
+    The attributes, Assert, Wait, ITestContext and Band all live in
+    Testaria.Core, which is an ordinary NuGet package. That is enough to
+    compile a test mod.
+
+    A .tmod cannot ship NuGet output, but it does not need to: this package is
+    only a compile-time reference. At run time the same assembly is already
+    present, because the Testaria mod carries it and build.txt names Testaria
+    in modReferences.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Testaria.Core" Version="0.1.0-alpha.1" />
+  </ItemGroup>
+
+  <Target Name="RequireTml" BeforeTargets="Build" Condition="!Exists('$(tModLoaderSteamPath)/tMLMod.targets')">
+    <Error Text="No tModLoader install found. Set TML_PATH to the folder containing tMLMod.targets." />
+  </Target>
+
+</Project>
