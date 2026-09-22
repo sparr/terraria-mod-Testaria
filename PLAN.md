@@ -442,11 +442,28 @@ Neither shows up until a real mod is the subject, which is the whole argument fo
 
 ### 8.3a Continuous integration for the game tiers
 
-The core's self-tests need only the SDK and already run on ubuntu, windows and macos. Everything above Tier 0 needs a tModLoader install on the 1.4.5 line, which a CI job has to obtain for itself.
+Their `build.yml` runs on pushes and pull requests to the `1.4.5` branch, with `TERRARIA_VERSION: 1458`. It obtains Terraria like this:
 
-Measured rather than inferred. The GitHub API reports `target_commitish: 1.4.5` on recent releases, which looks promising, but downloading the newest release asset and reading it shows `net8.0` and `LangVersion 12.0`: it is a 1.4.4 build. There is no published 1.4.5 artifact, so a job cannot simply fetch one.
+```
+curl -s -L https://terraria.org/api/download/pc-dedicated-server/terraria-server-1458.zip
+```
 
-What remains is obtaining the game and building the loader from it, which is what tModLoader's own CI does for the same reason. That recipe is section 8.7's to ship. Until then the game tiers are verified locally by `scripts/run-all.sh` and CI covers the core alone.
+A public, unauthenticated download from Re-Logic. No Steam anywhere. It then runs `setup-cli decompile --key $TERRARIA_OWNERSHIP_KEY` and caches the decompiled tree, encrypted with a passphrase, against a key of `1458-A`.
+
+The only real gate is that ownership key, documented in `DecompileCommand.cs:40` as "Terraria ownership key in hexadecimal format... usually derived from the installed Terraria.exe", and derivable with the setup tool's own `ownership` command. So the recipe for our own CI is:
+
+1. Derive the key once, locally, from an owned Terraria install. **It is a secret and must never be committed**; it belongs in repository secrets.
+2. Download the public server zip.
+3. Decompile and build tModLoader, caching the result as their CI does, since decompilation is far too slow to repeat per run.
+4. Build the mods and run `scripts/run-all.sh`.
+
+That is real work, and the cache is what makes it viable rather than absurd, but it is not blocked.
+
+#### tModLoader's own CI does not run its own tests
+
+Worth recording, because it says something about the gap this framework fills. Across all five workflows on the 1.4.5 branch there is not one occurrence of `dotnet test`, `vstest`, or a reference to `tModLoaderTests`. Their CI builds 1.4.5 and publishes it; the MSTest project in `test/` is never executed by it.
+
+So the ecosystem's central project has a test suite that CI does not run, and no way at all to test a mod's behaviour in a running game. That is the hole, and it is larger than "mods lack a test framework".
 
 ### 8.4 Complex mods are a load test, not a graduation
 
