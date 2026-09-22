@@ -427,4 +427,71 @@ public class ArenaTests
 		XAssert.Equal(retained, arena.Stats.Retained);
 		XAssert.Null(arena.TryLease(request));
 	}
+
+	[Fact]
+	public void A_band_is_packed_in_rows_rather_than_a_single_line()
+	{
+		// One row of boxes anchored at a band's top wastes the rest of it: a
+		// cavern band six hundred rows tall would hold forty-nine boxes and use
+		// eight per cent of its area.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+		var placed = new List<BoxLease>();
+
+		while (arena.TryLease(BoxRequest.Banded(Band.Cavern, 16, 16)) is BoxLease lease)
+			placed.Add(lease);
+
+		int rows = placed.Select(l => l.Bounds.Top).Distinct().Count();
+
+		XAssert.True(rows > 1, $"the band should be packed in rows, saw everything at one height ({rows})");
+		XAssert.True(placed.Count > 400, $"expected several hundred boxes in a cavern band, got {placed.Count}");
+		AssertNoOverlaps(arena);
+	}
+
+	[Fact]
+	public void A_full_row_drops_by_the_shortest_box_in_it_not_the_tallest()
+	{
+		// The rule that makes the packing dense: taller neighbours hang down
+		// into the next row and are stepped over, rather than every row being
+		// as tall as the worst box in it.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+
+		BoxLease tall = arena.TryLease(BoxRequest.Banded(Band.Cavern, 16, 64))!;
+		int rowTop = tall.Bounds.Top;
+		int tallHeight = tall.Bounds.Height;
+
+		BoxLease latest = tall;
+		var row = new List<BoxLease> { tall };
+
+		// Short boxes until the row runs out and the cursor wraps.
+		while (latest.Bounds.Top == rowTop) {
+			row.Add(latest = arena.TryLease(BoxRequest.Banded(Band.Cavern, 16, 16))!);
+		}
+
+		int shortest = row.Where(l => l.Bounds.Top == rowTop).Min(l => l.Bounds.Height);
+
+		XAssert.True(shortest < tallHeight, "the row should contain boxes of two different heights");
+		XAssert.Equal(rowTop + shortest, latest.Bounds.Top);
+		AssertNoOverlaps(arena);
+	}
+
+	[Fact]
+	public void Boxes_of_mixed_sizes_never_overlap_however_densely_they_pack()
+	{
+		// The packing steps over whatever is already there, so the invariant
+		// that matters is simply that it never lands on anything.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+
+		for (int i = 0; i < 400; i++) {
+			BoxRequest request = (i % 3) switch {
+				0 => BoxRequest.Banded(Band.Cavern, 96, 64),
+				1 => BoxRequest.Banded(Band.Cavern, 64, 48),
+				_ => BoxRequest.Banded(Band.Cavern, 16, 16),
+			};
+
+			if (arena.TryLease(request) is null)
+				break;
+		}
+
+		AssertNoOverlaps(arena);
+	}
 }

@@ -27,9 +27,12 @@ public sealed class Arena
 	private readonly Dictionary<SlotKey, List<Slot>> byKey = [];
 	private readonly Dictionary<int, Slot> leasedSlots = [];
 	private readonly Dictionary<int, BoxLease> activeLeases = [];
-	private readonly Dictionary<Band, int> bandCursor = [];
+	private readonly Dictionary<Band, BandCursor> bandCursor = [];
 	private readonly HashSet<string> reservedLeases = new(StringComparer.OrdinalIgnoreCase);
 	private readonly Dictionary<int, string> reservedLeaseIds = [];
+	/// <summary>How far the carve cursor moves when looking for room.</summary>
+	private const int Step = 16;
+
 	private readonly int columnRegionStart;
 	private int columnCursor;
 	private int nextLeaseId = 1;
@@ -205,6 +208,37 @@ public sealed class Arena
 		return null;
 	}
 
+	/// <summary>
+	/// How far down to drop when a row is full: the height of the shortest box
+	/// in it.
+	/// <para/>
+	/// A row with nothing in it drops by a single step instead, so that a band
+	/// whose every position is blocked still makes progress towards the bottom
+	/// rather than looping.
+	/// </summary>
+	private int RowDrop(Band bands, int rowTop)
+	{
+		int shortest = int.MaxValue;
+
+		foreach (Slot slot in allSlots) {
+			if (slot.Key.Kind == BoxKind.Banded && slot.Key.Bands == bands && slot.Bounds.Top == rowTop)
+				shortest = Math.Min(shortest, slot.Bounds.Height);
+		}
+
+		return shortest == int.MaxValue ? Step : shortest;
+	}
+
+	/// <summary>Whether any slot already carved stands where this one would go.</summary>
+	private bool Occupied(TileRect candidate)
+	{
+		foreach (Slot slot in allSlots) {
+			if (slot.Bounds.Intersects(candidate))
+				return true;
+		}
+
+		return false;
+	}
+
 	private Slot? FindFree(SlotKey key)
 	{
 		if (!byKey.TryGetValue(key, out List<Slot>? candidates))
@@ -235,26 +269,51 @@ public sealed class Arena
 					"Ask for a shorter box, a different band, or a fresh world.");
 			}
 
-			int x = bandCursor.GetValueOrDefault(key.Bands);
+			BandCursor cursor = bandCursor.TryGetValue(key.Bands, out BandCursor existing)
+				? existing
+				: new BandCursor(0, band.Top);
 
-			// Step over reserved ground rather than refusing outright: the
-			// arena has plenty of room, and a test should never be denied a box
-			// merely because the dungeon happens to sit to its left.
+			// Shelf packing, scanning for somewhere the box actually fits
+			// rather than assuming the shelf is clear.
+			//
+			// The cursor steps along a row, and on reaching the end drops by
+			// the height of the *shortest* box in that row rather than the
+			// tallest. Taller neighbours therefore hang down into the next
+			// row, which is why every position is tested for occupancy: the
+			// scan steps over them. That fragments the ground, and packs it
+			// far more densely than dropping by the tallest box would.
+			//
+			// Before this a band was a single row of boxes anchored at its
+			// top, so a cavern band six hundred rows tall held forty-nine
+			// boxes and used eight per cent of its area.
 			while (true) {
-				if (x + outerWidth > columnRegionStart)
+				if (cursor.Y + outerHeight > band.Bottom)
 					return null;
 
-				var candidate = new TileRect(x, band.Top, outerWidth, outerHeight);
-				ReservedArea? blocker = FirstReservedOverlap(candidate);
+				if (cursor.X + outerWidth > columnRegionStart) {
+					cursor = new BandCursor(0, cursor.Y + RowDrop(key.Bands, cursor.Y));
+					continue;
+				}
 
-				if (blocker is null)
-					break;
+				var candidate = new TileRect(cursor.X, cursor.Y, outerWidth, outerHeight);
 
-				x = blocker.Bounds.Right;
+				// Step over reserved ground rather than refusing outright: a
+				// test should never be denied a box merely because the dungeon
+				// happens to sit to its left.
+				if (FirstReservedOverlap(candidate) is ReservedArea blocker) {
+					cursor = cursor with { X = blocker.Bounds.Right };
+					continue;
+				}
+
+				if (Occupied(candidate)) {
+					cursor = cursor with { X = cursor.X + Step };
+					continue;
+				}
+
+				bandCursor[key.Bands] = cursor with { X = cursor.X + outerWidth };
+				bounds = candidate;
+				break;
 			}
-
-			bandCursor[key.Bands] = x + outerWidth;
-			bounds = new TileRect(x, band.Top, outerWidth, outerHeight);
 		}
 		else {
 			TileRect span = geo.Span(key.Bands);
@@ -349,6 +408,9 @@ public sealed class Arena
 	}
 
 	private readonly record struct SlotKey(Band Bands, int Width, int Height, BoxKind Kind);
+
+	/// <summary>Where the next box in a band will be looked for.</summary>
+	private readonly record struct BandCursor(int X, int Y);
 
 	private sealed class Slot
 	{

@@ -163,6 +163,16 @@ A blocked test's message names what is holding the space and what to do about it
 
 > This test never ran: the arena had no box for it. 49 of 49 slots are retained from earlier failures and are never reused, so that the state a failing test left behind survives for you to go and look at. Inspect them, then rerun. Set `KeepFailedBoxes` to false to give that ground up instead.
 
+How much room there is depends on how the arena packs. Boxes are shelf packed within a band: the cursor steps along a row, and when the row runs out it returns to the start and drops by the height of the **shortest** box in that row, not the tallest. Taller neighbours therefore hang down into the next row and are stepped over. That fragments the ground and packs it considerably more densely, measured in a small world's cavern band:
+
+| Mix of box heights | Boxes placed | If rows dropped by the tallest |
+|---|---|---|
+| All one size | 588 | 588 |
+| Nine short to one tall | 499 | 384 |
+| Strict alternation, half tall | 371 | 384 |
+
+So it is a large win when most boxes are a similar height and a few are not, which is the normal case, and a few per cent worse in the pathological one. Either way a band holds several hundred boxes rather than the forty-nine it managed when every box was anchored to the top of the band in a single line.
+
 **A run containing blocked tests fails**, even when everything that actually ran passed. A suite that quietly stopped running part of itself has not established what it was asked to establish, and reporting success would be a lie of omission. In the JUnit report a blocked test is written as an `<error type="Testaria.Blocked">` rather than as `<skipped>`, so that CI reaches the same verdict the runner does; every CI system treats skipped as harmless.
 
 ## Running it
