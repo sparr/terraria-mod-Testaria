@@ -33,11 +33,33 @@ public sealed class TestariaCommand : ModCommand
 	/// <inheritdoc />
 	public override string Description => "Runs the discovered Testaria tests and writes a JUnit report.";
 
+	/// <summary>
+	/// Parses a filter, reporting a bad pattern to whoever asked rather than
+	/// letting it surface as a command failure. A filter that cannot be
+	/// understood must not quietly become one that matches nothing.
+	/// </summary>
+	private static bool TryParseFilter(CommandCaller caller, string? pattern, out TestFilter filter)
+	{
+		try {
+			filter = TestFilter.Parse(pattern);
+			return true;
+		}
+		catch (ArgumentException ex) {
+			caller.Reply(ex.Message, Color.Yellow);
+			filter = TestFilter.All;
+
+			return false;
+		}
+	}
+
 	/// <inheritdoc />
 	public override void Action(CommandCaller caller, string input, string[] args)
 	{
 		if (args.Length > 0 && args[0].Equals("list", StringComparison.OrdinalIgnoreCase)) {
-			(string? path, string summary) = TestariaSystem.Catalog(TestFilter.Parse(args.Length > 1 ? args[1] : null));
+			if (!TryParseFilter(caller, args.Length > 1 ? args[1] : null, out TestFilter listFilter))
+				return;
+
+			(string? path, string summary) = TestariaSystem.Catalog(listFilter);
 
 			caller.Reply($"Testaria discovered {summary}.", Color.White);
 
@@ -65,7 +87,10 @@ public sealed class TestariaCommand : ModCommand
 		}
 
 		string runName = args.Length > 1 ? args[1] : "Testaria";
-		TestFilter filter = TestFilter.Parse(args.Length > 2 ? args[2] : null);
+
+		if (!TryParseFilter(caller, args.Length > 2 ? args[2] : null, out TestFilter filter))
+			return;
+
 		TestSession? session = TestariaSystem.Start(runName, filter);
 
 		if (session is null) {

@@ -42,11 +42,26 @@ public class TestFilterTests
 		=> XAssert.True(TestFilter.Parse("zOmBiE").Matches(Zombie()));
 
 	[Fact]
-	public void A_fully_qualified_name_matches()
+	public void An_escaped_fully_qualified_name_matches_exactly()
 	{
+		// A name is not a pattern. Nested types carry a '+' and namespaces a
+		// '.', both of which mean something else to a regex, so pasting a name
+		// from the catalogue needs escaping.
+		TestCase zombie = Zombie();
+		string literal = System.Text.RegularExpressions.Regex.Escape($"{zombie.ClassName}.{zombie.Name}");
+
+		XAssert.True(TestFilter.Parse(literal).Matches(zombie));
+	}
+
+	[Fact]
+	public void An_unescaped_nested_type_name_does_not_match_itself()
+	{
+		// Worth pinning: '+' means "one or more" rather than a literal plus,
+		// so the obvious thing to type quietly fails. Documented on Parse.
 		TestCase zombie = Zombie();
 
-		XAssert.True(TestFilter.Parse($"{zombie.ClassName}.{zombie.Name}").Matches(zombie));
+		XAssert.Contains("+", zombie.ClassName);
+		XAssert.False(TestFilter.Parse($"{zombie.ClassName}.{zombie.Name}").Matches(zombie));
 	}
 
 	[Fact]
@@ -57,42 +72,57 @@ public class TestFilterTests
 	}
 
 	[Theory]
-	[InlineData("Zombie*")]
-	[InlineData("*sword")]
-	[InlineData("*dies*")]
-	[InlineData("Zombie_dies_to_a_sword")]
-	[InlineData("*")]
-	public void Wildcards_match_as_expected(string pattern)
+	[InlineData("Zombie.*sword")]
+	[InlineData("^Zombie")]
+	[InlineData("sword$")]
+	[InlineData(".*dies.*")]
+	[InlineData("^Zombie_dies_to_a_sword$")]
+	public void Regular_expressions_match_as_expected(string pattern)
 		=> XAssert.True(TestFilter.Parse(pattern).Matches(Zombie()));
 
 	[Theory]
-	[InlineData("Recipe*")]
-	[InlineData("*axe")]
-	[InlineData("Zombie_dies_to_a_sword_and_more")]
-	public void Wildcards_reject_what_they_should(string pattern)
+	[InlineData("^Recipe")]
+	[InlineData("axe$")]
+	[InlineData("^Zombie_dies_to_a_sword_and_more$")]
+	public void Regular_expressions_reject_what_they_should(string pattern)
 		=> XAssert.False(TestFilter.Parse(pattern).Matches(Zombie()));
 
 	[Fact]
-	public void A_wildcard_pattern_anchors_unlike_a_bare_fragment()
+	public void Alternation_selects_several_tests_at_once()
 	{
-		// "dies" alone is a substring match, but "dies" with wildcards around
-		// it is explicit. Without any star the pattern must not anchor, or
-		// typing a fragment would find nothing.
-		XAssert.True(TestFilter.Parse("dies").Matches(Zombie()));
-		XAssert.False(TestFilter.Parse("dies*").Matches(Zombie()));
+		// The thing a glob could not do, and a common reason to filter.
+		TestFilter filter = TestFilter.Parse("Zombie|Recipe");
+
+		XAssert.True(filter.Matches(Zombie()));
+		XAssert.True(filter.Matches(Recipe()));
 	}
 
 	[Fact]
-	public void Runs_of_stars_behave_as_one()
-		=> XAssert.True(TestFilter.Parse("**Zombie***").Matches(Zombie()));
-
-	[Fact]
-	public void A_pathological_pattern_does_not_blow_up()
+	public void Negative_lookahead_excludes_tests()
 	{
-		// Recursion happens only at a star, so this stays bounded.
-		TestFilter filter = TestFilter.Parse(new string('*', 40) + "nope");
+		// "everything except" is why a match timeout is used rather than
+		// non-backtracking matching, which would forbid lookarounds.
+		TestFilter filter = TestFilter.Parse("^(?!.*Zombie)");
 
 		XAssert.False(filter.Matches(Zombie()));
+		XAssert.True(filter.Matches(Recipe()));
+	}
+
+	[Fact]
+	public void Anchoring_distinguishes_a_prefix_from_a_substring()
+	{
+		XAssert.True(TestFilter.Parse("dies").Matches(Zombie()));
+		XAssert.False(TestFilter.Parse("^dies").Matches(Zombie()));
+	}
+
+	[Fact]
+	public void An_invalid_pattern_is_reported_rather_than_matching_nothing()
+	{
+		// Silently matching nothing would look like a suite with no tests.
+		var ex = XAssert.Throws<ArgumentException>(() => TestFilter.Parse("Zombie("));
+
+		XAssert.Contains("not a valid regular expression", ex.Message);
+		XAssert.Contains("Zombie(", ex.Message);
 	}
 
 	[Fact]

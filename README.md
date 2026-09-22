@@ -84,11 +84,13 @@ Individual gates:
 ```
 dotnet test                             # core only, no game needed
 BLANK=1 scripts/run-tests.sh            # the self-test mod in a live server
-FILTER=Zombie BLANK=1 scripts/run-tests.sh   # just the matching tests
+FILTER='Zombie|Skeleton' BLANK=1 scripts/run-tests.sh  # regex; just the matching tests
 MODE=list BLANK=1 scripts/run-tests.sh  # list tests without running them
 scripts/check-red.sh                    # prove failures are reported as failures
 scripts/run-fresh.sh                    # a dedicated server per [FreshWorld] test
 ```
+
+`FILTER` is a regular expression, matched case-insensitively against both a test's name and its `Class.Name`. A bare fragment works as you would expect, since an unanchored regex search is a substring match, and alternation (`Zombie|Skeleton`) and exclusion (`^(?!.*Slow)`) are available when you want them. One trap: a name is not a pattern, so escape one before using it as an exact filter, because nested types contain `+`.
 
 `[FreshWorld]` is worth a word. A runner sharing its world with other tests cannot honestly claim to have given one a fresh world, so an ordinary run reports such tests as **skipped**. `run-fresh.sh` gives each a process and a world of its own, and then they run. It is slow by construction, one server start per test, which is the price of the isolation they asked for.
 
