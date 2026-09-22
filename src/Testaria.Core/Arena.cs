@@ -33,6 +33,7 @@ public sealed class Arena
 	private readonly int columnRegionStart;
 	private int columnCursor;
 	private int nextLeaseId = 1;
+	private int retentionOrder;
 
 	/// <summary>Creates an arena over a world.</summary>
 	public Arena(WorldGeometry geometry, ArenaOptions? options = null)
@@ -51,6 +52,15 @@ public sealed class Arena
 
 	/// <summary>First tile column belonging to the spanning region.</summary>
 	public int ColumnRegionStart => columnRegionStart;
+
+	/// <summary>
+	/// How many retained boxes have been recycled to make room.
+	/// <para/>
+	/// Non-zero means some failures' wreckage was discarded before anyone
+	/// looked at it, which is worth saying out loud rather than leaving a
+	/// reader to wonder why a box they were told about is not there.
+	/// </summary>
+	public int ReclaimedRetainedBoxes { get; private set; }
 
 	/// <summary>Ground held back from ordinary leasing.</summary>
 	public IReadOnlyList<ReservedArea> Reserved => Options.Reserved;
@@ -88,7 +98,14 @@ public sealed class Arena
 		int heightClass = kind == BoxKind.Banded ? RoundUp(request.Height, Options.HeightClasses, "height") : 0;
 		var key = new SlotKey(request.Bands, widthClass, heightClass, kind);
 
-		Slot? slot = FindFree(key) ?? Carve(key);
+		// Retention is best effort, and reclaiming comes last. A retained box
+		// is wreckage kept for an author to look at, which is worth something
+		// but not worth failing every later test for: before this, a suite
+		// with more failures than arena slots starved, and every test after
+		// the ninth reported "the arena had no room" instead of its own
+		// result. Nine real failures were reported as thirty-three.
+		Slot? slot = FindFree(key) ?? Carve(key) ?? ReclaimOldestRetained(key);
+
 		if (slot is null)
 			return null;
 
@@ -131,6 +148,7 @@ public sealed class Arena
 
 		if (keepForInspection) {
 			slot.State = SlotState.Retained;
+			slot.RetainedAt = retentionOrder++;
 			return;
 		}
 
@@ -198,6 +216,31 @@ public sealed class Arena
 		}
 
 		return null;
+	}
+
+	/// <summary>
+	/// The retained slot of this class that has been kept longest, freed for
+	/// reuse.
+	/// <para/>
+	/// Oldest first, because the most recent failure is the one an author is
+	/// most likely to still care about.
+	/// </summary>
+	private Slot? ReclaimOldestRetained(SlotKey key)
+	{
+		if (!byKey.TryGetValue(key, out List<Slot>? candidates))
+			return null;
+
+		Slot? oldest = null;
+
+		foreach (Slot slot in candidates) {
+			if (slot.State == SlotState.Retained && (oldest is null || slot.RetainedAt < oldest.RetainedAt))
+				oldest = slot;
+		}
+
+		if (oldest is not null)
+			ReclaimedRetainedBoxes++;
+
+		return oldest;
 	}
 
 	private Slot? FindFree(SlotKey key)
@@ -352,5 +395,8 @@ public sealed class Arena
 		public required TileRect Interior { get; init; }
 		public SlotState State { get; set; } = SlotState.Free;
 		public int QuarantineRemaining { get; set; }
+
+		/// <summary>When this slot was retained, so the oldest wreckage is the first to go.</summary>
+		public int RetainedAt { get; set; }
 	}
 }

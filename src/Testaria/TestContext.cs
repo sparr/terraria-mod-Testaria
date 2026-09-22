@@ -219,6 +219,22 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 		WorldGen.PlaceTile(x, y, type, mute: true, forced: true);
 	}
 
+	/// <summary>Places a wall at a box-relative position.</summary>
+	public void PlaceWall(int offsetX, int offsetY, int type)
+	{
+		(int x, int y) = Absolute(offsetX, offsetY);
+
+		WorldGen.PlaceWall(x, y, type, mute: true);
+	}
+
+	/// <summary>Removes the wall at a box-relative position.</summary>
+	public void ClearWall(int offsetX, int offsetY)
+	{
+		(int x, int y) = Absolute(offsetX, offsetY);
+
+		WorldGen.KillWall(x, y, fail: false);
+	}
+
 	/// <summary>Removes the tile at a box-relative position, dropping nothing.</summary>
 	public void ClearTile(int offsetX, int offsetY)
 	{
