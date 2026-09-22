@@ -29,6 +29,12 @@ public sealed class TestSession
 	/// <summary>How many tests this run will actually attempt.</summary>
 	public int Selected => Discovered - runner.FilteredOut;
 
+	/// <summary>
+	/// Launch parameter by which a harness promises this process has a world
+	/// to itself, so tests marked <c>[FreshWorld]</c> can be honoured.
+	/// </summary>
+	public const string FreshWorldFlag = "-testariafreshworld";
+
 	/// <summary>Name recorded on the run and used for the results file.</summary>
 	public string RunName { get; }
 
@@ -91,6 +97,10 @@ public sealed class TestSession
 			MaxTier = maxTier,
 			Arena = arena,
 			Filter = filter ?? TestFilter.All,
+			// Only when the harness says it has given this process a world of
+			// its own. Claiming otherwise would let a [FreshWorld] test run in
+			// a world shared with everything else and report a pass.
+			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
 			CreateContext = lease => new TestContext(lease),
 		});
 

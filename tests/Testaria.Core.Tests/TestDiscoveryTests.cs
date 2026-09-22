@@ -75,12 +75,16 @@ public class TestDiscoveryTests
 		=> XAssert.DoesNotContain(Discover<WellFormed>().Tests, t => t.Name == nameof(WellFormed.NotATest));
 
 	[Fact]
-	public void FreshWorld_on_a_method_replaces_the_box()
+	public void FreshWorld_is_orthogonal_to_getting_a_box()
 	{
+		// A fresh world isolates a test from other tests and from
+		// world-global state; a box gives it somewhere defined to work.
+		// Withholding the box left such a test with an empty Interior and
+		// nowhere to put anything.
 		TestCase test = Discover<WellFormed>().Tests.Single(t => t.Name == nameof(WellFormed.NeedsFreshWorld));
 
 		XAssert.True(test.FreshWorld);
-		XAssert.Null(test.Box);
+		XAssert.NotNull(test.Box);
 	}
 
 	[Fact]

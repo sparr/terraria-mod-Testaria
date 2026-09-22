@@ -1,6 +1,7 @@
 using System.Reflection;
 using Terraria;
 using Terraria.ModLoader;
+using Terraria.ModLoader.Core;
 
 namespace Testaria;
 
@@ -35,15 +36,10 @@ public sealed class TestariaSystem : ModSystem
 		if (IsRunning)
 			return null;
 
-		List<Assembly> assemblies = [];
-		foreach (Mod mod in ModLoader.Mods) {
-			if (mod.Code is Assembly code)
-				assemblies.Add(code);
-		}
-
 		// Without a world, Tier 2 and above cannot be honoured, and the runner
 		// reports them as skipped rather than running them somewhere undefined.
 		TestTier maxTier = Main.maxTilesX > 0 ? TestTier.World : TestTier.Loaded;
+		List<Assembly> assemblies = LoadedModAssemblies();
 
 		session = TestSession.Create(assemblies, runName, maxTier, filter);
 
@@ -159,6 +155,48 @@ public sealed class TestariaSystem : ModSystem
 	/// diagnostic for whether a dedicated server is simulating at all.
 	/// </summary>
 	public static long Ticks { get; private set; }
+
+	/// <summary>Every loaded mod's own assembly, which is where tests live.</summary>
+	private static List<Assembly> LoadedModAssemblies()
+	{
+		List<Assembly> assemblies = [];
+
+		foreach (Mod mod in ModLoader.Mods) {
+			if (mod.Code is Assembly code)
+				assemblies.Add(code);
+		}
+
+		return assemblies;
+	}
+
+	/// <summary>
+	/// Lists the discovered tests without running any of them, so a harness
+	/// can plan. Chiefly: which tests asked for a fresh world, each of which
+	/// needs a process of its own to honestly get one.
+	/// </summary>
+	/// <returns>The written catalogue path and a one-line summary.</returns>
+	public static (string? Path, string Summary) Catalog(TestFilter? filter)
+	{
+		filter ??= TestFilter.All;
+
+		List<Type> types = [];
+		foreach (Assembly assembly in LoadedModAssemblies())
+			types.AddRange(AssemblyManager.GetLoadableTypes(assembly));
+
+		List<TestCase> tests = [.. TestDiscovery.Discover(types).Tests.Where(filter.Matches)];
+
+		try {
+			string path = Path.Combine(ResultsLocation.Directory(Main.SavePath), "tests.tsv");
+
+			Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+			File.WriteAllText(path, TestCatalog.ToTsv(tests));
+
+			return (path, TestCatalog.Summarize(tests));
+		}
+		catch (Exception ex) {
+			return (null, $"{TestCatalog.Summarize(tests)} (could not write the catalogue: {ex.GetType().Name}: {ex.Message})");
+		}
+	}
 
 	/// <inheritdoc />
 	public override void PostUpdateEverything()

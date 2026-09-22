@@ -70,3 +70,24 @@ public class SpineTests
 		Assert.True(ctx.ElapsedTicks > before, $"expected ticks to advance, saw {before} then {ctx.ElapsedTicks}");
 	}
 }
+
+/// <summary>
+/// A test that wants a world nobody else has touched.
+/// <para/>
+/// Kept separate to make the mechanism visible: an ordinary run reports this
+/// as skipped, because a runner sharing its world with four other tests cannot
+/// honestly claim to have provided a fresh one. <c>scripts/run-fresh.sh</c>
+/// gives it a process and a world of its own, and then it runs.
+/// </summary>
+public class FreshWorldTests
+{
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	[FreshWorld]
+	public IEnumerator Gets_a_world_of_its_own(ITestContext ctx)
+	{
+		Assert.True(Main.maxTilesX > 0, "a world should be loaded");
+		Assert.False(ctx.Interior.IsEmpty, "a fresh-world test should still get a box");
+
+		yield break;
+	}
+}

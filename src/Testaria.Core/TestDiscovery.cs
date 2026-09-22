@@ -52,7 +52,14 @@ public static class TestDiscovery
 					WantsContext = method.GetParameters().Length == 1,
 					SkipReason = marker.Skip,
 					TimeoutTicks = marker.Timeout,
-					Box = !freshWorld && marker is GameTestAttribute game ? game.ToRequest() : null,
+					// A box is granted regardless of FreshWorld. The two are
+					// orthogonal: a fresh world isolates a test from other
+					// tests and from world-global state, while a box gives it
+					// a defined, bounded place to work and the box-relative
+					// coordinates that go with it. Withholding the box left a
+					// fresh-world test with an empty Interior and no usable
+					// workspace at all.
+					Box = marker is GameTestAttribute game ? game.ToRequest() : null,
 					FreshWorld = freshWorld,
 				});
 			}

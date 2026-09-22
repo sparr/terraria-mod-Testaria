@@ -75,17 +75,22 @@ The attributes, `Assert`, `Wait`, `ITestContext` and `Band` live in `Testaria.Co
 scripts/run-all.sh
 ```
 
-Four gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), and calibration against ExampleMod. Green alone proves little, since a framework that cannot report failure looks exactly like one that works.
+Five gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), fresh worlds (tests asking for an untouched world get one), and calibration against ExampleMod. Green alone proves little, since a framework that cannot report failure looks exactly like one that works.
 
 Calibration needs `scripts/build-examplemod.sh` to have been run once.
 
 Individual gates:
 
 ```
-dotnet test                      # core only, no game needed
-BLANK=1 scripts/run-tests.sh     # the self-test mod in a live server
-scripts/check-red.sh             # prove failures are reported as failures
+dotnet test                             # core only, no game needed
+BLANK=1 scripts/run-tests.sh            # the self-test mod in a live server
+FILTER=Zombie BLANK=1 scripts/run-tests.sh   # just the matching tests
+MODE=list BLANK=1 scripts/run-tests.sh  # list tests without running them
+scripts/check-red.sh                    # prove failures are reported as failures
+scripts/run-fresh.sh                    # a dedicated server per [FreshWorld] test
 ```
+
+`[FreshWorld]` is worth a word. A runner sharing its world with other tests cannot honestly claim to have given one a fresh world, so an ordinary run reports such tests as **skipped**. `run-fresh.sh` gives each a process and a world of its own, and then they run. It is slow by construction, one server start per test, which is the price of the isolation they asked for.
 
 `run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
 

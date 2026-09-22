@@ -5,7 +5,8 @@
 #   1. core self-tests        no game needed, milliseconds
 #   2. the green path         the self-test mod must pass in a live server
 #   3. the red path           deliberate failures must be reported as such
-#   4. calibration            the framework must work on someone else's mod
+#   4. fresh worlds           tests wanting an untouched world get one
+#   5. calibration            the framework must work on someone else's mod
 #
 # Green alone proves little: a framework that cannot report failure looks
 # exactly like one that works, which is why 3 is not optional.
@@ -33,6 +34,14 @@ step "core self-tests" dotnet test "$ROOT" --nologo -v q
 step "green path" env BLANK=1 "$HERE/run-tests.sh"
 
 step "red path" "$HERE/check-red.sh"
+
+# Slow by construction: a server start per test. Skippable for a quick loop.
+if [ "${SKIP_FRESH:-0}" = "1" ]; then
+	echo
+	echo "=== fresh worlds: skipped by request ==="
+else
+	step "fresh worlds" "$HERE/run-fresh.sh"
+fi
 
 if [ "${SKIP_CALIBRATION:-0}" = "1" ]; then
 	echo

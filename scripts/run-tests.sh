@@ -17,6 +17,13 @@ TIMEOUT="${TIMEOUT:-600}"
 SEED="${SEED:-42}"
 # FILTER narrows the run to matching tests; see TestFilter for the syntax.
 FILTER="${FILTER:-}"
+# MODE=run executes the tests; MODE=list only catalogues them, which is how a
+# harness finds out which tests want a world of their own.
+MODE="${MODE:-run}"
+# FRESH_WORLD=1 promises this process has a world to itself, which is what lets
+# tests marked [FreshWorld] be honoured rather than skipped.
+FRESH_ARG=""
+[ "${FRESH_WORLD:-0}" = "1" ] && FRESH_ARG="-testariafreshworld"
 # BLANK=1 replaces world generation with Testaria's blank substrate.
 BLANK_ARG=""
 [ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
@@ -112,6 +119,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     -worldname testaria \
     -seed "$SEED" \
     $BLANK_ARG \
+    $FRESH_ARG \
     -players 1 \
     -port 7777 \
     -password "" \
@@ -129,10 +137,14 @@ until grep -qE "Server started|Listening on port" "$LOG" 2>/dev/null; do
 done
 
 echo "world ready after ${SECONDS}s"
-echo "server up, starting run"
-echo "testaria run $RUN_NAME $FILTER" >&3
-
-RESULTS="$SCRATCH/Testaria/$RUN_NAME.xml"
+echo "server up, sending: testaria $MODE"
+if [ "$MODE" = "list" ]; then
+  echo "testaria list $FILTER" >&3
+  RESULTS="$SCRATCH/Testaria/tests.tsv"
+else
+  echo "testaria run $RUN_NAME $FILTER" >&3
+  RESULTS="$SCRATCH/Testaria/$RUN_NAME.xml"
+fi
 until [ -f "$RESULTS" ]; do
   kill -0 "$SERVER_PID" 2>/dev/null || { echo "server died during the run:" >&2; tail -40 "$LOG" >&2; exit 2; }
   [ "$SECONDS" -lt "$deadline" ] || { echo "timed out waiting for results" >&2; tail -60 "$LOG" >&2; exit 2; }
@@ -147,6 +159,12 @@ if [ -n "${RESULTS_OUT:-}" ]; then
   mkdir -p "$(dirname "$RESULTS_OUT")"
   cp "$RESULTS" "$RESULTS_OUT"
   echo "results copied to $RESULTS_OUT"
+fi
+
+if [ "$MODE" = "list" ]; then
+  # Nothing ran, so there is no pass or fail to report.
+  cat "$RESULTS"
+  exit 0
 fi
 
 python3 - "$RESULTS" <<'PY'
