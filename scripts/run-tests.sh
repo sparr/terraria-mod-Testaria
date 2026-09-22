@@ -15,6 +15,9 @@ RUN_NAME="${RUN_NAME:-TestariaSelfTest}"
 ENABLED="${ENABLED:-Testaria TestariaSelfTest}"
 TIMEOUT="${TIMEOUT:-600}"
 SEED="${SEED:-42}"
+# BLANK=1 replaces world generation with Testaria's blank substrate.
+BLANK_ARG=""
+[ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
 MEM_MAX="${MEM_MAX:-4G}"
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
@@ -83,7 +86,7 @@ fi
 
 export SDL_AUDIODRIVER=dummy
 
-echo "seed:     $SEED"
+echo "seed:     $SEED${BLANK_ARG:+  (blank world)}"
 echo "scratch:  $SCRATCH"
 echo "mods:     $ENABLED"
 
@@ -105,6 +108,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     -world "$SCRATCH/Worlds/testaria.wld" \
     -worldname testaria \
     -seed "$SEED" \
+    $BLANK_ARG \
     -players 1 \
     -port 7777 \
     -password "" \

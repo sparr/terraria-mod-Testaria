@@ -66,9 +66,18 @@ public sealed class TestSession
 		// The arena needs a loaded world to know where its bands are, so it is
 		// only built when one exists. Without it, box-needing tests report an
 		// error rather than running somewhere undefined.
-		Arena? arena = maxTier >= TestTier.World && Main.maxTilesX > 0
-			? new Arena(TerrariaWorldGeometry.Current())
-			: null;
+		Arena? arena = null;
+
+		if (maxTier >= TestTier.World && Main.maxTilesX > 0) {
+			BlankWorldLayout? blank = BlankWorldSystem.Layout;
+
+			// In a blank world the boundaries were chosen rather than derived,
+			// so the layout is exact and the guessed space fraction in
+			// TerrariaWorldGeometry does not come into it.
+			WorldGeometry geometry = blank?.Geometry ?? TerrariaWorldGeometry.Current();
+
+			arena = new Arena(geometry, new ArenaOptions { Reserved = blank?.Reserved ?? [] });
+		}
 
 		var runner = new TestRunner(discovery, new TestRunnerOptions {
 			RunName = runName,

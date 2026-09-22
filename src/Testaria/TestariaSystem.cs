@@ -147,7 +147,8 @@ public sealed class TestariaSystem : ModSystem
 			$"HasFullyConnectedClients={Netplay.HasFullyConnectedClients} (gates Game.Update in the server loop)",
 			$"ShouldUpdateEntities={Main.instance.ShouldUpdateEntities()} generatingWorld={WorldGen.generatingWorld}",
 			$"WorldUpdateStepper.Paused={Terraria.Testing.WorldUpdateStepper.Paused} (gates DoUpdateInWorld)",
-			$"maxTilesX={Main.maxTilesX} worldSurface={(int)Main.worldSurface}",
+			$"maxTilesX={Main.maxTilesX} worldSurface={(int)Main.worldSurface} rockLayer={(int)Main.rockLayer}",
+			$"blankWorld={(BlankWorldSystem.Layout is null ? "no" : $"yes, {BlankWorldSystem.Layout.Reserved.Count} reserved area(s)")}",
 			$"idle-hook calls={hookCalls}  PostUpdateEverything ticks={Ticks}",
 			$"session={(session is null ? "none" : session.IsFinished ? "finished" : "running")}",
 		]);
