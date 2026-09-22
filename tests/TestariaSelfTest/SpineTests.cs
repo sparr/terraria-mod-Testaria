@@ -194,6 +194,66 @@ public class SnapshotTests
 	}
 
 	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_removed_tile_is_noticed(ITestContext ctx)
+	{
+		// The case a "is it still there" check would catch, and the one a
+		// snapshot must not miss either.
+		var box = (TestContext)ctx;
+
+		box.ClearTile(6, 6);
+		box.PlaceTile(6, 6, TileID.Stone);
+		yield return Wait.Ticks(2);
+
+		BoxSnapshot before = box.Snapshot();
+		box.ClearTile(6, 6);
+		yield return Wait.Ticks(2);
+
+		Assert.NotEmpty(before.ChangesTo(box.Snapshot()));
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator Paint_and_wiring_are_noticed(ITestContext ctx)
+	{
+		// Neither changes what tile is there, so a snapshot watching only
+		// tile type would call a repainted, rewired box untouched.
+		var box = (TestContext)ctx;
+
+		box.ClearTile(6, 6);
+		box.PlaceTile(6, 6, TileID.Stone);
+		yield return Wait.Ticks(2);
+
+		BoxSnapshot beforePaint = box.Snapshot();
+		box.GetTile(6, 6).TileColor = PaintID.RedPaint;
+
+		Assert.NotEmpty(beforePaint.ChangesTo(box.Snapshot()));
+
+		BoxSnapshot beforeWire = box.Snapshot();
+		box.GetTile(6, 6).RedWire = true;
+
+		Assert.NotEmpty(beforeWire.ChangesTo(box.Snapshot()));
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator One_entity_swapped_for_another_is_noticed(ITestContext ctx)
+	{
+		// A count would stay at one throughout and see nothing.
+		var box = (TestContext)ctx;
+
+		NPC slime = box.SpawnNPC(NPCID.BlueSlime, 8, 8);
+		yield return Wait.Ticks(1);
+
+		BoxSnapshot before = box.Snapshot();
+
+		slime.active = false;
+		box.SpawnNPC(NPCID.Zombie, 8, 8);
+
+		IReadOnlyList<string> changes = before.ChangesTo(box.Snapshot());
+
+		Assert.NotEmpty(changes);
+		Assert.Contains("NPCs in the box", string.Join("\n", changes));
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
 	public IEnumerator The_failure_says_what_changed(ITestContext ctx)
 	{
 		var box = (TestContext)ctx;

@@ -15,9 +15,9 @@ public sealed class BoxSnapshot
 {
 	private readonly TileRect interior;
 	private readonly TileRecord[] tiles;
-	private readonly int npcs;
-	private readonly int projectiles;
-	private readonly int items;
+	private readonly int[] npcs;
+	private readonly int[] projectiles;
+	private readonly int[] items;
 
 	internal BoxSnapshot(TileRect interior)
 	{
@@ -31,20 +31,43 @@ public sealed class BoxSnapshot
 				tiles[(y * interior.Width) + x] = new TileRecord(
 					tile.HasTile,
 					tile.TileType,
+					tile.TileFrameX,
+					tile.TileFrameY,
 					tile.WallType,
 					tile.LiquidAmount,
-					tile.LiquidType);
+					tile.LiquidType,
+					tile.TileColor,
+					tile.WallColor,
+					(byte)tile.Slope,
+					tile.IsHalfBlock,
+					tile.HasActuator,
+					tile.IsActuated,
+					tile.RedWire,
+					tile.BlueWire,
+					tile.GreenWire,
+					tile.YellowWire);
 			}
 		}
 
-		npcs = CountIn(interior, Main.npc.Length, i => Main.npc[i].active, i => Main.npc[i].Center);
-		projectiles = CountIn(interior, Main.maxProjectiles, i => Main.projectile[i].active, i => Main.projectile[i].Center);
-		items = CountIn(interior, Main.maxItems, i => Main.item[i].active, i => Main.item[i].Center);
+		npcs = TypesIn(interior, Main.npc.Length, i => Main.npc[i].active, i => Main.npc[i].Center, i => Main.npc[i].type);
+		projectiles = TypesIn(interior, Main.maxProjectiles, i => Main.projectile[i].active, i => Main.projectile[i].Center, i => Main.projectile[i].type);
+		items = TypesIn(interior, Main.maxItems, i => Main.item[i].active, i => Main.item[i].Center, i => Main.item[i].type);
 	}
 
-	private static int CountIn(TileRect interior, int length, Func<int, bool> active, Func<int, Microsoft.Xna.Framework.Vector2> centre)
+	/// <summary>
+	/// The types of a kind of entity standing in the box, sorted.
+	/// <para/>
+	/// Types rather than a count, because a count is blind to substitution: a
+	/// slime replaced by a zombie leaves the count at one.
+	/// </summary>
+	private static int[] TypesIn(
+		TileRect interior,
+		int length,
+		Func<int, bool> active,
+		Func<int, Microsoft.Xna.Framework.Vector2> centre,
+		Func<int, int> type)
 	{
-		int count = 0;
+		var found = new List<int>();
 
 		for (int i = 0; i < length; i++) {
 			if (!active(i))
@@ -53,10 +76,12 @@ public sealed class BoxSnapshot
 			Microsoft.Xna.Framework.Vector2 at = centre(i);
 
 			if (BoxSpace.Contains(interior, new WorldPoint(at.X, at.Y)))
-				count++;
+				found.Add(type(i));
 		}
 
-		return count;
+		found.Sort();
+
+		return [.. found];
 	}
 
 	/// <summary>
@@ -103,17 +128,54 @@ public sealed class BoxSnapshot
 		return changes;
 	}
 
-	private static void Compare(List<string> changes, string what, int before, int after)
+	private static void Compare(List<string> changes, string what, int[] before, int[] after)
 	{
-		if (before != after)
-			changes.Add($"{what} in the box went from {before} to {after}");
+		if (before.SequenceEqual(after))
+			return;
+
+		changes.Add($"{what} in the box went from [{string.Join(", ", before)}] to [{string.Join(", ", after)}]");
 	}
 
-	private readonly record struct TileRecord(bool HasTile, ushort Type, ushort Wall, byte Liquid, int LiquidType)
+	/// <summary>
+	/// Everything about one tile that a side effect could plausibly disturb.
+	/// <para/>
+	/// Framing, paint, slope, actuators and wiring are all in here because a
+	/// change to any of them is a change to the world, and a snapshot that
+	/// only watched tile type would call a repainted or rewired box
+	/// untouched.
+	/// </summary>
+	private readonly record struct TileRecord(
+		bool HasTile,
+		ushort Type,
+		short FrameX,
+		short FrameY,
+		ushort Wall,
+		byte Liquid,
+		int LiquidType,
+		byte Paint,
+		byte WallPaint,
+		byte Slope,
+		bool HalfBlock,
+		bool Actuator,
+		bool Actuated,
+		bool RedWire,
+		bool BlueWire,
+		bool GreenWire,
+		bool YellowWire)
 	{
 		public override string ToString()
-			=> HasTile
-				? $"tile {Type}, wall {Wall}, liquid {Liquid}"
-				: $"empty, wall {Wall}, liquid {Liquid}";
+		{
+			string tile = HasTile ? $"tile {Type} frame {FrameX},{FrameY}" : "no tile";
+			string extras = string.Join("", [
+				Paint > 0 ? $" paint {Paint}" : "",
+				Slope > 0 ? $" slope {Slope}" : "",
+				HalfBlock ? " half" : "",
+				Actuator ? " actuator" : "",
+				Actuated ? " actuated" : "",
+				RedWire || BlueWire || GreenWire || YellowWire ? " wired" : "",
+			]);
+
+			return $"{tile}, wall {Wall}{(WallPaint > 0 ? $" paint {WallPaint}" : "")}, liquid {Liquid}{extras}";
+		}
 	}
 }
