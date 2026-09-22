@@ -139,6 +139,81 @@ public class SpawningTests
 }
 
 /// <summary>
+/// Snapshotting a box, so a test can assert that something changed nothing.
+/// <para/>
+/// Asserting that one particular effect did not happen is weaker than it
+/// looks: it passes when the code under test does something else entirely.
+/// </summary>
+public class SnapshotTests
+{
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator An_untouched_box_reports_no_changes(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+		BoxSnapshot before = box.Snapshot();
+
+		yield return Wait.Ticks(3);
+
+		Assert.Empty(before.ChangesTo(box.Snapshot()));
+		box.AssertUnchanged(before);
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_placed_tile_is_noticed(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		box.ClearTile(6, 6);
+		yield return Wait.Ticks(2);
+
+		BoxSnapshot before = box.Snapshot();
+		box.PlaceTile(6, 6, TileID.Stone);
+
+		yield return Wait.Ticks(2);
+
+		Assert.NotEmpty(before.ChangesTo(box.Snapshot()));
+		Assert.Throws<AssertionException>(() => box.AssertUnchanged(before));
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_spawned_entity_is_noticed(ITestContext ctx)
+	{
+		// Tiles are the obvious thing to watch, but a side effect that spawns
+		// something is just as much of a side effect.
+		var box = (TestContext)ctx;
+		BoxSnapshot before = box.Snapshot();
+
+		box.SpawnNPC(NPCID.BlueSlime, 8, 8);
+
+		IReadOnlyList<string> changes = before.ChangesTo(box.Snapshot());
+
+		Assert.NotEmpty(changes);
+		Assert.Contains("NPCs in the box", string.Join("\n", changes));
+
+		yield break;
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator The_failure_says_what_changed(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		box.ClearTile(4, 4);
+		yield return Wait.Ticks(2);
+
+		BoxSnapshot before = box.Snapshot();
+		box.PlaceTile(4, 4, TileID.Stone);
+		yield return Wait.Ticks(2);
+
+		AssertionException ex = Assert.Throws<AssertionException>(
+			() => box.AssertUnchanged(before, "nothing should have happened"));
+
+		Assert.Contains("nothing should have happened", ex.Message);
+		Assert.Contains("tile 4,4", ex.Message);
+	}
+}
+
+/// <summary>
 /// An entity of the test's own leaving the box.
 /// <para/>
 /// Not a failure. A test may be observing exactly that, and hauling the

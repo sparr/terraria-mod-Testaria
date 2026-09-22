@@ -219,6 +219,35 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 		WorldGen.PlaceTile(x, y, type, mute: true, forced: true);
 	}
 
+	/// <summary>
+	/// Records the state of the whole box, so that a later comparison can say
+	/// whether anything at all changed.
+	/// <para/>
+	/// For testing that something has no side effects. Asserting that one
+	/// particular effect did not happen is weaker than it looks: it passes
+	/// when the code under test does something else entirely.
+	/// </summary>
+	public BoxSnapshot Snapshot() => new(Interior);
+
+	/// <summary>
+	/// Fails unless the box is exactly as it was when the snapshot was taken.
+	/// </summary>
+	/// <param name="before">A snapshot taken before the code under test ran.</param>
+	/// <param name="because">What was supposed to have left the world alone.</param>
+	public void AssertUnchanged(BoxSnapshot before, string? because = null)
+	{
+		ArgumentNullException.ThrowIfNull(before);
+
+		IReadOnlyList<string> changes = before.ChangesTo(Snapshot());
+
+		if (changes.Count == 0)
+			return;
+
+		string what = because is null ? "The box changed" : $"{because}, but the box changed";
+
+		throw new AssertionException($"{what}:\n  {string.Join("\n  ", changes)}");
+	}
+
 	/// <summary>Places a wall at a box-relative position.</summary>
 	public void PlaceWall(int offsetX, int offsetY, int type)
 	{
