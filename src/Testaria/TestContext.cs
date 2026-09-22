@@ -10,9 +10,13 @@ namespace Testaria;
 /// where in the world the arena actually placed it, and cannot accidentally
 /// reach outside by naming an absolute coordinate.
 /// </summary>
-public sealed class TestContext : ITickingContext, IDisposable
+public sealed class TestContext : ITickingContext, IContaminationAware, IDisposable
 {
 	private readonly List<SpawnedNpc> spawned = [];
+	private readonly HashSet<int> ownedNpcs = [];
+	private readonly List<string> contamination = [];
+	private readonly HashSet<int> alreadyReported = [];
+	private readonly List<string> escapes = [];
 
 	internal TestContext(BoxLease? lease)
 	{
@@ -60,6 +64,7 @@ public sealed class TestContext : ITickingContext, IDisposable
 		NPC npc = Main.npc[index];
 
 		spawned.Add(new SpawnedNpc(index, type));
+		ownedNpcs.Add(index);
 
 		// Without this the game reclaims it within about a second: CheckActive
 		// despawns anything out of range of a player, and a headless server has
@@ -94,7 +99,69 @@ public sealed class TestContext : ITickingContext, IDisposable
 	}
 
 	/// <inheritdoc />
+	public IReadOnlyList<string> Contamination => contamination;
+
+	/// <summary>
+	/// Entities of this test's own that left the box. Recorded for diagnosis
+	/// but deliberately not treated as contamination: an entity leaving may be
+	/// exactly what the test is observing, and dragging it back would change
+	/// the behaviour under test.
+	/// </summary>
+	public IReadOnlyList<string> Escapes => escapes;
+
+	/// <inheritdoc />
 	public void Tick() => ElapsedTicks++;
+
+	/// <summary>
+	/// Looks for anything in the box that does not belong to this test.
+	/// <para/>
+	/// A blank world removes almost every source of these, which is the
+	/// stronger guarantee because it cannot race. This covers what a blank
+	/// world cannot: a neighbouring test's escapee, or something the game
+	/// spawned on its own.
+	/// <para/>
+	/// Each intruder is reported once. Reporting every tick would turn one
+	/// stray entity into hundreds of lines and bury the thing that mattered.
+	/// <para/>
+	/// Driven from <c>PreUpdateEntities</c> rather than from the runner's own
+	/// tick. NPC updates, and with them <c>CheckActive</c>, run before
+	/// <c>PostUpdateEverything</c>, so a watcher living there sees a world the
+	/// game has already tidied. Measured: an intruder spawned into a box is
+	/// gone within five ticks, and a watcher there observes none of them.
+	/// </summary>
+	internal void Watch()
+	{
+		if (Interior.IsEmpty)
+			return;
+
+		foreach (int index in BoxWatch.FindIntruders(Interior, ActiveNpcs(), ownedNpcs)) {
+			if (!alreadyReported.Add(index))
+				continue;
+
+			NPC intruder = Main.npc[index];
+			contamination.Add($"NPC {index} (type {intruder.type}, {intruder.FullName}) was in the box at tick {ElapsedTicks}");
+		}
+
+		foreach (int index in BoxWatch.FindEscapees(Interior, ActiveNpcs(), ownedNpcs)) {
+			if (alreadyReported.Add(-index - 1))
+				escapes.Add($"NPC {index} left the box at tick {ElapsedTicks}");
+		}
+	}
+
+	/// <summary>
+	/// Active NPCs and where they are. The pool is fixed at a couple of
+	/// hundred slots, so scanning it every tick is affordable; nothing cheaper
+	/// would actually answer whether something arrived.
+	/// </summary>
+	private static IEnumerable<(int Id, WorldPoint Position)> ActiveNpcs()
+	{
+		for (int i = 0; i < Main.npc.Length; i++) {
+			NPC npc = Main.npc[i];
+
+			if (npc.active)
+				yield return (i, new WorldPoint(npc.Center.X, npc.Center.Y));
+		}
+	}
 
 	/// <summary>
 	/// Removes everything this test spawned. Called by the runner when the
@@ -108,6 +175,8 @@ public sealed class TestContext : ITickingContext, IDisposable
 	/// </summary>
 	public void Dispose()
 	{
+		ownedNpcs.Clear();
+
 		foreach (SpawnedNpc record in spawned) {
 			NPC npc = Main.npc[record.Index];
 

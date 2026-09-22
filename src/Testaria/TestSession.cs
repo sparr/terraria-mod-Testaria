@@ -47,6 +47,9 @@ public sealed class TestSession
 	/// <summary>Results so far, complete once <see cref="IsFinished"/>.</summary>
 	public TestRunResult Result => runner.Result;
 
+	/// <summary>The context of the running test, for whoever needs to watch it.</summary>
+	public ITestContext? CurrentContext => runner.CurrentContext;
+
 	/// <summary>Where the JUnit XML was written, once the run finished.</summary>
 	public string? ResultsPath { get; private set; }
 

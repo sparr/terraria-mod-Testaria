@@ -72,6 +72,15 @@ public sealed class TestRunner
 	/// <summary>The test currently executing, if any.</summary>
 	public TestCase? Current => current;
 
+	/// <summary>
+	/// The context handed to the running test, if it asked for one.
+	/// <para/>
+	/// Exposed because watching a box for intruders has to happen earlier in
+	/// the game's tick than the runner itself runs, and the watcher needs
+	/// something to watch.
+	/// </summary>
+	public ITestContext? CurrentContext => context;
+
 	/// <summary>Results so far; complete once <see cref="State"/> is finished.</summary>
 	public TestRunResult Result => TestRunResult.FromResults(options.RunName, results);
 
@@ -248,6 +257,20 @@ public sealed class TestRunner
 			Ticks = ticks,
 			Box = lease?.Interior.ToString(),
 		});
+
+		// A test whose box was not its own did not really run, whatever its
+		// assertions concluded, so the result is downgraded before anyone
+		// reads it. Only a result that would otherwise stand is downgraded: a
+		// genuine failure is more informative than a note about the weather.
+		if (outcome is TestOutcome.Passed
+			&& context is IContaminationAware aware
+			&& aware.Contamination.Count > 0) {
+			results[^1] = results[^1] with {
+				Outcome = TestOutcome.Errored,
+				Message = "The box was contaminated, so this result cannot be trusted: "
+					+ string.Join("; ", aware.Contamination),
+			};
+		}
 
 		// Dispose before releasing the box, so a context that tears down what
 		// the test spawned does so while the box is still its own.

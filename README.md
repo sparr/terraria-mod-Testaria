@@ -49,6 +49,7 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
 | `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
 | `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
+| `BoxWatch`, `IContaminationAware` | Notices a test's own entities leaving its box, and anything else arriving in it |
 | `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
 | `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
@@ -96,7 +97,7 @@ scripts/run-fresh.sh                    # a dedicated server per [FreshWorld] te
 
 `run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
 
-Still to come: Tier 3 (multi-process netcode and UI), the inbound half of the ownership warden, and parallel box execution.
+Still to come: Tier 3 (multi-process netcode and UI) and parallel box execution.
 
 ## Building against tModLoader
 

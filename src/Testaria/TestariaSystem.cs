@@ -198,6 +198,19 @@ public sealed class TestariaSystem : ModSystem
 		}
 	}
 
+	/// <summary>
+	/// Watches the running test's box before the game updates its entities.
+	/// <para/>
+	/// Deliberately earlier in the tick than the runner. Anything transient,
+	/// including an intruder about to be despawned for being far from a
+	/// player, exists only in this window.
+	/// </summary>
+	public override void PreUpdateEntities()
+	{
+		if (session is { IsFinished: false } && session.CurrentContext is TestContext context)
+			context.Watch();
+	}
+
 	/// <inheritdoc />
 	public override void PostUpdateEverything()
 	{

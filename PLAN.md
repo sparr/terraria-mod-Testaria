@@ -208,6 +208,18 @@ The point is not that this prevents every escape. It is that it converts the fai
 
 **4. Declared global effects, because much of the relevant state has no spatial component at all.** No box protects a neighbor from `Main.dayTime`, `Main.time`, `Main.moonPhase`, `Main.hardMode`, `Main.bloodMoon`, `Main.eclipse`, `Main.raining`, `Main.invasionType`, the `NPC.downed*` progression flags, spawn rate globals, or the shared `Main.rand` stream. A test declares what it mutates (`[Mutates(WorldState.Time | WorldState.Weather)]`); the scheduler serializes tests touching the same global and snapshots and restores it around each one; tests declaring nothing global parallelize freely.
 
+#### The warden, as built
+
+Mechanism 2 exists. Two properties of it are only observable in a running game.
+
+**Contamination reports as an error, not a failure.** That maps onto a distinction the rest of the framework already makes: a failure says the subject is broken, an error says the test did not run properly. A box something else was in is exactly the latter, so a test whose assertions all passed is downgraded rather than trusted. Failing would blame a subject that may be fine; passing would claim coverage that did not happen. A genuine failure outranks the note, since the assertion message is the more useful of the two.
+
+**The watcher has to run before the game updates its entities.** NPC updates, and with them `CheckActive`, run earlier than `PostUpdateEverything`, so a watcher standing there sees a world the game has already tidied. Measured with an intruder spawned from `PreUpdateEntities`: it is caught on **tick 1**, and an intruder that far from a player is gone within five ticks, so the window is the whole problem.
+
+That generalises beyond this one case. Anything transient, and an intruder about to be despawned for being far from a player is the definition of transient, exists only in a narrow window of the tick, and a watcher outside that window sees nothing and reports everything as clean.
+
+Escapes are recorded but deliberately not treated as contamination: an entity leaving its box may be exactly what a test is observing, and dragging it back would change the behaviour under test.
+
 #### Status of the four mechanisms
 
 All four stay in the plan as the working design, but they are **hypotheses to be evaluated against real test surface, not settled commitments**. Their relative value is not knowable until there is a corpus of actual tests to observe: it is entirely possible that the warden subsumes most of what the gutter is for, that pool budgeting turns out to be the binding constraint long before geometry does, or that some fifth mechanism nobody has thought of is the one that matters. Build them, instrument them, and let the first real suite adjudicate.
