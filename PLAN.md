@@ -265,7 +265,7 @@ The one honest cost: the name does not contain the literal string "Terraria", so
 | Root namespace | `Testaria`, with `Testaria.Assertions`, `Testaria.Runner`, `Testaria.World`, `Testaria.Net` |
 | Public attributes | `[GameTest]`, `[LoadedTest]`, `[FreshWorld]`, `[Theory]`-equivalent `[GameTheory]` |
 | NuGet ID prefix | `Testaria.*`, reserved on nuget.org |
-| CLI command | `testaria` (see section 4.4.7 on why the package is not named `dotnet-testaria`) |
+| CLI command | `testaria` (see section 4.4.8 on why the package is not named `dotnet-testaria`) |
 | Results directory | `<SavePath>/Testaria/` |
 
 ## 4. Packaging
@@ -282,7 +282,7 @@ Mod projects cannot consume NuGet (section 1.1.1), and .NET test projects cannot
 | B | `Testaria.Unit` | NuGet library plus targets | Tier 0 helpers, and the `BuildMod=false` wiring that points a test project at a tML install | `MyMod.Tests.csproj`, run by `dotnet test` |
 | C | `Testaria.Sdk` | NuGet MSBuild SDK or targets | A build-integrated entry point: provision, install A, build the mod, launch `-server`, run, collect results, fail the build on red | Mod repositories and CI |
 | D | `Testaria.Tool` | NuGet dotnet tool, command `testaria` | CLI: `testaria run`, scratch save directory provisioning, world setup, `enabled.json` authoring, JUnit XML output | Humans and CI |
-| E | `Testaria.Templates` | NuGet `dotnet new` template pack | Scaffolds a test mod plus a test project, with a **working placeholder test at every tier** (see 4.4.8) | Onboarding |
+| E | `Testaria.Templates` | NuGet `dotnet new` template pack | Scaffolds a test mod plus a test project, with a **working placeholder test at every tier** (see 4.4.9) | Onboarding |
 
 B through E are optional in v1 and can be collapsed; A and D are the minimum viable pair.
 
@@ -306,16 +306,19 @@ Two shapes, and the choice has real consequences for players:
     A mod depending on a source generator would therefore build correctly from an IDE and silently produce a broken assembly when built in-game. That is the worst available failure shape, and reflection discovery behaves identically on both paths.
 
     This does **not** rule out the Tier 0 boundary analyzer proposed in section 2.2. An analyzer only emits diagnostics and never changes the emitted assembly, so one that does not run on the in-game path simply offers no advice there. **Analyzers degrade gracefully; source generators do not.**
-3. **Keep bundled managed dependencies at zero if possible.** The mechanism exists (`lib/` plus `dllReferences`, and it is transitive to dependents per section 1.1.3), but every bundled DLL is another memory load on every reload and another surface under `ModUploadRules` rule 3.
-4. **Write results only under `<SavePath>/Testaria/`.** Rule 2 requires it for anything published, and designing to it from the start keeps Workshop publication available as an option even if you never exercise it.
-5. **B must set its own `TargetFramework` and `LangVersion`**, because `tMLMod.targets` only sets them under `BuildMod=true`.
-6. **License MIT**, matching tModLoader and the ecosystem norm, and keeping the door open to upstreaming. Note again that `tml-build` is AGPL-3.0 and must not be vendored.
-7. **Name the CLI package `Testaria.Tool`. This is a weak preference over `Testaria.CLI`, not a convention.** Per section 1.2.4 there is no official guidance and the ecosystem is split, so the only real constraint is that the ID stay under the `Testaria.*` root, which both candidates satisfy and `dotnet-testaria` would not (it would sit outside the ID prefix reservation and remain squattable).
+3. **Content types must live in the mod's own assembly, not in a bundled library.** Autoloading enumerates `AssemblyManager.GetLoadableTypes(Code)` (`Mod.Internals.cs:71`), and `Code` is the mod's own assembly alone, not every assembly in its load context. So a `ModSystem`, `ModCommand`, or any other `ModType` shipped inside a `lib/` DLL is simply never discovered, silently.
+
+    That fixes the shape of artifact A. The Testaria mod's own assembly carries the `ModSystem` and `ModCommand`; `Testaria.Core` rides along as `lib/Testaria.Core.dll`, which is fine because it contains no autoloadable types at all, only plain classes. Dependents naming `Testaria` in `modReferences` receive both assemblies as compile references (section 1.1.3), so a test mod can use the core's types directly.
+4. **Keep bundled managed dependencies at zero if possible.** The mechanism exists (`lib/` plus `dllReferences`, and it is transitive to dependents per section 1.1.3), but every bundled DLL is another memory load on every reload and another surface under `ModUploadRules` rule 3.
+5. **Write results only under `<SavePath>/Testaria/`.** Rule 2 requires it for anything published, and designing to it from the start keeps Workshop publication available as an option even if you never exercise it.
+6. **B must set its own `TargetFramework` and `LangVersion`**, because `tMLMod.targets` only sets them under `BuildMod=true`.
+7. **License MIT**, matching tModLoader and the ecosystem norm, and keeping the door open to upstreaming. Note again that `tml-build` is AGPL-3.0 and must not be vendored.
+8. **Name the CLI package `Testaria.Tool`. This is a weak preference over `Testaria.CLI`, not a convention.** Per section 1.2.4 there is no official guidance and the ecosystem is split, so the only real constraint is that the ID stay under the `Testaria.*` root, which both candidates satisfy and `dotnet-testaria` would not (it would sit outside the ID prefix reservation and remain squattable).
 
     The tiebreaker for `.Tool`: this package will have sibling *library* packages under the same brand (`Testaria.Unit`, `Testaria.Sdk`, `Testaria.Templates`), and disambiguating the installable tool from the libraries is precisely the job `.Tool` was adopted for by Cake and GitVersion, both of which faced the identical situation. `.CLI` is weaker here because it is used for both tools and plain libraries, so it does not answer "can I `dotnet tool install` this?" on sight.
 
     The counter-argument is real and worth recording: `.CLI` reads better in prose, and nobody says "the Testaria Tool". That costs nothing, though, because prose can call it "the Testaria CLI" regardless of the package ID, and what anyone actually types is `testaria`, set by `<ToolCommandName>`. If `.CLI` is preferred on taste, nothing else in this plan changes.
-8. **The template must ship a working placeholder at every tier, not just Tier 0.** A Tier 0-only template would actively teach the failure mode described in section 2.2, by implying that the default home for a test is the out-of-game project. It should scaffold one Tier 0 test, one Tier 1 test, and one Tier 2 boxed test, each with a comment stating *why it lives at that tier*, so the boundary is learned from a working example rather than from documentation nobody reads. The second payoff is diagnostic: environment setup is the hardest part of adopting this framework, and a scaffold that goes green end to end proves the tML install path, scratch save directory, and world provisioning all work before the author has written a line of their own. Tier 3 stays out of the default template, since it needs a second process, and gets its own opt-in template.
+9. **The template must ship a working placeholder at every tier, not just Tier 0.** A Tier 0-only template would actively teach the failure mode described in section 2.2, by implying that the default home for a test is the out-of-game project. It should scaffold one Tier 0 test, one Tier 1 test, and one Tier 2 boxed test, each with a comment stating *why it lives at that tier*, so the boundary is learned from a working example rather than from documentation nobody reads. The second payoff is diagnostic: environment setup is the hardest part of adopting this framework, and a scaffold that goes green end to end proves the tML install path, scratch save directory, and world provisioning all work before the author has written a line of their own. Tier 3 stays out of the default template, since it needs a second process, and gets its own opt-in template.
 
 ## 5. Distribution
 

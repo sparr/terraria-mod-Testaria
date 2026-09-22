@@ -395,3 +395,123 @@ public class TestRunnerTests
 		}
 	}
 }
+
+public class TestRunnerContextLifecycleTests
+{
+	private static WorldGeometry Small() => new(4200, 1200, 87, 250, 400, 1000);
+
+	private static TestRunResult Run(string name, Func<BoxLease?, ITestContext> factory)
+	{
+		DiscoveryResult all = TestDiscovery.Discover([typeof(Fixtures)]);
+		DiscoveryResult one = new() { Tests = [.. all.Tests.Where(t => t.Name == name)], Errors = [] };
+
+		return new TestRunner(one, new TestRunnerOptions {
+			MaxTier = TestTier.World,
+			Arena = new Arena(Small()),
+			CreateContext = factory,
+		}).RunToCompletion();
+	}
+
+	[Fact]
+	public void A_ticking_context_is_ticked_once_per_runner_step()
+	{
+		var context = new TrackingContext();
+
+		Run(nameof(Fixtures.WaitsThreeTicks), _ => context);
+
+		// The body waits three ticks, so the context must have seen at least
+		// that many; exactness is the coroutine's business, not the context's.
+		XAssert.True(context.Ticks >= 3, $"expected at least 3 ticks, saw {context.Ticks}");
+	}
+
+	[Fact]
+	public void A_disposable_context_is_disposed_when_the_test_ends()
+	{
+		var context = new TrackingContext();
+
+		Run(nameof(Fixtures.WaitsThreeTicks), _ => context);
+
+		XAssert.True(context.Disposed);
+	}
+
+	[Fact]
+	public void A_context_is_disposed_even_when_the_test_fails()
+	{
+		// Teardown that only runs on success leaves the wreckage of exactly
+		// the tests you most need to be tidy about.
+		var context = new TrackingContext();
+
+		Run(nameof(Fixtures.FailsAfterATick), _ => context);
+
+		XAssert.True(context.Disposed);
+	}
+
+	[Fact]
+	public void A_teardown_that_throws_turns_a_passing_test_into_an_error()
+	{
+		// Silently swallowing it would leave the world dirty and the suite
+		// green, which is the worst of both.
+		TestRunResult run = Run(nameof(Fixtures.WaitsThreeTicks), _ => new ThrowingContext());
+		TestResult result = run.Suites.Single().Results.Single();
+
+		XAssert.Equal(TestOutcome.Errored, result.Outcome);
+		XAssert.Contains("Teardown then failed", result.Message);
+	}
+
+	[Fact]
+	public void A_non_ticking_context_is_simply_not_ticked()
+	{
+		// Tier 0 and Tier 1 contexts have no tick loop to hear about.
+		TestRunResult run = Run(nameof(Fixtures.WaitsThreeTicks), lease => new PlainContext(lease));
+
+		XAssert.True(run.IsSuccess);
+	}
+
+	private class PlainContext(BoxLease? lease) : ITestContext
+	{
+		public TileRect Interior => lease?.Interior ?? default;
+		public TileRect Bounds => lease?.Bounds ?? default;
+		public Band Bands => lease?.Bands ?? Band.None;
+		public int ElapsedTicks => 0;
+	}
+
+	private sealed class TrackingContext : ITickingContext, IDisposable
+	{
+		public int Ticks { get; private set; }
+		public bool Disposed { get; private set; }
+
+		public TileRect Interior => new(0, 0, 10, 10);
+		public TileRect Bounds => new(0, 0, 10, 10);
+		public Band Bands => Band.Surface;
+		public int ElapsedTicks => Ticks;
+
+		public void Tick() => Ticks++;
+		public void Dispose() => Disposed = true;
+	}
+
+	private sealed class ThrowingContext : ITestContext, IDisposable
+	{
+		public TileRect Interior => new(0, 0, 10, 10);
+		public TileRect Bounds => new(0, 0, 10, 10);
+		public Band Bands => Band.Surface;
+		public int ElapsedTicks => 0;
+
+		public void Dispose() => throw new InvalidOperationException("could not remove spawned NPCs");
+	}
+
+	public class Fixtures
+	{
+		[GameTest(Band = Band.Surface, Timeout = 120)]
+		public System.Collections.IEnumerator WaitsThreeTicks(ITestContext ctx)
+		{
+			yield return Wait.Ticks(3);
+		}
+
+		[GameTest(Band = Band.Surface, Timeout = 120)]
+		public System.Collections.IEnumerator FailsAfterATick(ITestContext ctx)
+		{
+			yield return null;
+			Assert.Fail("nope");
+		}
+	}
+}

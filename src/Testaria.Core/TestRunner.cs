@@ -36,6 +36,7 @@ public sealed class TestRunner
 	private TestCase? current;
 	private TestCoroutine? coroutine;
 	private BoxLease? lease;
+	private ITestContext? context;
 	private long startedAt;
 
 	/// <summary>Creates a runner over a discovery result, folding in its errors.</summary>
@@ -82,6 +83,9 @@ public sealed class TestRunner
 			State = RunnerState.Finished;
 			return false;
 		}
+
+		if (context is ITickingContext ticking)
+			ticking.Tick();
 
 		if (coroutine is not null && !coroutine.Step())
 			Finish();
@@ -181,7 +185,9 @@ public sealed class TestRunner
 		if (options.CreateContext is null)
 			throw new InvalidOperationException("This test asks for an ITestContext but the runner has no CreateContext configured.");
 
-		return [options.CreateContext(lease)];
+		context = options.CreateContext(lease);
+
+		return [context];
 	}
 
 	private object? Instantiate(Type type)
@@ -226,9 +232,24 @@ public sealed class TestRunner
 			Box = lease?.Interior.ToString(),
 		});
 
+		// Dispose before releasing the box, so a context that tears down what
+		// the test spawned does so while the box is still its own.
+		if (context is IDisposable disposable) {
+			try {
+				disposable.Dispose();
+			}
+			catch (Exception ex) {
+				results[^1] = results[^1] with {
+					Outcome = TestOutcome.Errored,
+					Message = $"{results[^1].Message}\nTeardown then failed: {ex.GetType().Name}: {ex.Message}".TrimStart(),
+				};
+			}
+		}
+
 		if (lease is not null)
 			options.Arena!.Release(lease, keepForInspection: options.KeepFailedBoxes && outcome is TestOutcome.Failed or TestOutcome.Errored);
 
+		context = null;
 		lease = null;
 		coroutine = null;
 		current = null;

@@ -22,3 +22,16 @@ public interface ITestContext
 	/// <summary>Ticks elapsed since the test body started.</summary>
 	int ElapsedTicks { get; }
 }
+
+/// <summary>
+/// A context that wants to be told when a tick passes.
+/// <para/>
+/// Separate from <see cref="ITestContext"/> because Tier 0 and Tier 1 contexts
+/// have no tick loop to be told about, and an interface member they must
+/// implement and ignore is worse than an interface they do not implement.
+/// </summary>
+public interface ITickingContext : ITestContext
+{
+	/// <summary>Called by the runner once per game tick while the test runs.</summary>
+	void Tick();
+}
