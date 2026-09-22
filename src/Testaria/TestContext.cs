@@ -19,6 +19,8 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 	private readonly HashSet<int> alreadyReported = [];
 	private readonly List<string> escapes = [];
 	private readonly List<int> spawnedPlayers = [];
+	private readonly List<SpawnedProjectile> spawnedProjectiles = [];
+	private readonly List<SpawnedItem> spawnedItems = [];
 
 	internal TestContext(BoxLease? lease)
 	{
@@ -129,6 +131,84 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 		}
 
 		throw new InvalidOperationException($"No free player slot: all {Main.maxPlayers} are active.");
+	}
+
+	/// <summary>
+	/// Fires a projectile from a box-relative position and records it, so
+	/// teardown removes it whether or not the test remembered to.
+	/// <para/>
+	/// A projectile with velocity will usually leave the box, which is
+	/// reported as an escape rather than prevented; see
+	/// <see cref="Escapes"/>. Give it no velocity to keep it still.
+	/// </summary>
+	/// <param name="type">The projectile type to fire.</param>
+	/// <param name="offsetX">Box-relative tile column to fire from.</param>
+	/// <param name="offsetY">Box-relative tile row to fire from.</param>
+	/// <param name="velocity">Initial velocity in world units per tick. Default is stationary.</param>
+	/// <param name="damage">Damage dealt. Zero is fine for a test that only watches movement.</param>
+	/// <param name="knockback">Knockback applied on hit.</param>
+	/// <param name="owner">
+	/// The player slot credited with firing. Defaults to
+	/// <c>Main.myPlayer</c>, which on a server is the dummy slot 255, and a
+	/// great deal of projectile AI reads it. Pass a player spawned by
+	/// <see cref="SpawnPlayer"/> when the projectile should belong to one.
+	/// </param>
+	public Projectile SpawnProjectile(
+		int type,
+		int offsetX,
+		int offsetY,
+		Vector2 velocity = default,
+		int damage = 0,
+		float knockback = 0f,
+		int owner = -1)
+	{
+		WorldPoint at = At(offsetX, offsetY);
+
+		int index = Projectile.NewProjectile(
+			new EntitySource_DebugCommand("Testaria"),
+			new Vector2(at.X, at.Y),
+			velocity,
+			type,
+			damage,
+			knockback,
+			owner < 0 ? Main.myPlayer : owner);
+
+		// NewProjectile returns Main.maxProjectiles when the pool is full,
+		// which would index out of bounds. Worth saying plainly: a test that
+		// silently got no projectile would fail somewhere far from the cause.
+		if (index >= Main.maxProjectiles)
+			throw new InvalidOperationException($"The projectile pool is full ({Main.maxProjectiles} slots), so type {type} could not be spawned.");
+
+		spawnedProjectiles.Add(new SpawnedProjectile(index, type));
+
+		return Main.projectile[index];
+	}
+
+	/// <summary>
+	/// Drops an item in the world at a box-relative position, as if something
+	/// had dropped it, and records it for teardown.
+	/// <para/>
+	/// This is a world item, not an inventory one: in 1.4.5 those are
+	/// different types, and <c>Main.item</c> holds <see cref="WorldItem"/>.
+	/// To give an item to a player, put it in their inventory directly.
+	/// </summary>
+	public WorldItem SpawnItem(int type, int offsetX, int offsetY, int stack = 1)
+	{
+		WorldPoint at = At(offsetX, offsetY);
+
+		int index = Item.NewItem(
+			new EntitySource_DebugCommand("Testaria"),
+			new Vector2(at.X, at.Y),
+			type,
+			stack,
+			noBroadcast: true);
+
+		if (index >= Main.maxItems)
+			throw new InvalidOperationException($"The item pool is full ({Main.maxItems} slots), so type {type} could not be dropped.");
+
+		spawnedItems.Add(new SpawnedItem(index, type));
+
+		return Main.item[index];
 	}
 
 	/// <summary>Places a tile at a box-relative position.</summary>
@@ -261,6 +341,28 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 		}
 
 		spawned.Clear();
+
+		foreach (SpawnedProjectile record in spawnedProjectiles) {
+			Projectile projectile = Main.projectile[record.Index];
+
+			// Deactivated rather than killed. Kill runs the projectile's death
+			// behaviour, which for a good many of them means an explosion,
+			// dust, sound, or spawning something else. Teardown should leave
+			// no trace, not set off fireworks in the next test's box.
+			if (projectile.active && projectile.type == record.Type)
+				projectile.active = false;
+		}
+
+		spawnedProjectiles.Clear();
+
+		foreach (SpawnedItem record in spawnedItems) {
+			WorldItem item = Main.item[record.Index];
+
+			if (item.active && item.type == record.Type)
+				item.TurnToAir();
+		}
+
+		spawnedItems.Clear();
 	}
 
 	private (int X, int Y) Absolute(int offsetX, int offsetY)
@@ -272,4 +374,8 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 	}
 
 	private readonly record struct SpawnedNpc(int Index, int Type);
+
+	private readonly record struct SpawnedProjectile(int Index, int Type);
+
+	private readonly record struct SpawnedItem(int Index, int Type);
 }

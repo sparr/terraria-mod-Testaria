@@ -1,4 +1,5 @@
 using System.Collections;
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -68,6 +69,72 @@ public class SpineTests
 		yield return Wait.Ticks(30);
 
 		Assert.True(ctx.ElapsedTicks > before, $"expected ticks to advance, saw {before} then {ctx.ElapsedTicks}");
+	}
+}
+
+/// <summary>
+/// Spawning the things a test needs to act on, other than NPCs.
+/// </summary>
+public class SpawningTests
+{
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_projectile_can_be_fired_and_stays_put_without_velocity(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		Projectile projectile = box.SpawnProjectile(ProjectileID.WoodenArrowFriendly, 8, 8);
+
+		Assert.True(projectile.active, "the projectile should be active immediately after spawning");
+		Assert.Equal(ProjectileID.WoodenArrowFriendly, projectile.type);
+
+		yield return Wait.Ticks(2);
+
+		int tileX = TileCoordinates.ToTile(projectile.Center.X);
+		int tileY = TileCoordinates.ToTile(projectile.Center.Y);
+
+		Assert.True(ctx.Interior.Contains(tileX, tileY), $"projectile at {tileX},{tileY} is outside the box {ctx.Interior}");
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_projectile_given_velocity_actually_moves(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		Projectile projectile = box.SpawnProjectile(ProjectileID.WoodenArrowFriendly, 4, 8, new Vector2(1f, 0f));
+		float startX = projectile.position.X;
+
+		yield return Wait.Until(() => projectile.position.X != startX, "the arrow has moved");
+
+		Assert.True(projectile.position.X > startX, "an arrow fired to the right should move right");
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator An_item_can_be_dropped_in_the_world(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		WorldItem item = box.SpawnItem(ItemID.DirtBlock, 8, 4, stack: 7);
+
+		Assert.True(item.active, "the item should be active immediately after dropping it");
+		Assert.Equal(ItemID.DirtBlock, item.type);
+		Assert.Equal(7, item.stack);
+
+		yield return Wait.Ticks(2);
+
+		Assert.True(item.active, "the item should still exist a couple of ticks later");
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator A_spawn_outside_the_box_is_refused(ITestContext ctx)
+	{
+		// The box is the whole point. Silently spawning into a neighbour would
+		// make that neighbour fail for no visible reason.
+		var box = (TestContext)ctx;
+
+		Assert.Throws<ArgumentOutOfRangeException>(() => box.SpawnProjectile(ProjectileID.WoodenArrowFriendly, 9999, 9999));
+		Assert.Throws<ArgumentOutOfRangeException>(() => box.SpawnItem(ItemID.DirtBlock, -1, 0));
+
+		yield break;
 	}
 }
 
