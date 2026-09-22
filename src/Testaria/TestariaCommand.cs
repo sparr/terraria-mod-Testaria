@@ -20,6 +20,13 @@ public sealed class TestariaCommand : ModCommand
 	/// <inheritdoc />
 	public override CommandType Type => CommandType.Console | CommandType.Chat;
 
+	/// <summary>
+	/// Arguments keep their case. ModCommand lowercases them by default, which
+	/// silently turned a run named TestariaSelfTest into testariaselftest and
+	/// so into a results file a case-sensitive filesystem could not be found by.
+	/// </summary>
+	public override bool IsCaseSensitive => true;
+
 	/// <inheritdoc />
 	public override string Usage => "/testaria run [name]";
 

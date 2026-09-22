@@ -365,6 +365,21 @@ Deliberately Tier 1 rather than Tier 0, since a Tier 0 suite already works with 
 3. The harness: provision a scratch save directory via `-tmlsavedirectory`, drop in the `.tmod` files, write `enabled.json`, launch `-server` with `-autocreate`, pipe `testaria run`, map the result to an exit code.
 4. Run it green.
 
+### 8.1a Blocker found on the first run: an empty server does not tick
+
+Measured, not inferred. A headless `-server` loads both mods, accepts console commands, and reports `Testaria running 5 test(s)`, but the simulation never advances: the `time` command returns **8:15 AM twice, eight seconds apart**, and the process accrues about one second of CPU per twenty of wall clock. With no client connected the world update loop does not run, so `ModSystem.PostUpdateEverything` never fires and the runner is never stepped. The console stays responsive because it is a separate thread.
+
+So the server is headless and also *paused*: the tick loop is there and nothing drives it.
+
+Options, in rough order of appeal:
+
+1. **Force the loop while a run is active.** tModLoader gives mods detours through `MonoModHooks`, so the server's idle path could be patched to keep updating. Cheapest if it works, and it keeps the harness a single process. The risk is bootstrapping: whatever installs the detour has to run, and mod loading does complete, so a `Mod.Load` detour should be reachable.
+2. **Connect a headless client.** Authentic and certainly works, at the cost of a second process and the client's graphics stack, which is why the harness already provisions an Xvfb display.
+3. **Run single player under Xvfb instead of a server.** The client always ticks. Costs graphics and needs world loading automated.
+4. **Drive `Main.Update` from the console command thread.** Rejected: almost nothing in Terraria is safe to touch off the update thread.
+
+Option 1 first, falling back to 2.
+
 ### 8.2 Then make it go red, on purpose
 
 The step most easily skipped, and the one that matters most. **A framework that can only report green is indistinguishable from one that works.** Until a real failure has been watched propagating the whole way, from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code, there is no evidence the thing reports anything at all.
