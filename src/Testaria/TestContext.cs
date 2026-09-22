@@ -1,3 +1,4 @@
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
 
@@ -17,6 +18,7 @@ public sealed class TestContext : ITickingContext, IContaminationAware, IDisposa
 	private readonly List<string> contamination = [];
 	private readonly HashSet<int> alreadyReported = [];
 	private readonly List<string> escapes = [];
+	private readonly List<int> spawnedPlayers = [];
 
 	internal TestContext(BoxLease? lease)
 	{
@@ -72,6 +74,61 @@ public sealed class TestContext : ITickingContext, IContaminationAware, IDisposa
 		TestOwnership.OwnNpc(index);
 
 		return npc;
+	}
+
+	/// <summary>
+	/// Puts a player in the box, at a box-relative position.
+	/// <para/>
+	/// A great deal of Terraria only happens near a player: NPCs target one,
+	/// biomes are measured from one, spawning and despawning are decided by
+	/// distance to one. Without this, an entire category of test is
+	/// unwritable, because a headless server has no players at all.
+	/// <para/>
+	/// The player is fabricated rather than connected. That is the same thing
+	/// the game does for a joining client, <c>Main.player[i] = new Player()</c>,
+	/// and vanilla keeps a dummy of its own for scene metrics, so the shape is
+	/// not unusual. It is not a client: nothing is networked, drawn, or given
+	/// input.
+	/// </summary>
+	/// <returns>The player, already active and positioned.</returns>
+	public Player SpawnPlayer(int offsetX, int offsetY)
+	{
+		WorldPoint at = At(offsetX, offsetY);
+		int slot = FreePlayerSlot();
+
+		var player = new Player { whoAmI = slot };
+
+		Main.player[slot] = player;
+		player.active = true;
+		player.name = $"TestariaPlayer{slot}";
+		player.statLifeMax = 100;
+		player.statLife = player.statLifeMax;
+		player.statManaMax = 20;
+		player.statMana = player.statManaMax;
+
+		// position is the top-left corner, so offset by half the hitbox to put
+		// the player's centre where the test asked for.
+		player.position = new Vector2(at.X - (player.width / 2f), at.Y - (player.height / 2f));
+
+		spawnedPlayers.Add(slot);
+
+		return player;
+	}
+
+	/// <summary>
+	/// A player slot nobody is using.
+	/// <para/>
+	/// Slot 255 is reserved: on a server <c>Main.myPlayer</c> is 255, and
+	/// taking it would make the server think it is its own client.
+	/// </summary>
+	private static int FreePlayerSlot()
+	{
+		for (int i = 0; i < Main.maxPlayers && i < 255; i++) {
+			if (!Main.player[i].active)
+				return i;
+		}
+
+		throw new InvalidOperationException($"No free player slot: all {Main.maxPlayers} are active.");
 	}
 
 	/// <summary>Places a tile at a box-relative position.</summary>
@@ -175,6 +232,14 @@ public sealed class TestContext : ITickingContext, IContaminationAware, IDisposa
 	/// </summary>
 	public void Dispose()
 	{
+		foreach (int slot in spawnedPlayers) {
+			// Replaced rather than merely deactivated, so no state from this
+			// test survives into the slot's next occupant.
+			Main.player[slot] = new Player { whoAmI = slot };
+			Main.player[slot].active = false;
+		}
+
+		spawnedPlayers.Clear();
 		ownedNpcs.Clear();
 
 		foreach (SpawnedNpc record in spawned) {

@@ -44,4 +44,22 @@ public sealed class TestariaNPC : GlobalNPC
 	/// <inheritdoc />
 	public override bool CheckActive(NPC npc)
 		=> !TestOwnership.OwnsNpc(npc.whoAmI);
+
+	/// <summary>
+	/// Stops the game spawning its own NPCs while a test is running.
+	/// <para/>
+	/// Natural spawning is driven entirely by proximity to a player, so it
+	/// never happened while the server had none. The moment a test puts a
+	/// player in its box, the game starts populating the area around it, and
+	/// those arrivals are contamination by any reasonable definition. Better
+	/// not to create them than to detect them.
+	/// </summary>
+	public override void EditSpawnRate(Player player, ref int spawnRate, ref int maxSpawns)
+	{
+		if (!TestariaSystem.IsRunning)
+			return;
+
+		spawnRate = int.MaxValue;
+		maxSpawns = 0;
+	}
 }
