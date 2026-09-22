@@ -39,6 +39,25 @@ DOTNET="${DOTNET:-$(command -v dotnet || true)}"
 
 [ -f "$TML/tModLoader.dll" ] || { echo "no tModLoader at $TML (set TML_PATH)" >&2; exit 2; }
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Build every enabled mod that has a project here, before copying any .tmod.
+# Without this a gate happily runs whatever .tmod was last built, so a test
+# added an hour ago is simply absent from the report and the run still passes,
+# which looks identical to the test passing. The mod projects are outside
+# Testaria.slnx because they need a tModLoader install, so a plain
+# `dotnet build` at the root does not cover them.
+if [ "${BUILD:-1}" = "1" ]; then
+  for mod in $ENABLED; do
+    for dir in "$ROOT/src/$mod" "$ROOT/tests/$mod"; do
+      [ -f "$dir/$mod.csproj" ] || continue
+      nice -n 19 "$DOTNET" build "$dir" --nologo -v q -clp:ErrorsOnly \
+        || { echo "build failed: $mod" >&2; exit 2; }
+      break
+    done
+  done
+fi
+
 SCRATCH="$(mktemp -d -t testaria-run-XXXXXX)"
 LOG="$SCRATCH/server.log"
 FIFO="$SCRATCH/stdin"
