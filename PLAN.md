@@ -380,6 +380,27 @@ Options, in rough order of appeal:
 
 Option 1 first, falling back to 2.
 
+### 8.1b Progress on the tick blocker: the gate is necessary but not sufficient
+
+The gate was found by disassembling the shipped assembly with the Mono.Cecil that tModLoader itself ships. `Main.DedServ_PostModLoad` holds the server loop, running `IL_0DFF` to `IL_0EAC`, and at `IL_0E29` it reads `Netplay.HasFullyConnectedClients`:
+
+- **true** → `DetailedFPS.StartNextFrame()`, `Game.Update(gameTime)`, then branch past the rest.
+- **false** → invoke `Main.OnTickForThirdPartySoftwareOnly` if set, then `Netplay.UpdateInMainThread()`, then the save check.
+
+Both paths then sleep and loop. The field is `public static` and its only writer is the private `Netplay.UpdateConnectedClients`, reached from the public `Netplay.UpdateInMainThread` — which the idle path calls every iteration, and which the ticking path skips. That makes `UpdateInMainThread` the one place a mod can set the flag so the value survives into the next iteration's check.
+
+A `MonoModHooks` detour on it works, confirmed in the log (`Hook Terraria.Netplay::UpdateInMainThread() added by Testaria`, then `forcing server ticks after 1 idle iterations`). The single firing is itself evidence the mechanism is right: once the flag is set, the loop takes the `Update` branch, which skips `UpdateInMainThread`, so the hook is never reached again and the flag is never cleared.
+
+**And yet the world still does not advance.** After forcing, the clock still reads the same time, and the process still accrues almost no CPU. So `HasFullyConnectedClients` gates the call to `Game.Update`, but something *inside* the update path gates the simulation as well.
+
+Next diagnostics, in order:
+
+1. Log a counter from `ModSystem.PostUpdateEverything` to establish whether `Update` is reached at all, which separates "the loop is not calling Update" from "Update runs but does nothing".
+2. If `Update` runs, check `Main.gameMenu`: a server that has not fully entered the world would take the menu path and never simulate.
+3. Note that Terraria is known to freeze the *clock* on an empty server independently of the update loop, so the clock is a poor sole indicator. A tick counter is the reliable one.
+
+`Main.OnTickForThirdPartySoftwareOnly` is worth remembering as an idle-loop callback that needs no detour, but it is private, so it needs reflection and is not obviously better than the hook.
+
 ### 8.2 Then make it go red, on purpose
 
 The step most easily skipped, and the one that matters most. **A framework that can only report green is indistinguishable from one that works.** Until a real failure has been watched propagating the whole way, from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code, there is no evidence the thing reports anything at all.

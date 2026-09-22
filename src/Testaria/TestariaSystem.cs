@@ -50,6 +50,77 @@ public sealed class TestariaSystem : ModSystem
 		return session;
 	}
 
+	/// <summary>
+	/// Forces the dedicated server to keep simulating while a run is active.
+	/// <para/>
+	/// An empty server does not tick. Its loop reads
+	/// <c>Netplay.HasFullyConnectedClients</c> and only calls
+	/// <c>Game.Update</c> when it is set, so with nobody connected the world
+	/// is paused and <see cref="PostUpdateEverything"/> never fires. Measured:
+	/// the world clock reads the same time eight seconds apart.
+	/// <para/>
+	/// The field's only writer is the private <c>Netplay.UpdateConnectedClients</c>,
+	/// reached from the public <c>Netplay.UpdateInMainThread</c>, which the
+	/// loop calls every iteration. Setting the flag after that runs is
+	/// therefore the one point where the value survives to the next
+	/// iteration's check.
+	/// <para/>
+	/// Scoped as tightly as possible: dedicated server only, and only while a
+	/// run is actually in progress, so a normal server is never affected.
+	/// </summary>
+	public override void Load()
+	{
+		if (!Main.dedServ)
+			return;
+
+		try {
+			MethodInfo update = typeof(Netplay).GetMethod(
+				nameof(Netplay.UpdateInMainThread),
+				BindingFlags.Public | BindingFlags.Static)
+				?? throw new InvalidOperationException("Netplay.UpdateInMainThread not found.");
+
+			MonoModHooks.Add(update, ForceTickWhileRunning);
+			Mod.Logger.Info("Testaria: server tick hook installed.");
+		}
+		catch (Exception ex) {
+			// Reported rather than swallowed: without this hook a dedicated
+			// server never steps the runner, and the symptom is a run that
+			// starts and then simply never finishes.
+			Mod.Logger.Error($"Testaria: could not install the server tick hook, Tier 2 tests will hang. {ex}");
+		}
+	}
+
+	private static long hookCalls;
+	private static bool loggedFirstHook;
+	private static bool loggedFirstForce;
+
+	private static void ForceTickWhileRunning(Action orig)
+	{
+		orig();
+
+		hookCalls++;
+
+		if (!loggedFirstHook) {
+			loggedFirstHook = true;
+			ModContent.GetInstance<TestariaSystem>()?.Mod.Logger.Info(
+				$"Testaria: server tick hook fired (session={(session is null ? "null" : "present")}).");
+		}
+
+		if (session is not { IsFinished: false })
+			return;
+
+		Netplay.HasFullyConnectedClients = true;
+
+		if (!loggedFirstForce) {
+			loggedFirstForce = true;
+			ModContent.GetInstance<TestariaSystem>()?.Mod.Logger.Info(
+				$"Testaria: forcing server ticks after {hookCalls} idle iterations.");
+		}
+	}
+
+	/// <summary>How many times the idle-loop hook has run. Diagnostic only.</summary>
+	public static long HookCalls => hookCalls;
+
 	/// <inheritdoc />
 	public override void PostUpdateEverything()
 	{
