@@ -1,0 +1,83 @@
+<!--
+  Everything a Testaria test mod needs to compile, for suites that live
+  outside this repository.
+
+  A test suite belongs with the mod it tests, which usually means another
+  repository entirely. Such a project needs three things: a tModLoader install
+  to reference, the Testaria assemblies, and the handful of properties a
+  .tmod-producing project must set. Importing this file supplies all three.
+
+  Import it with an explicit path to this checkout:
+
+    <PropertyGroup>
+      <TestariaPath>../path/to/testaria</TestariaPath>
+    </PropertyGroup>
+    <Import Project="$(TestariaPath)/build/Testaria.props" />
+
+  Once Testaria.Core is published to NuGet a suite will be able to reference
+  the package instead and drop the path. Until then this is the supported way.
+
+  The project templates deliberately do not import this. A generated project
+  must stand on its own with no path back to this checkout, so it carries its
+  own copy of the discovery block.
+-->
+<Project>
+
+  <!--
+    Locate a tModLoader install. Set TML_PATH to override; otherwise the usual
+    Steam library locations are tried.
+  -->
+  <PropertyGroup>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.local/share/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.steam/steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <TestariaHasTml Condition="'$(tModLoaderSteamPath)' != '' And Exists('$(tModLoaderSteamPath)/tMLMod.targets')">true</TestariaHasTml>
+    <TestariaHasTml Condition="'$(TestariaHasTml)' == ''">false</TestariaHasTml>
+  </PropertyGroup>
+
+  <!-- What every mod project targeting the 1.4.5 line must set. -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0</TargetFramework>
+    <LangVersion Condition="'$(LangVersion)' == ''">14.0</LangVersion>
+    <Nullable Condition="'$(Nullable)' == ''">enable</Nullable>
+    <ImplicitUsings Condition="'$(ImplicitUsings)' == ''">enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!--
+      The .tmod is produced by tMLMod.targets invoking tModLoader itself, and
+      only when there is an install to invoke.
+    -->
+    <BuildMod Condition="'$(BuildMod)' == ''">$(TestariaHasTml)</BuildMod>
+    <!--
+      Testaria's own assemblies reach the game inside the Testaria .tmod, so
+      copying tModLoader's assemblies next to this one would only give
+      ModCompile more to pack.
+    -->
+    <OutputTmlReferences Condition="'$(OutputTmlReferences)' == ''">false</OutputTmlReferences>
+  </PropertyGroup>
+
+  <!--
+    Private=false throughout: these are resolved at run time through build.txt's
+    modReferences, so they must not be copied into this mod's own output where
+    ModCompile would treat them as something to pack.
+  -->
+  <ItemGroup Condition="'$(TestariaHasTml)' == 'true'">
+    <ProjectReference Include="$(TestariaPath)/src/Testaria/Testaria.csproj" Private="false" />
+    <ProjectReference Include="$(TestariaPath)/src/Testaria.Core/Testaria.Core.csproj" Private="false" />
+  </ItemGroup>
+
+  <!--
+    tModLoader.dll itself, which is the patched Terraria rebuild every mod
+    compiles against, plus everything under its Libraries folder. Imported
+    last so the properties above are already set when it evaluates.
+  -->
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
+
+  <Target Name="TestariaRequireTml" BeforeTargets="Build" Condition="'$(TestariaHasTml)' != 'true'">
+    <Error Text="No tModLoader install found. Set TML_PATH to the folder containing tMLMod.targets." />
+  </Target>
+
+  <Target Name="TestariaRequirePath" BeforeTargets="Build" Condition="!Exists('$(TestariaPath)/src/Testaria/Testaria.csproj')">
+    <Error Text="TestariaPath does not point at a Testaria checkout (looked for $(TestariaPath)/src/Testaria/Testaria.csproj)." />
+  </Target>
+
+</Project>

@@ -47,14 +47,33 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # which looks identical to the test passing. The mod projects are outside
 # Testaria.slnx because they need a tModLoader install, so a plain
 # `dotnet build` at the root does not cover them.
+# MOD_PROJECT_PATH adds directories to search, colon separated, for suites that
+# live outside this repository. A test suite belongs with the mod it tests, so
+# that is the normal case rather than the exotic one: ExampleMod's suite lives
+# in the tModLoader checkout beside ExampleMod itself.
 if [ "${BUILD:-1}" = "1" ]; then
+  search="$ROOT/src:$ROOT/tests${MOD_PROJECT_PATH:+:$MOD_PROJECT_PATH}"
+
   for mod in $ENABLED; do
-    for dir in "$ROOT/src/$mod" "$ROOT/tests/$mod"; do
-      [ -f "$dir/$mod.csproj" ] || continue
-      nice -n 19 "$DOTNET" build "$dir" --nologo -v q -clp:ErrorsOnly \
-        || { echo "build failed: $mod" >&2; exit 2; }
+    # Some mods are built by something else and must not be built from a
+    # project found on the search path. ExampleMod is the case in point: its
+    # own .csproj is in the tModLoader checkout and cannot build without the
+    # decompiled src/ tree, so build-examplemod.sh handles it separately.
+    case " ${BUILD_SKIP:-} " in *" $mod "*) continue ;; esac
+
+    found=""
+    while IFS= read -r base; do
+      [ -n "$base" ] || continue
+      [ -f "$base/$mod/$mod.csproj" ] || continue
+      found="$base/$mod"
       break
-    done
+    done <<< "$(echo "$search" | tr ':' '\n')"
+
+    [ -n "$found" ] || continue
+
+    echo "building:  $mod"
+    nice -n 19 "$DOTNET" build "$found" --nologo -v q -clp:ErrorsOnly \
+      || { echo "build failed: $mod ($found)" >&2; exit 2; }
   done
 fi
 
