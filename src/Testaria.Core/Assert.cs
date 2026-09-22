@@ -19,6 +19,16 @@ public static class Assert
 	[DoesNotReturn]
 	public static void Fail(string message) => throw new AssertionException(message);
 
+	/// <summary>
+	/// Abandons the test as skipped, for a reason only discoverable at run
+	/// time such as an optional mod being absent.
+	/// <para/>
+	/// Reported as skipped, never as passed: a vacuous pass claims coverage
+	/// that never happened.
+	/// </summary>
+	[DoesNotReturn]
+	public static void Skip(string reason) => throw new SkipTestException(reason);
+
 	/// <summary>Asserts that a condition holds.</summary>
 	public static void True([DoesNotReturnIf(false)] bool condition, string? message = null)
 	{

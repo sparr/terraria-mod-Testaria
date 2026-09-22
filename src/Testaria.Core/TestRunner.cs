@@ -258,9 +258,12 @@ public sealed class TestRunner
 	private static Exception Unwrap(Exception ex)
 		=> ex is TargetInvocationException { InnerException: Exception inner } ? inner : ex;
 
-	private static TestOutcome Classify(Exception ex)
-		=> ex is AssertionException ? TestOutcome.Failed : TestOutcome.Errored;
+	private static TestOutcome Classify(Exception ex) => ex switch {
+		SkipTestException => TestOutcome.Skipped,
+		AssertionException => TestOutcome.Failed,
+		_ => TestOutcome.Errored,
+	};
 
 	private static string Describe(Exception ex)
-		=> ex is AssertionException ? ex.Message : $"{ex.GetType().Name}: {ex.Message}";
+		=> ex is AssertionException or SkipTestException ? ex.Message : $"{ex.GetType().Name}: {ex.Message}";
 }

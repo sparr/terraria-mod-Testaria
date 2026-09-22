@@ -188,6 +188,7 @@ public sealed class TestariaSystem : ModSystem
 	{
 		// Static state that outlives a reload keeps the old assembly alive.
 		session = null;
+		TestOwnership.Clear();
 	}
 
 	private void Report(TestSession finished)

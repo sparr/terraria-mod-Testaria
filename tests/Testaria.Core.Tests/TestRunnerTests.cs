@@ -515,3 +515,65 @@ public class TestRunnerContextLifecycleTests
 		}
 	}
 }
+
+public class RuntimeSkipTests
+{
+	private static TestRunResult Run(string name)
+	{
+		DiscoveryResult all = TestDiscovery.Discover([typeof(Fixtures)]);
+		DiscoveryResult one = new() { Tests = [.. all.Tests.Where(t => t.Name == name)], Errors = [] };
+
+		return new TestRunner(one, new TestRunnerOptions {
+			MaxTier = TestTier.World,
+			Arena = new Arena(new WorldGeometry(4200, 1200, 87, 250, 400, 1000)),
+		}).RunToCompletion();
+	}
+
+	[Fact]
+	public void A_test_can_skip_itself_at_run_time()
+	{
+		// Whether an optional mod is installed is not knowable at compile time.
+		TestResult result = Run(nameof(Fixtures.SkipsItself)).Suites.Single().Results.Single();
+
+		XAssert.Equal(TestOutcome.Skipped, result.Outcome);
+		XAssert.Contains("not installed", result.Message);
+	}
+
+	[Fact]
+	public void A_runtime_skip_does_not_fail_the_run()
+		=> XAssert.True(Run(nameof(Fixtures.SkipsItself)).IsSuccess);
+
+	[Fact]
+	public void A_coroutine_can_skip_itself_partway_through()
+	{
+		TestResult result = Run(nameof(Fixtures.SkipsPartway)).Suites.Single().Results.Single();
+
+		XAssert.Equal(TestOutcome.Skipped, result.Outcome);
+	}
+
+	[Fact]
+	public void Skipping_is_distinct_from_failing()
+	{
+		// A vacuous pass would claim coverage that never happened, and a
+		// failure would blame a subject that is not broken.
+		XAssert.NotEqual(
+			Run(nameof(Fixtures.SkipsItself)).Suites.Single().Results.Single().Outcome,
+			Run(nameof(Fixtures.FailsNormally)).Suites.Single().Results.Single().Outcome);
+	}
+
+	public class Fixtures
+	{
+		[LoadedTest]
+		public void SkipsItself() => Assert.Skip("ExampleMod is not installed");
+
+		[LoadedTest]
+		public void FailsNormally() => Assert.Fail("broken");
+
+		[GameTest(Band = Band.Cavern, Timeout = 60)]
+		public System.Collections.IEnumerator SkipsPartway()
+		{
+			yield return Wait.Ticks(2);
+			Assert.Skip("needed a jungle and there is not one");
+		}
+	}
+}

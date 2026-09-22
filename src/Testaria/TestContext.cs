@@ -61,6 +61,11 @@ public sealed class TestContext : ITickingContext, IDisposable
 
 		spawned.Add(new SpawnedNpc(index, type));
 
+		// Without this the game reclaims it within about a second: CheckActive
+		// despawns anything out of range of a player, and a headless server has
+		// no players, so everything is out of range.
+		TestOwnership.OwnNpc(index);
+
 		return npc;
 	}
 
@@ -105,6 +110,8 @@ public sealed class TestContext : ITickingContext, IDisposable
 	{
 		foreach (SpawnedNpc record in spawned) {
 			NPC npc = Main.npc[record.Index];
+
+			TestOwnership.ReleaseNpc(record.Index);
 
 			if (npc.active && npc.type == record.Type)
 				npc.active = false;

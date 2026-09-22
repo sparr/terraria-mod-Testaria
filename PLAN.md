@@ -422,20 +422,23 @@ Measured, all four survive the trip from assertion through the coroutine and the
 
 The timeout naming what the body was blocked on is the part worth keeping. A bare "timed out" is close to useless when debugging; knowing it was stuck on a particular wait is most of the diagnosis.
 
-### 8.3 Only then, an existing mod
+### 8.3 Calibrated against ExampleMod
 
-The first real-mod test is a measurement instrument, and an instrument is calibrated against a known standard before it measures an unknown. Testing someone else's mod before the harness is proven means debugging two unknowns at once: a framework bug, or a misunderstanding of their mod.
+The first real-mod test is a measurement instrument, and an instrument is calibrated against a known standard before it measures an unknown. ExampleMod is that standard: not because it is small, at 563 files it is not, but because it is broad and shallow, every piece a minimal and deliberately documented demonstration, and because the tModLoader team maintains it, so a test that cannot be made to work is a framework bug rather than somebody's mod quirk.
 
-Selection criteria, in priority order. Note that size is a distant fourth, and is not the axis that matters:
+It builds against the installed 1.4.5-dev with zero errors once given a `.csproj` that imports the *installed* `tMLMod.targets` rather than the repository's, which expects the decompiled `src/` tree that only `setup-cli.sh` produces. `scripts/build-examplemod.sh` does that in a scratch copy and never touches the checkout.
 
-1. **Source available.** Non-negotiable. Without it a failure is uninterpretable.
-2. **Crosses the tiers under test.** Content registration *and* an NPC with real behaviour. A library or utility mod exercises Tier 1 only and says nothing about the arena, which is the riskiest subsystem here.
-3. **Fast to load.** Load time is paid on every iteration.
-4. Size.
+Content is resolved by name through `ModContent.TryFind` with a weak reference, which is how cross-mod code is normally written and which lets the test mod load and report honestly when its subject is absent.
 
-**ExampleMod is the right first target**, though not because it is simple: at 563 files and 46,000 lines it is not. It is *broad and shallow*. Every individual piece, `ExampleCritter` or `ExampleCustomAISlimeNPC` or `ExampleRecipes`, is a minimal and deliberately documented demonstration, so a test targets one NPC out of it rather than the mod. And because the tModLoader team maintains it, a test that cannot be made to work is a framework bug rather than a mod quirk, which is exactly what a calibration standard has to guarantee.
+**Five tests, all passing**: the mod is loaded; its item resolves by name with an id above the vanilla range; its item has a localized display name, which only a completed load pass provides; its critter resolves; and its critter can be spawned into a box and survives a second of its own AI.
 
-After that, one small open-source third-party mod. **That first third-party mod is a framework experiment, not a contribution.** Framing it as improving someone's coverage creates pressure to care about their test quality before this framework has earned any trust, and nothing goes near anyone's repository without explicit instruction regardless.
+#### What the calibration settled
+
+Neither shows up until a real mod is the subject, which is the whole argument for calibrating before writing anything else.
+
+**A test can skip itself at run time.** Whether an optional mod is installed, or a world has the right biome, is only knowable once the game runs, so a compile-time attribute cannot express it. Failing would blame a subject that is not broken; passing vacuously is worse, claiming coverage that never happened. `Assert.Skip` and `SkipTestException` report it honestly.
+
+**Spawned entities need an owner, or the game reclaims them.** `NPC.CheckActive` reclaims anything outside `activeRangeX/Y` of a player, and a headless server has no players, so *everything* is out of range. Measured directly: ExampleMod's critter is alive on the next tick and gone a second later. That is the game behaving correctly, so the answer belongs in the framework: a `GlobalNPC.CheckActive` returning false for entities a live test owns. It is also the first working piece of the ownership warden from section 2.4.
 
 ### 8.4 Complex mods are a load test, not a graduation
 
