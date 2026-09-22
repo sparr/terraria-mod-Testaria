@@ -14,6 +14,7 @@ MODS_SRC="${MODS_SRC:-$HOME/.local/share/Terraria/tModLoader-dev/Mods}"
 RUN_NAME="${RUN_NAME:-TestariaSelfTest}"
 ENABLED="${ENABLED:-Testaria TestariaSelfTest}"
 TIMEOUT="${TIMEOUT:-600}"
+SEED="${SEED:-42}"
 MEM_MAX="${MEM_MAX:-4G}"
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
@@ -82,6 +83,7 @@ fi
 
 export SDL_AUDIODRIVER=dummy
 
+echo "seed:     $SEED"
 echo "scratch:  $SCRATCH"
 echo "mods:     $ENABLED"
 
@@ -102,7 +104,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     -autocreate 1 \
     -world "$SCRATCH/Worlds/testaria.wld" \
     -worldname testaria \
-    -seed 42 \
+    -seed "$SEED" \
     -players 1 \
     -port 7777 \
     -password "" \
@@ -119,6 +121,7 @@ until grep -qE "Server started|Listening on port" "$LOG" 2>/dev/null; do
   sleep 2
 done
 
+echo "world ready after ${SECONDS}s"
 echo "server up, starting run"
 echo "testaria run $RUN_NAME" >&3
 

@@ -37,6 +37,13 @@ public sealed record ArenaOptions
 	public int QuarantineTicks { get; init; } = 60;
 
 	/// <summary>
+	/// Ground the arena must never lease, holding whatever vanilla requires to
+	/// exist. Declared by whoever built the world, since that is the only thing
+	/// that knows where it put them.
+	/// </summary>
+	public IReadOnlyList<ReservedArea> Reserved { get; init; } = [];
+
+	/// <summary>
 	/// Fraction of world width reserved for spanning columns. Partitioning the
 	/// world is what avoids the alternative, where a column must acquire an
 	/// aligned slot in every row it crosses at once, which is hold-and-wait

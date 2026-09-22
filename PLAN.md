@@ -383,6 +383,28 @@ Scoped to dedicated servers, and only while a run is in progress, so a normal se
 
 **Result: all five self-tests pass in a live headless server**, with boxes leased at x=8, 72 and 136 in the Cavern band. That spacing is 64 tiles, exactly the 48-tile width class plus two 8-tile gutters, which is the arena's geometry confirmed against a real world rather than a unit test.
 
+### 8.1c A blank world, and reserved ground
+
+Most of what can intrude into a box is not an entity: liquid flows, sand falls, grass and corruption spread. An ownership warden cannot see any of that, and every one of them is a race. Generating a world that contains none of it removes the whole class at the root, which is a stronger guarantee than any amount of watching.
+
+**Measured before building anything.** The `skyblock` secret seed, present in 1.4.5 as `WorldSeedOption_Skyblock` with a `ServerConfigName` of `"skyblock"` and therefore usable straight from the server command line, produces a world ready in **8 seconds against 20 for an ordinary small world**, with the self-tests still passing.
+
+Generation is 20 seconds of the cycle rather than the bulk of it, so eight seconds against twenty is worth having and is not a transformation. **The case for a blank world is contamination and determinism, not speed.**
+
+`skyblock` is not the answer regardless, because it sets `Main.skyblockWorld`, and a secret seed is a different game rather than different terrain. It is read in seven places, including `Liquid.QuickWater` and `Player.BordersMovement`. A test that passes under it and fails in an ordinary world is exactly the false signal this design keeps trying to eliminate.
+
+**The answer is `[BlankWorld]`, built on `ModSystem.ModifyWorldGenTasks(List<GenPass>)`,** which lets a mod delete generation passes outright. One hard constraint: `TerrainPass.ApplyPass` is what assigns `Main.worldSurface` and `Main.rockLayer`, on which `WorldGeometry` and the whole arena depend. Either that pass survives, or the generator sets `GenVars.mainWorldSurface` and `mainRockLayer` itself; both have setters. Every `Main.*World` flag stays false, so the rules are vanilla's.
+
+Blank means a known uniform substrate, not literal emptiness: solid stone below the surface, air above, no liquids, no ore, no structures, no chests, no corruption seeds. Pure air would give entities no floor and make NPC behaviour tests meaningless.
+
+#### Reserved ground
+
+A blank world must still be a *valid* world: vanilla assumes a spawn point exists, and a dungeon, and so on. Those go in **named reserved areas that the arena never leases**, rather than being scattered through the test ground.
+
+A test whose subject really is the dungeon leases it by name through `Arena.TryLeaseReserved`, which is deliberately a separate call from `TryLease`. That makes "this test depends on vanilla furniture" a declaration the test makes out loud, rather than an accident of where a box happened to land.
+
+Ordinary leases step *over* reserved ground rather than being refused by it, since the arena has room to spare and a test should not lose a box merely because the dungeon sits to its left. Reservation is a property of how the world was built, so the arena reserves nothing unless the generator tells it what it placed and where.
+
 ### 8.2 Then make it go red, on purpose
 
 The step most easily skipped, and the one that matters most. **A framework that can only report green is indistinguishable from one that works.** Until a real failure has been watched propagating the whole way, from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code, there is no evidence the thing reports anything at all.

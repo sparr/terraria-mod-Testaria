@@ -28,6 +28,8 @@ public sealed class Arena
 	private readonly Dictionary<int, Slot> leasedSlots = [];
 	private readonly Dictionary<int, BoxLease> activeLeases = [];
 	private readonly Dictionary<Band, int> bandCursor = [];
+	private readonly HashSet<string> reservedLeases = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<int, string> reservedLeaseIds = [];
 	private readonly int columnRegionStart;
 	private int columnCursor;
 	private int nextLeaseId = 1;
@@ -49,6 +51,9 @@ public sealed class Arena
 
 	/// <summary>First tile column belonging to the spanning region.</summary>
 	public int ColumnRegionStart => columnRegionStart;
+
+	/// <summary>Ground held back from ordinary leasing.</summary>
+	public IReadOnlyList<ReservedArea> Reserved => Options.Reserved;
 
 	/// <summary>Currently leased boxes.</summary>
 	public IReadOnlyCollection<BoxLease> Active => activeLeases.Values;
@@ -112,6 +117,13 @@ public sealed class Arena
 	{
 		ArgumentNullException.ThrowIfNull(lease);
 
+		if (reservedLeaseIds.Remove(lease.Id, out string? reservedName)) {
+			reservedLeases.Remove(reservedName);
+			activeLeases.Remove(lease.Id);
+
+			return;
+		}
+
 		if (!leasedSlots.Remove(lease.Id, out Slot? slot))
 			throw new InvalidOperationException($"Lease {lease.Id} is not active; it was already released or never issued by this arena.");
 
@@ -146,6 +158,48 @@ public sealed class Arena
 		}
 	}
 
+	/// <summary>
+	/// Leases a reserved area by name, for a test whose subject actually is the
+	/// vanilla furniture living there.
+	/// <para/>
+	/// Deliberately a separate call. Reserved ground is never handed out by
+	/// <see cref="TryLease"/>, so depending on it is something a test has to say
+	/// out loud.
+	/// </summary>
+	/// <returns>The lease, or null if that area is already leased out.</returns>
+	/// <exception cref="ArgumentException">No reserved area goes by that name.</exception>
+	public BoxLease? TryLeaseReserved(string name)
+	{
+		ArgumentException.ThrowIfNullOrEmpty(name);
+
+		ReservedArea area = Options.Reserved.FirstOrDefault(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))
+			?? throw new ArgumentException(
+				$"No reserved area named '{name}'. Known areas: {(Options.Reserved.Count == 0 ? "none" : string.Join(", ", Options.Reserved.Select(a => a.Name)))}.",
+				nameof(name));
+
+		if (reservedLeases.Contains(area.Name))
+			return null;
+
+		int id = nextLeaseId++;
+		var lease = new BoxLease(id, area.Bounds, area.Bounds.Deflate(Options.Gutter), geo.BandAt(area.Bounds.Top), BoxKind.Banded);
+
+		reservedLeases.Add(area.Name);
+		reservedLeaseIds[id] = area.Name;
+		activeLeases[id] = lease;
+
+		return lease;
+	}
+
+	private ReservedArea? FirstReservedOverlap(TileRect candidate)
+	{
+		foreach (ReservedArea area in Options.Reserved) {
+			if (area.Bounds.Intersects(candidate))
+				return area;
+		}
+
+		return null;
+	}
+
 	private Slot? FindFree(SlotKey key)
 	{
 		if (!byKey.TryGetValue(key, out List<Slot>? candidates))
@@ -177,8 +231,22 @@ public sealed class Arena
 			}
 
 			int x = bandCursor.GetValueOrDefault(key.Bands);
-			if (x + outerWidth > columnRegionStart)
-				return null;
+
+			// Step over reserved ground rather than refusing outright: the
+			// arena has plenty of room, and a test should never be denied a box
+			// merely because the dungeon happens to sit to its left.
+			while (true) {
+				if (x + outerWidth > columnRegionStart)
+					return null;
+
+				var candidate = new TileRect(x, band.Top, outerWidth, outerHeight);
+				ReservedArea? blocker = FirstReservedOverlap(candidate);
+
+				if (blocker is null)
+					break;
+
+				x = blocker.Bounds.Right;
+			}
 
 			bandCursor[key.Bands] = x + outerWidth;
 			bounds = new TileRect(x, band.Top, outerWidth, outerHeight);
@@ -193,8 +261,18 @@ public sealed class Arena
 					$"once {Options.Gutter} tile gutters are applied.");
 			}
 
-			if (columnCursor + outerWidth > geo.MaxTilesX)
-				return null;
+			while (true) {
+				if (columnCursor + outerWidth > geo.MaxTilesX)
+					return null;
+
+				var candidate = new TileRect(columnCursor, span.Top, outerWidth, span.Height);
+				ReservedArea? blocker = FirstReservedOverlap(candidate);
+
+				if (blocker is null)
+					break;
+
+				columnCursor = blocker.Bounds.Right;
+			}
 
 			bounds = new TileRect(columnCursor, span.Top, outerWidth, span.Height);
 			columnCursor += outerWidth;
