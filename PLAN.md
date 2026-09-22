@@ -222,15 +222,13 @@ Escapes are recorded but deliberately not treated as contamination: an entity le
 
 #### Parallelism is worth building
 
-This design deferred pool budgeting and parallel boxes until there was a real corpus rather than a guess to argue about. There is one now, and it says the two suites have opposite shapes.
+**The server ticks at real time.** Measured directly: 1001 ticks took 16.668 seconds, 60.1 ticks per second, 16.65 ms per tick. The pacing is `double num6 = 16.666666666666668` in `Main.DedServ_PostModLoad`, a *local variable*, so there is no field a mod can set; raising the rate would need an IL rewrite of that method body. **Treat a tick as 16.7 ms of wall clock and it will not surprise you.**
 
-The ExampleMod suite runs **924 tests in 0.41 seconds**, about 0.4 ms each, with the slowest single test at 0.22 s because it spans fifteen ticks. That corpus is about 99% Tier 1 tests, which never tick at all. For a suite of that shape wall clock is world generation and server startup, roughly six seconds, against which test execution is a rounding error, and concurrency buys nothing.
+The cost of a gameplay test is therefore its tick count. A boss fight of a thousand ticks is seventeen seconds. Ten of them, run one after another, is nearly three minutes.
 
-A gameplay test is the other shape, and its cost is its tick count. The loop runs at a fixed 60 Hz (section 1), so a tick is about 16.7 ms of wall clock and a thousand-tick boss fight is seventeen seconds. Ten of them one after another is nearly three minutes.
+**Tests in separate boxes share one tick stream**, which is what makes parallelism pay here. Ten tick-bound tests of a thousand ticks each cost about 167 seconds sequentially and about 17 concurrently. That is the whole argument for mechanisms 3 and 4, pool budgeting and declared global effects: they exist to make concurrent boxes safe, and for a gameplay suite concurrency is the difference between a usable loop and an unusable one.
 
-**Tests in separate boxes share one tick stream**, which is what makes parallelism pay: those ten cost about 167 seconds sequentially and about 17 concurrently. That is the argument for mechanisms 3 and 4, pool budgeting and declared global effects. They exist to make concurrent boxes safe, and for a tick-bound suite concurrency is the difference between a usable loop and an unusable one.
-
-Mechanisms 1 and 2, the gutter and the warden, stand on their own merits under sequential execution, and are built.
+For a suite dominated by Tier 1 tests none of this binds: measured, 924 such tests run in 0.41 seconds, because about 99% of them never tick at all, and the wall clock is world generation and server startup rather than test execution. Both statements hold, of different suites, which is the distinction worth carrying.
 
 #### Status of the four mechanisms
 
