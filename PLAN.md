@@ -405,13 +405,22 @@ A test whose subject really is the dungeon leases it by name through `Arena.TryL
 
 Ordinary leases step *over* reserved ground rather than being refused by it, since the arena has room to spare and a test should not lose a box merely because the dungeon sits to its left. Reservation is a property of how the world was built, so the arena reserves nothing unless the generator tells it what it placed and where.
 
-### 8.2 Then make it go red, on purpose
+### 8.2 Red propagates, and stays distinguishable
 
-The step most easily skipped, and the one that matters most. **A framework that can only report green is indistinguishable from one that works.** Until a real failure has been watched propagating the whole way, from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code, there is no evidence the thing reports anything at all.
+The step most easily skipped, and the one that matters most: a framework that can only report green is indistinguishable from one that works.
 
-Four deliberate failures, four confirmed reports: a failed assertion, a timeout, an errored test, and a discovery error.
+`TestariaRedTest` is a mod of four deliberately broken tests, enabled only by `scripts/check-red.sh` and never by an ordinary run. The check asserts not merely that the harness exits non-zero, but that each problem arrives as the *right kind*, with a non-empty message. A failed assertion and a broken test must stay distinguishable all the way out, or a report cannot tell an author whether their mod or their test is at fault.
 
-This is also when the numbers in section 7 stop being guesses. The `SceneMetrics` scan radius, the default box size, the quarantine duration, the arena region split, the `FreshWorld` crossover, and the `SpaceFraction` constant in the world geometry adapter all get their first real data here, in a mod we control and can probe deliberately.
+Measured, all four survive the trip from assertion through the coroutine and the runner into JUnit XML and out as a non-zero exit code:
+
+| Deliberate problem | Reported as | Message |
+| --- | --- | --- |
+| Failed assertion | failure | "deliberate assertion failure" |
+| Exceeded tick budget | failure | "exceeded its budget of 30 ticks while blocked on `Wait.Ticks(1)`" |
+| Thrown exception | error | "InvalidOperationException: deliberate error, not an assertion" |
+| Malformed test method | error | "must return void or IEnumerator, but this returns Int32" |
+
+The timeout naming what the body was blocked on is the part worth keeping. A bare "timed out" is close to useless when debugging; knowing it was stuck on a particular wait is most of the diagnosis.
 
 ### 8.3 Only then, an existing mod
 
