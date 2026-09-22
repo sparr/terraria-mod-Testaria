@@ -28,7 +28,7 @@ public sealed class TestariaCommand : ModCommand
 	public override bool IsCaseSensitive => true;
 
 	/// <inheritdoc />
-	public override string Usage => "/testaria run [name] | /testaria status";
+	public override string Usage => "/testaria run [name] [filter] | /testaria status";
 
 	/// <inheritdoc />
 	public override string Description => "Runs the discovered Testaria tests and writes a JUnit report.";
@@ -54,7 +54,8 @@ public sealed class TestariaCommand : ModCommand
 		}
 
 		string runName = args.Length > 1 ? args[1] : "Testaria";
-		TestSession? session = TestariaSystem.Start(runName);
+		TestFilter filter = TestFilter.Parse(args.Length > 2 ? args[2] : null);
+		TestSession? session = TestariaSystem.Start(runName, filter);
 
 		if (session is null) {
 			caller.Reply("A Testaria run is already in progress.", Color.Yellow);
@@ -68,6 +69,15 @@ public sealed class TestariaCommand : ModCommand
 			return;
 		}
 
-		caller.Reply($"Testaria running {session.Discovered} test(s) as '{runName}'. Results land under {ResultsLocation.Directory(Main.SavePath)}.", Color.White);
+		if (session.Selected == 0) {
+			caller.Reply($"Testaria matched no tests against '{filter}' out of {session.Discovered} discovered.", Color.Yellow);
+			return;
+		}
+
+		string scope = filter.IsNarrowing
+			? $"{session.Selected} of {session.Discovered} test(s) matching '{filter}'"
+			: $"{session.Discovered} test(s)";
+
+		caller.Reply($"Testaria running {scope} as '{runName}'. Results land under {ResultsLocation.Directory(Main.SavePath)}.", Color.White);
 	}
 }

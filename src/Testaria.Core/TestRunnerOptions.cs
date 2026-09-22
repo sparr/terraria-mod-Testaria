@@ -27,6 +27,13 @@ public sealed record TestRunnerOptions
 	public Arena? Arena { get; init; }
 
 	/// <summary>
+	/// Narrows the run. Filtered-out tests are omitted rather than reported,
+	/// and the count held back is surfaced so a narrowed run never reads like
+	/// a complete one.
+	/// </summary>
+	public TestFilter Filter { get; init; } = TestFilter.All;
+
+	/// <summary>
 	/// Whether the host can actually provide a freshly generated world for
 	/// tests marked <c>[FreshWorld]</c>.
 	/// <para/>

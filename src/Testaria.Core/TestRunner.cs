@@ -54,12 +54,20 @@ public sealed class TestRunner
 	{
 		ArgumentNullException.ThrowIfNull(tests);
 
-		queue = [.. tests];
 		this.options = options ?? new TestRunnerOptions();
+
+		queue = [.. tests.Where(this.options.Filter.Matches)];
+		FilteredOut = tests.Count - queue.Count;
 	}
 
 	/// <summary>Where the runner has got to.</summary>
 	public RunnerState State { get; private set; } = RunnerState.Idle;
+
+	/// <summary>
+	/// How many discovered tests the filter held back. Reported rather than
+	/// silently dropped, so a narrowed run is never mistaken for a full one.
+	/// </summary>
+	public int FilteredOut { get; }
 
 	/// <summary>The test currently executing, if any.</summary>
 	public TestCase? Current => current;

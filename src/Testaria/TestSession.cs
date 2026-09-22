@@ -23,6 +23,12 @@ public sealed class TestSession
 		Discovered = discovered;
 	}
 
+	/// <summary>How many discovered tests the filter held back.</summary>
+	public int FilteredOut => runner.FilteredOut;
+
+	/// <summary>How many tests this run will actually attempt.</summary>
+	public int Selected => Discovered - runner.FilteredOut;
+
 	/// <summary>Name recorded on the run and used for the results file.</summary>
 	public string RunName { get; }
 
@@ -53,7 +59,8 @@ public sealed class TestSession
 	/// Highest tier this environment can honour. A world must be loaded for
 	/// anything above <see cref="TestTier.Loaded"/>.
 	/// </param>
-	public static TestSession Create(IEnumerable<Assembly> assemblies, string runName, TestTier maxTier)
+	/// <param name="filter">Narrows the run; null or <see cref="TestFilter.All"/> runs everything.</param>
+	public static TestSession Create(IEnumerable<Assembly> assemblies, string runName, TestTier maxTier, TestFilter? filter = null)
 	{
 		ArgumentNullException.ThrowIfNull(assemblies);
 
@@ -83,6 +90,7 @@ public sealed class TestSession
 			RunName = runName,
 			MaxTier = maxTier,
 			Arena = arena,
+			Filter = filter ?? TestFilter.All,
 			CreateContext = lease => new TestContext(lease),
 		});
 
@@ -106,7 +114,9 @@ public sealed class TestSession
 	{
 		TestRunResult result = Result;
 
-		return $"{result.Passed} passed, {result.Failures} failed, {result.Errors} errored, {result.Skipped} skipped " +
+		string held = FilteredOut > 0 ? $", {FilteredOut} filtered out" : string.Empty;
+
+		return $"{result.Passed} passed, {result.Failures} failed, {result.Errors} errored, {result.Skipped} skipped{held} " +
 			$"in {result.Duration.TotalSeconds:0.00}s";
 	}
 

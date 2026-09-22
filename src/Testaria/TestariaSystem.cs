@@ -30,7 +30,7 @@ public sealed class TestariaSystem : ModSystem
 	/// Starts a run over every loaded mod's own assembly.
 	/// </summary>
 	/// <returns>The session, or null if one is already running.</returns>
-	public static TestSession? Start(string runName)
+	public static TestSession? Start(string runName, TestFilter? filter = null)
 	{
 		if (IsRunning)
 			return null;
@@ -45,7 +45,7 @@ public sealed class TestariaSystem : ModSystem
 		// reports them as skipped rather than running them somewhere undefined.
 		TestTier maxTier = Main.maxTilesX > 0 ? TestTier.World : TestTier.Loaded;
 
-		session = TestSession.Create(assemblies, runName, maxTier);
+		session = TestSession.Create(assemblies, runName, maxTier, filter);
 
 		return session;
 	}

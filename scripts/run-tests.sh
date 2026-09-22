@@ -15,6 +15,8 @@ RUN_NAME="${RUN_NAME:-TestariaSelfTest}"
 ENABLED="${ENABLED:-Testaria TestariaSelfTest}"
 TIMEOUT="${TIMEOUT:-600}"
 SEED="${SEED:-42}"
+# FILTER narrows the run to matching tests; see TestFilter for the syntax.
+FILTER="${FILTER:-}"
 # BLANK=1 replaces world generation with Testaria's blank substrate.
 BLANK_ARG=""
 [ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
@@ -89,6 +91,7 @@ export SDL_AUDIODRIVER=dummy
 echo "seed:     $SEED${BLANK_ARG:+  (blank world)}"
 echo "scratch:  $SCRATCH"
 echo "mods:     $ENABLED"
+[ -n "$FILTER" ] && echo "filter:   $FILTER"
 
 # Read-write, not write-only. Opening a FIFO for writing alone blocks until a
 # reader appears, and the reader here is the server launched below, so a plain
@@ -127,7 +130,7 @@ done
 
 echo "world ready after ${SECONDS}s"
 echo "server up, starting run"
-echo "testaria run $RUN_NAME" >&3
+echo "testaria run $RUN_NAME $FILTER" >&3
 
 RESULTS="$SCRATCH/Testaria/$RUN_NAME.xml"
 until [ -f "$RESULTS" ]; do
