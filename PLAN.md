@@ -220,6 +220,18 @@ That generalises beyond this one case. Anything transient, and an intruder about
 
 Escapes are recorded but deliberately not treated as contamination: an entity leaving its box may be exactly what a test is observing, and dragging it back would change the behaviour under test.
 
+#### Parallelism is worth building
+
+This design deferred pool budgeting and parallel boxes until there was a real corpus rather than a guess to argue about. There is one now, and it says the two suites have opposite shapes.
+
+The ExampleMod suite runs **924 tests in 0.41 seconds**, about 0.4 ms each, with the slowest single test at 0.22 s because it spans fifteen ticks. That corpus is about 99% Tier 1 tests, which never tick at all. For a suite of that shape wall clock is world generation and server startup, roughly six seconds, against which test execution is a rounding error, and concurrency buys nothing.
+
+A gameplay test is the other shape, and its cost is its tick count. The loop runs at a fixed 60 Hz (section 1), so a tick is about 16.7 ms of wall clock and a thousand-tick boss fight is seventeen seconds. Ten of them one after another is nearly three minutes.
+
+**Tests in separate boxes share one tick stream**, which is what makes parallelism pay: those ten cost about 167 seconds sequentially and about 17 concurrently. That is the argument for mechanisms 3 and 4, pool budgeting and declared global effects. They exist to make concurrent boxes safe, and for a tick-bound suite concurrency is the difference between a usable loop and an unusable one.
+
+Mechanisms 1 and 2, the gutter and the warden, stand on their own merits under sequential execution, and are built.
+
 #### Status of the four mechanisms
 
 All four stay in the plan as the working design, but they are **hypotheses to be evaluated against real test surface, not settled commitments**. Their relative value is not knowable until there is a corpus of actual tests to observe: it is entirely possible that the warden subsumes most of what the gutter is for, that pool budgeting turns out to be the binding constraint long before geometry does, or that some fifth mechanism nobody has thought of is the one that matters. Build them, instrument them, and let the first real suite adjudicate.
@@ -519,6 +531,18 @@ Three decisions worth keeping.
 **An empty source reports a skip, not an error and not silence.** A source can legitimately be empty, when the content it enumerates is not installed. Reporting nothing would leave the suite looking complete; reporting a failure would blame nobody in particular.
 
 One case the error path has to handle: **a `string` is `IEnumerable`**, so an unguarded source check turns a string into one case per letter instead of reporting it.
+
+### 8.3d A player, and the tests it makes possible
+
+A great deal of Terraria does nothing without a player: NPCs target a player, biomes are measured from one, spawning and despawning are decided by distance to one. Without one, an entire category of test is unwritable, arguably a larger gap than Tier 3.
+
+`TestContext.SpawnPlayer` fabricates one rather than connecting a client. That is exactly what the game does for a joining client, `Main.player[i] = new Player()`, and vanilla keeps a dummy of its own for scene metrics, so the shape is unremarkable. Nothing is networked, drawn, or given input. Slot 255 is avoided, since `Main.myPlayer` is 255 on a server and taking it would make the server think it is its own client.
+
+Players are replaced rather than merely deactivated at teardown, so no state survives into a slot's next occupant, and a test asserts that no player outlives the test that made it.
+
+**Natural spawning is suppressed alongside it.** It is driven entirely by proximity to a player, which is why it does not happen on a server with none; the moment a test puts a player in its box, the game starts populating the area around it, and those arrivals are contamination by any definition. `GlobalNPC.EditSpawnRate` is the sanctioned lever, and is preferable to `NPC.noSpawnCycle`, which is private and resets itself after a single call. Better not to create the intruders than to detect them.
+
+A test spawns a player and a zombie and asserts the zombie targets the player, which has no subject at all without one.
 
 ### 8.4 Complex mods are a load test, not a graduation
 
