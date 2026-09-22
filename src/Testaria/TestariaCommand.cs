@@ -28,7 +28,7 @@ public sealed class TestariaCommand : ModCommand
 	public override bool IsCaseSensitive => true;
 
 	/// <inheritdoc />
-	public override string Usage => "/testaria run [name]";
+	public override string Usage => "/testaria run [name] | /testaria status";
 
 	/// <inheritdoc />
 	public override string Description => "Runs the discovered Testaria tests and writes a JUnit report.";
@@ -36,6 +36,13 @@ public sealed class TestariaCommand : ModCommand
 	/// <inheritdoc />
 	public override void Action(CommandCaller caller, string input, string[] args)
 	{
+		if (args.Length > 0 && args[0].Equals("status", StringComparison.OrdinalIgnoreCase)) {
+			foreach (string line in TestariaSystem.Diagnose().Split('\n'))
+				caller.Reply(line, Color.White);
+
+			return;
+		}
+
 		if (args.Length == 0 || !args[0].Equals("run", StringComparison.OrdinalIgnoreCase)) {
 			caller.Reply(Usage, Color.Yellow);
 			return;

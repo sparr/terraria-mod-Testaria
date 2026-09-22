@@ -365,41 +365,23 @@ Deliberately Tier 1 rather than Tier 0, since a Tier 0 suite already works with 
 3. The harness: provision a scratch save directory via `-tmlsavedirectory`, drop in the `.tmod` files, write `enabled.json`, launch `-server` with `-autocreate`, pipe `testaria run`, map the result to an exit code.
 4. Run it green.
 
-### 8.1a Blocker found on the first run: an empty server does not tick
+### 8.1a Making an empty dedicated server tick
 
-Measured, not inferred. A headless `-server` loads both mods, accepts console commands, and reports `Testaria running 5 test(s)`, but the simulation never advances: the `time` command returns **8:15 AM twice, eight seconds apart**, and the process accrues about one second of CPU per twenty of wall clock. With no client connected the world update loop does not run, so `ModSystem.PostUpdateEverything` never fires and the runner is never stepped. The console stays responsive because it is a separate thread.
+An empty `-server` loads mods and accepts console commands but never simulates: measured, the world clock read the same time eight seconds apart and the process accrued about a second of CPU per twenty of wall clock. It is headless, but it is also paused, so a harness has to make it tick.
 
-So the server is headless and also *paused*: the tick loop is there and nothing drives it.
+The chain:
 
-Options, in rough order of appeal:
+- `Main.DedServ_PostModLoad` holds the server loop, `IL_0DFF` to `IL_0EAC`. At `IL_0E29` it reads `Netplay.HasFullyConnectedClients`. True calls `Game.Update` and branches past everything else; false invokes `Main.OnTickForThirdPartySoftwareOnly`, then `Netplay.UpdateInMainThread`.
+- `Main.Update` calls `DoUpdate`, which reaches `DoUpdateInWorld` only if `Main.ShouldUpdateEntities()` (needs `_worldPreparationState == Ready` and `!WorldGen.generatingWorld`) and `Terraria.Testing.WorldUpdateStepper.ShouldUpdateWorld()` (true unless paused). `DoUpdateInWorld_Inner` then calls `SystemLoader.PostUpdateEverything`.
+- Both of those secondary gates measured open on a server, so `HasFullyConnectedClients` is the only one that matters.
 
-1. **Force the loop while a run is active.** tModLoader gives mods detours through `MonoModHooks`, so the server's idle path could be patched to keep updating. Cheapest if it works, and it keeps the harness a single process. The risk is bootstrapping: whatever installs the detour has to run, and mod loading does complete, so a `Mod.Load` detour should be reachable.
-2. **Connect a headless client.** Authentic and certainly works, at the cost of a second process and the client's graphics stack, which is why the harness already provisions an Xvfb display.
-3. **Run single player under Xvfb instead of a server.** The client always ticks. Costs graphics and needs world loading automated.
-4. **Drive `Main.Update` from the console command thread.** Rejected: almost nothing in Terraria is safe to touch off the update thread.
+**The flag has to be held open from the thread that writes it.** Its sole writer, `Netplay.UpdateConnectedClients`, runs from `Netplay.ServerLoop` on a **separate network thread**, continuously. Setting it from the main thread is a race against that thread, and the main thread loses essentially always: winning once buys exactly one tick, which is why the idle branch's `Netplay.UpdateInMainThread` is the wrong place to stand even though it fires every iteration.
 
-Option 1 first, falling back to 2.
+**So the hook goes on the writer, on the writer's own thread.** A `MonoModHooks` detour on the private `Netplay.UpdateConnectedClients`, setting the flag after the original runs, holds it open. The log confirms the placement: the hook reports from `Server Loop Thread` rather than `Main Thread`.
 
-### 8.1b Progress on the tick blocker: the gate is necessary but not sufficient
+Scoped to dedicated servers, and only while a run is in progress, so a normal server is untouched.
 
-The gate was found by disassembling the shipped assembly with the Mono.Cecil that tModLoader itself ships. `Main.DedServ_PostModLoad` holds the server loop, running `IL_0DFF` to `IL_0EAC`, and at `IL_0E29` it reads `Netplay.HasFullyConnectedClients`:
-
-- **true** → `DetailedFPS.StartNextFrame()`, `Game.Update(gameTime)`, then branch past the rest.
-- **false** → invoke `Main.OnTickForThirdPartySoftwareOnly` if set, then `Netplay.UpdateInMainThread()`, then the save check.
-
-Both paths then sleep and loop. The field is `public static` and its only writer is the private `Netplay.UpdateConnectedClients`, reached from the public `Netplay.UpdateInMainThread` — which the idle path calls every iteration, and which the ticking path skips. That makes `UpdateInMainThread` the one place a mod can set the flag so the value survives into the next iteration's check.
-
-A `MonoModHooks` detour on it works, confirmed in the log (`Hook Terraria.Netplay::UpdateInMainThread() added by Testaria`, then `forcing server ticks after 1 idle iterations`). The single firing is itself evidence the mechanism is right: once the flag is set, the loop takes the `Update` branch, which skips `UpdateInMainThread`, so the hook is never reached again and the flag is never cleared.
-
-**And yet the world still does not advance.** After forcing, the clock still reads the same time, and the process still accrues almost no CPU. So `HasFullyConnectedClients` gates the call to `Game.Update`, but something *inside* the update path gates the simulation as well.
-
-Next diagnostics, in order:
-
-1. Log a counter from `ModSystem.PostUpdateEverything` to establish whether `Update` is reached at all, which separates "the loop is not calling Update" from "Update runs but does nothing".
-2. If `Update` runs, check `Main.gameMenu`: a server that has not fully entered the world would take the menu path and never simulate.
-3. Note that Terraria is known to freeze the *clock* on an empty server independently of the update loop, so the clock is a poor sole indicator. A tick counter is the reliable one.
-
-`Main.OnTickForThirdPartySoftwareOnly` is worth remembering as an idle-loop callback that needs no detour, but it is private, so it needs reflection and is not obviously better than the hook.
+**Result: all five self-tests pass in a live headless server**, with boxes leased at x=8, 72 and 136 in the Cavern band. That spacing is 64 tiles, exactly the 48-tile width class plus two 8-tile gutters, which is the arena's geometry confirmed against a real world rather than a unit test.
 
 ### 8.2 Then make it go red, on purpose
 

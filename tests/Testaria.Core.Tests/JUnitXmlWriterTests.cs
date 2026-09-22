@@ -197,6 +197,31 @@ public class JUnitXmlWriterTests
 	}
 
 	[Fact]
+	public void The_declared_encoding_matches_the_bytes_callers_actually_write()
+	{
+		// Found in a live run: a StringWriter reports UTF-16, so the document
+		// was stamped encoding="utf-16" while every caller wrote it as UTF-8.
+		// Python's ElementTree rejects the mismatch outright, which turned a
+		// perfectly good green run into an unreadable report.
+		string xml = JUnitXmlWriter.ToXml(TestRunResult.FromResults("run", [TestResult.Pass("A", "x")]), FixedStamp);
+
+		XAssert.Contains("encoding=\"utf-8\"", xml);
+		XAssert.DoesNotContain("utf-16", xml);
+	}
+
+	[Fact]
+	public void Round_trips_through_utf8_bytes_as_written_to_disk()
+	{
+		string xml = JUnitXmlWriter.ToXml(TestRunResult.FromResults("run", [TestResult.Pass("A", "x")]), FixedStamp);
+		byte[] bytes = System.Text.Encoding.UTF8.GetBytes(xml);
+
+		using var stream = new MemoryStream(bytes);
+		XDocument parsed = XDocument.Load(stream);
+
+		XAssert.Equal("testsuites", parsed.Root!.Name.LocalName);
+	}
+
+	[Fact]
 	public void Output_parses_under_a_strict_conformance_reader()
 	{
 		string xml = JUnitXmlWriter.ToXml(TestRunResult.FromResults("run", [

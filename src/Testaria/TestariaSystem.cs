@@ -60,10 +60,13 @@ public sealed class TestariaSystem : ModSystem
 	/// the world clock reads the same time eight seconds apart.
 	/// <para/>
 	/// The field's only writer is the private <c>Netplay.UpdateConnectedClients</c>,
-	/// reached from the public <c>Netplay.UpdateInMainThread</c>, which the
-	/// loop calls every iteration. Setting the flag after that runs is
-	/// therefore the one point where the value survives to the next
-	/// iteration's check.
+	/// which is called from <c>Netplay.ServerLoop</c> on the server's own
+	/// network thread, continuously and independently of the main loop. It is
+	/// not reached from <c>Netplay.UpdateInMainThread</c>, which only pumps
+	/// incoming bytes, and which the main loop calls solely on the branch it
+	/// takes when nobody is connected. Setting the flag immediately after that
+	/// writer runs, on that writer's own thread, is therefore the one point
+	/// where the value survives to the main loop's next check.
 	/// <para/>
 	/// Scoped as tightly as possible: dedicated server only, and only while a
 	/// run is actually in progress, so a normal server is never affected.
@@ -74,10 +77,19 @@ public sealed class TestariaSystem : ModSystem
 			return;
 
 		try {
+			// Hook the sole writer of the flag, not the reader's neighbour.
+			//
+			// Netplay.UpdateConnectedClients is the only thing that assigns
+			// HasFullyConnectedClients, and it runs on the network thread from
+			// Netplay.ServerLoop, continuously. Setting the flag anywhere on
+			// the main thread loses a race against it: measured, the world
+			// ticked exactly once in thousands of attempts. Setting it
+			// immediately after that writer, on that writer's own thread, is
+			// the only placement that holds.
 			MethodInfo update = typeof(Netplay).GetMethod(
-				nameof(Netplay.UpdateInMainThread),
-				BindingFlags.Public | BindingFlags.Static)
-				?? throw new InvalidOperationException("Netplay.UpdateInMainThread not found.");
+				"UpdateConnectedClients",
+				BindingFlags.NonPublic | BindingFlags.Static)
+				?? throw new InvalidOperationException("Netplay.UpdateConnectedClients not found; the server tick workaround needs updating for this tModLoader version.");
 
 			MonoModHooks.Add(update, ForceTickWhileRunning);
 			Mod.Logger.Info("Testaria: server tick hook installed.");
@@ -121,11 +133,50 @@ public sealed class TestariaSystem : ModSystem
 	/// <summary>How many times the idle-loop hook has run. Diagnostic only.</summary>
 	public static long HookCalls => hookCalls;
 
+	/// <summary>
+	/// Every gate between the server's loop and a running test, in one line.
+	/// <para/>
+	/// Assembled here rather than guessed at, because the gates are spread
+	/// across Main.Update, Main.DoUpdate, and the server loop, and knowing
+	/// which one is shut is the whole diagnosis.
+	/// </summary>
+	public static string Diagnose()
+	{
+		return string.Join("\n", [
+			$"dedServ={Main.dedServ} netMode={Main.netMode} gameMenu={Main.gameMenu}",
+			$"HasFullyConnectedClients={Netplay.HasFullyConnectedClients} (gates Game.Update in the server loop)",
+			$"ShouldUpdateEntities={Main.instance.ShouldUpdateEntities()} generatingWorld={WorldGen.generatingWorld}",
+			$"WorldUpdateStepper.Paused={Terraria.Testing.WorldUpdateStepper.Paused} (gates DoUpdateInWorld)",
+			$"maxTilesX={Main.maxTilesX} worldSurface={(int)Main.worldSurface}",
+			$"idle-hook calls={hookCalls}  PostUpdateEverything ticks={Ticks}",
+			$"session={(session is null ? "none" : session.IsFinished ? "finished" : "running")}",
+		]);
+	}
+
+	/// <summary>
+	/// How many times the game's update loop has reached us. The decisive
+	/// diagnostic for whether a dedicated server is simulating at all.
+	/// </summary>
+	public static long Ticks { get; private set; }
+
 	/// <inheritdoc />
 	public override void PostUpdateEverything()
 	{
+		Ticks++;
+
 		if (session is null || session.IsFinished)
 			return;
+
+		// Hold the gate open from inside the update itself.
+		//
+		// The server loop only calls Netplay.UpdateInMainThread on the branch
+		// it takes when no clients are connected, and branches past it when it
+		// does update. So once the idle hook opens the gate, the idle hook is
+		// never reached again, and anything inside Update that clears the flag
+		// would stop the world after exactly one tick. Measured: ticks stuck
+		// at 1 while the idle hook kept firing.
+		if (Main.dedServ)
+			Netplay.HasFullyConnectedClients = true;
 
 		if (!session.Step())
 			Report(session);

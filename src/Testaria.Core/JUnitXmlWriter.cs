@@ -29,12 +29,17 @@ public static class JUnitXmlWriter
 			Indent = true,
 			IndentChars = "  ",
 			Encoding = Encoding.UTF8,
-			// The caller gets a string, so declaring an encoding would be a lie
-			// that trips up consumers writing it back out as UTF-8 bytes.
 			OmitXmlDeclaration = false,
 		};
 
-		using (XmlWriter writer = XmlWriter.Create(output, settings))
+		// Through a Utf8StringWriter, not the StringBuilder directly. A
+		// StringWriter reports UTF-16, being a .NET string, so XmlWriter would
+		// stamp encoding="utf-16" on a document that every caller then writes
+		// out as UTF-8 bytes. Strict parsers reject the mismatch outright:
+		// Python's ElementTree fails with "encoding specified in XML
+		// declaration is incorrect".
+		using (var text = new Utf8StringWriter(output))
+		using (XmlWriter writer = XmlWriter.Create(text, settings))
 			Write(writer, run, timestamp ?? DateTimeOffset.Now);
 
 		return output.ToString();
@@ -181,6 +186,15 @@ public static class JUnitXmlWriter
 	/// XML 1.0 legal characters, excluding the surrogate range, which is
 	/// handled as pairs by the callers above.
 	/// </summary>
+	/// <summary>
+	/// A <see cref="StringWriter"/> that claims UTF-8, so the XML declaration
+	/// matches the bytes the document is eventually written as.
+	/// </summary>
+	private sealed class Utf8StringWriter(StringBuilder builder) : StringWriter(builder)
+	{
+		public override Encoding Encoding => Encoding.UTF8;
+	}
+
 	private static bool IsLegalXmlChar(char c)
 		=> c is '\t' or '\n' or '\r'
 			|| (c >= '\u0020' && c <= '\uD7FF')
