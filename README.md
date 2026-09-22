@@ -51,7 +51,6 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
 | `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
 | `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
-| `BoxWatch`, `IContaminationAware` | Notices a test's own entities leaving its box, and anything else arriving in it |
 | `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
 | `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
@@ -92,6 +91,52 @@ public void Every_item_has_a_display_name(string name) { ... }
 `[CaseSource]` is the reason this exists. Cases that only appear once the game has loaded, every item a mod registers, every recipe it adds, cannot be written out by hand, and discovery runs in the game for every tier above zero. The ExampleMod suite goes from 39 tests to **924** that way.
 
 They are `Case` and `CaseSource` rather than xUnit's `InlineData` and `MemberData` because tier 0 projects use xUnit and `Testaria.Core` together by design, and same-named types in both would make `using Xunit; using Testaria;` ambiguous.
+
+## Waiting, and what it costs
+
+A tier 2 test body is a coroutine, driven one step per game tick. It yields a `Wait` to say where it may be suspended:
+
+```csharp
+[GameTest(Band = Band.Cavern, Timeout = 600)]
+public IEnumerator A_slime_falls(ITestContext ctx)
+{
+    NPC slime = ((TestContext)ctx).SpawnNPC(NPCID.BlueSlime, 8, 2);
+    float start = slime.position.Y;
+
+    yield return Wait.Until(() => slime.velocity.Y == 0, "the slime lands");
+
+    Assert.True(slime.position.Y > start, "it should have fallen");
+}
+```
+
+A tick is not free. The dedicated server paces itself to real time at 60 Hz, so a tick is **16.7 ms of wall clock** and a thousand-tick test takes **16.7 seconds** no matter how fast the machine is. That makes the choice between `Wait.Until` and `Wait.Seconds` a performance decision rather than a matter of taste:
+
+- `Wait.Until(predicate, "what you are waiting for")` finishes on the first tick the thing has happened. If it happens at tick 10, it costs ten ticks.
+- `Wait.Seconds(3)` costs 180 ticks, three seconds, every run, whether the thing happened at tick 10 or not at all.
+
+A suite of a hundred tests that each sleep a gratuitous extra second is an extra minute and a half on every run. Prefer the predicate, and reach for a fixed delay only when the elapsed time is itself the thing under test.
+
+The description is worth supplying. It is what a timeout message names, and
+
+```
+Test exceeded its budget of 600 ticks while blocked on Wait.Until(the slime lands).
+```
+
+is a diagnosis, where `Wait.Until(...)` is a shrug.
+
+`Timeout` is a ceiling, not a cost: a test that finishes at tick 10 with `Timeout = 600` costs ten ticks. Set it high enough that a slow machine does not fail spuriously.
+
+## Escapes
+
+An entity of a test's own that leaves its box is recorded, not punished. Leaving may be exactly what the test is watching, and dragging it back would change the behaviour under test, so an escape never fails anything. It does appear in the report, as `<system-out>` on that test's `<testcase>`:
+
+```xml
+<testcase name="A_slime_falls" classname="MyModTests.SlimeTests">
+  <system-out>NPC 3 left the box at tick 40</system-out>
+</testcase>
+```
+
+That note is usually the explanation for a neighbouring box behaving oddly a few tests later, which is otherwise a very hard thing to work out. Something that was never the test's to begin with is a different matter: that is contamination, and it errors the test, because a box someone else was in cannot honestly be said to have tested anything.
 
 ## Running it
 

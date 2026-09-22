@@ -37,6 +37,12 @@ public sealed record TestResult
 	public string? StackTrace { get; init; }
 
 	/// <summary>
+	/// Anything the test had to say that does not change its verdict, written
+	/// to the report's <c>system-out</c>.
+	/// </summary>
+	public string? Output { get; init; }
+
+	/// <summary>
 	/// Where in the world the test ran, as "x,y,width,height" in tile
 	/// coordinates. Null for tests that used no box. Present so that a failure
 	/// report can tell an author where to fly to look at the wreckage.

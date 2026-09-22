@@ -166,4 +166,48 @@ public class AssertTests
 	}
 
 	private sealed class StringBuilder_Stub;
+
+	[Fact]
+	public void Contains_finds_a_substring()
+		=> Assert.Contains("left the box", "NPC 3 left the box at tick 40");
+
+	[Fact]
+	public void Contains_rejects_a_missing_substring()
+		=> XAssert.Throws<AssertionException>(() => Assert.Contains("wandered", "NPC 3 stayed put"));
+
+	[Fact]
+	public void Contains_rejects_a_null_string()
+		=> XAssert.Throws<AssertionException>(() => Assert.Contains("anything", (string?)null));
+
+	[Fact]
+	public void Contains_on_strings_means_substring_not_character()
+	{
+		// The generic sequence overload would read "abc" as three characters
+		// and make this pass for the wrong reason. It has to fail.
+		XAssert.Throws<AssertionException>(() => Assert.Contains("ac", "abc"));
+	}
+
+	[Fact]
+	public void Contains_is_case_sensitive()
+		=> XAssert.Throws<AssertionException>(() => Assert.Contains("Box", "left the box"));
+
+	[Fact]
+	public void The_failure_message_shows_both_strings()
+	{
+		AssertionException ex = XAssert.Throws<AssertionException>(() => Assert.Contains("wandered", "stayed put"));
+
+		XAssert.Contains("wandered", ex.Message);
+		XAssert.Contains("stayed put", ex.Message);
+	}
+
+	[Fact]
+	public void DoesNotContain_accepts_an_absent_substring()
+	{
+		Assert.DoesNotContain("wandered", "NPC 3 stayed put");
+		Assert.DoesNotContain("anything", (string?)null);
+	}
+
+	[Fact]
+	public void DoesNotContain_rejects_a_present_substring()
+		=> XAssert.Throws<AssertionException>(() => Assert.DoesNotContain("left", "NPC 3 left the box"));
 }

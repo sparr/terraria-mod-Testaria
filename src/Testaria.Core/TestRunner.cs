@@ -175,6 +175,14 @@ public sealed class TestRunner
 			}
 		}
 
+		// Eagerly, and not just when the test declares the parameter. A boxed
+		// test that never asks for its context still occupies a box, and the
+		// watching that catches escapes and contamination lives on the context.
+		// Creating it only on request would silently exempt those tests from
+		// both.
+		if (lease is not null && options.CreateContext is not null)
+			context = options.CreateContext(lease);
+
 		object? instance;
 		object? body;
 
@@ -215,7 +223,8 @@ public sealed class TestRunner
 		if (options.CreateContext is null)
 			throw new InvalidOperationException("This test asks for an ITestContext but the runner has no CreateContext configured.");
 
-		context = options.CreateContext(lease);
+		// Already made in Begin for a boxed test; a boxless one makes it here.
+		context ??= options.CreateContext(lease);
 
 		object?[] arguments = new object?[test.Arguments.Count + 1];
 		arguments[0] = context;
@@ -257,12 +266,17 @@ public sealed class TestRunner
 		TestCase test = current!;
 		TimeSpan duration = options.TimeProvider.GetElapsedTime(startedAt);
 
+		string? notes = context is ITestNotes noted && noted.Notes.Count > 0
+			? string.Join("\n", noted.Notes)
+			: null;
+
 		results.Add(new TestResult {
 			ClassName = test.ClassName,
 			Name = test.Name,
 			Outcome = outcome,
 			Message = message,
 			StackTrace = stackTrace,
+			Output = notes,
 			Duration = duration,
 			Ticks = ticks,
 			Box = lease?.Interior.ToString(),

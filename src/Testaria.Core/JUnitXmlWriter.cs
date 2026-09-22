@@ -113,6 +113,14 @@ public static class JUnitXmlWriter
 				break;
 		}
 
+		// Written last so that a failure element comes first, which is where a
+		// reader looks, and notes sit underneath as context rather than noise.
+		if (result.Output is not null) {
+			writer.WriteStartElement("system-out");
+			writer.WriteString(Sanitize(result.Output));
+			writer.WriteEndElement();
+		}
+
 		writer.WriteEndElement();
 	}
 

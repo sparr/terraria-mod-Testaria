@@ -60,6 +60,22 @@ public static class BoxWatch
 }
 
 /// <summary>
+/// A context with something to say that does not change the verdict.
+/// <para/>
+/// Collected by the runner and written to the JUnit <c>system-out</c> of the
+/// test it belongs to, which is where CI systems already look for per-test
+/// output. An entity leaving its box is the motivating case: not the test's
+/// fault and not grounds for failing it, but the explanation for whatever odd
+/// thing happens to a neighbour afterwards, and useless unless it is recorded
+/// somewhere a person will see.
+/// </summary>
+public interface ITestNotes : ITestContext
+{
+	/// <summary>Things worth recording, in the order noticed.</summary>
+	IReadOnlyList<string> Notes { get; }
+}
+
+/// <summary>
 /// A context that notices when its box was not its own.
 /// <para/>
 /// Checked by the runner once a test finishes. Contamination is reported as an

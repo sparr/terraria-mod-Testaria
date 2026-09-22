@@ -118,6 +118,28 @@ public static class Assert
 		}
 	}
 
+	/// <summary>
+	/// Asserts that a string contains a substring.
+	/// <para/>
+	/// A string is a sequence of characters, so without this overload
+	/// <c>Assert.Contains("left the box", note)</c> would not compile at all,
+	/// and the nearest thing that did compile would test one character. The
+	/// exact-match overload wins resolution over the generic one, which is
+	/// what makes the obvious call mean the obvious thing.
+	/// </summary>
+	public static void Contains(string expected, string? actual, string? message = null)
+	{
+		if (actual is null || !actual.Contains(expected, StringComparison.Ordinal))
+			throw new AssertionException(message ?? $"Assert.Contains() Failure\nNot found: {Format(expected)}\nIn string: {Format(actual)}");
+	}
+
+	/// <summary>Asserts that a string does not contain a substring.</summary>
+	public static void DoesNotContain(string notExpected, string? actual, string? message = null)
+	{
+		if (actual is not null && actual.Contains(notExpected, StringComparison.Ordinal))
+			throw new AssertionException(message ?? $"Assert.DoesNotContain() Failure\nFound:     {Format(notExpected)}\nIn string: {Format(actual)}");
+	}
+
 	/// <summary>Asserts that a sequence has no elements.</summary>
 	public static void Empty(IEnumerable collection, string? message = null)
 	{

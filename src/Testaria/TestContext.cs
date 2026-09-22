@@ -11,7 +11,7 @@ namespace Testaria;
 /// where in the world the arena actually placed it, and cannot accidentally
 /// reach outside by naming an absolute coordinate.
 /// </summary>
-public sealed class TestContext : ITickingContext, IContaminationAware, IDisposable
+public sealed class TestContext : ITickingContext, IContaminationAware, ITestNotes, IDisposable
 {
 	private readonly List<SpawnedNpc> spawned = [];
 	private readonly HashSet<int> ownedNpcs = [];
@@ -165,6 +165,15 @@ public sealed class TestContext : ITickingContext, IContaminationAware, IDisposa
 	/// the behaviour under test.
 	/// </summary>
 	public IReadOnlyList<string> Escapes => escapes;
+
+	/// <summary>
+	/// The escapes, reported on the test's result as output rather than as a
+	/// verdict. An escape is not grounds for failing the test it came from,
+	/// but it is usually the explanation for whatever odd thing happens to a
+	/// neighbouring box afterwards, so it has to be written down somewhere a
+	/// person will see.
+	/// </summary>
+	IReadOnlyList<string> ITestNotes.Notes => escapes;
 
 	/// <inheritdoc />
 	public void Tick() => ElapsedTicks++;

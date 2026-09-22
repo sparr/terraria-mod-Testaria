@@ -72,6 +72,48 @@ public class SpineTests
 }
 
 /// <summary>
+/// An entity of the test's own leaving the box.
+/// <para/>
+/// Not a failure. A test may be observing exactly that, and hauling the
+/// entity back would change the behaviour under test. What the framework owes
+/// is a record, so that a neighbouring box behaving oddly a few tests later
+/// has a visible cause.
+/// </summary>
+public class EscapeTests
+{
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 600)]
+	public IEnumerator An_entity_that_leaves_its_box_is_noticed(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		Assert.Empty(box.Escapes);
+
+		NPC npc = box.SpawnNPC(NPCID.BlueSlime, 4, 4);
+
+		// Straight out of the side, rather than waiting for one to wander: the
+		// test is about the watching, not about slime pathfinding.
+		npc.position.X = (ctx.Bounds.Left - 10) * 16f;
+
+		yield return Wait.Until(() => box.Escapes.Count > 0, "the slime is noticed outside the box");
+
+		Assert.NotEmpty(box.Escapes);
+		Assert.Contains("left the box", box.Escapes[0]);
+	}
+
+	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	public IEnumerator An_entity_that_stays_put_is_not_reported(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		box.SpawnNPC(NPCID.BlueSlime, 4, 4);
+
+		yield return Wait.Ticks(30);
+
+		Assert.Empty(box.Escapes);
+	}
+}
+
+/// <summary>
 /// A test that wants a world nobody else has touched.
 /// <para/>
 /// Kept separate to make the mechanism visible: an ordinary run reports this
