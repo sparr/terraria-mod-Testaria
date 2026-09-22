@@ -121,6 +121,15 @@ public sealed class TestRunner
 				continue;
 			}
 
+			if (test.FreshWorld && !options.SupportsFreshWorld) {
+				// Reported, never quietly run. A [FreshWorld] test turned loose
+				// in whatever world happens to be loaded would pass while
+				// proving nothing.
+				results.Add(TestResult.Skip(test.ClassName, test.Name,
+					"Declares [FreshWorld], which this runner cannot provide. Running it in the current world would report a pass without testing what it asked for."));
+				continue;
+			}
+
 			if (Begin(test))
 				return true;
 		}

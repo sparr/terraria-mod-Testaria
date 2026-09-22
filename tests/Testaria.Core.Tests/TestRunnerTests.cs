@@ -577,3 +577,67 @@ public class RuntimeSkipTests
 		}
 	}
 }
+
+public class FreshWorldTests
+{
+	private static TestRunResult Run(bool supported)
+	{
+		DiscoveryResult all = TestDiscovery.Discover([typeof(Fixtures)]);
+
+		return new TestRunner(all, new TestRunnerOptions {
+			MaxTier = TestTier.World,
+			Arena = new Arena(new WorldGeometry(4200, 1200, 87, 250, 400, 1000)),
+			SupportsFreshWorld = supported,
+		}).RunToCompletion();
+	}
+
+	private static TestResult Only(TestRunResult run) => run.Suites.Single().Results.Single();
+
+	[Fact]
+	public void A_fresh_world_test_is_skipped_when_the_host_cannot_provide_one()
+	{
+		// Running it anyway, in whatever world happens to be loaded, reports a
+		// pass for a world the test never asked for. A declaration the runner
+		// silently ignores is exactly the failure this framework exists to
+		// prevent.
+		Fixtures.Ran = false;
+		TestResult result = Only(Run(supported: false));
+
+		XAssert.Equal(TestOutcome.Skipped, result.Outcome);
+		XAssert.Contains("FreshWorld", result.Message);
+		XAssert.False(Fixtures.Ran, "the body must not run when its declared world was never provided");
+	}
+
+	[Fact]
+	public void The_skip_reason_says_why_rather_than_just_that()
+	{
+		XAssert.Contains("without testing what it asked for", Only(Run(supported: false)).Message);
+	}
+
+	[Fact]
+	public void Being_unable_to_provide_a_fresh_world_does_not_fail_the_run()
+	{
+		// Consistent with a test declaring a tier the environment cannot
+		// honour: reported, visible in the counts, but not a failure.
+		XAssert.True(Run(supported: false).IsSuccess);
+	}
+
+	[Fact]
+	public void A_fresh_world_test_runs_when_the_host_says_it_can_provide_one()
+	{
+		Fixtures.Ran = false;
+		TestResult result = Only(Run(supported: true));
+
+		XAssert.Equal(TestOutcome.Passed, result.Outcome);
+		XAssert.True(Fixtures.Ran);
+	}
+
+	public class Fixtures
+	{
+		public static bool Ran;
+
+		[GameTest(Band = Band.Cavern)]
+		[FreshWorld]
+		public void NeedsAFreshWorld() => Ran = true;
+	}
+}

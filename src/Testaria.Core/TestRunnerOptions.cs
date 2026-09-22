@@ -27,6 +27,17 @@ public sealed record TestRunnerOptions
 	public Arena? Arena { get; init; }
 
 	/// <summary>
+	/// Whether the host can actually provide a freshly generated world for
+	/// tests marked <c>[FreshWorld]</c>.
+	/// <para/>
+	/// False by default, and a test declaring it is then reported as skipped
+	/// rather than run. Running it in whatever world happens to be loaded
+	/// would prove nothing while reporting a pass, which is the exact failure
+	/// this framework exists to prevent.
+	/// </summary>
+	public bool SupportsFreshWorld { get; init; }
+
+	/// <summary>
 	/// Keep the box of a failing test for inspection instead of recycling it,
 	/// so an author can fly out and look at the wreckage.
 	/// </summary>
