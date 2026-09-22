@@ -233,10 +233,11 @@ public class TestRunnerTests
 	}
 
 	[Fact]
-	public void Arena_exhaustion_is_reported_with_a_message_naming_the_likely_cause()
+	public void A_full_arena_says_it_is_full_rather_than_blaming_retention()
 	{
-		// Retained boxes from earlier failures are the usual way a sequential
-		// run runs out of room, so the message says so.
+		// Nothing is retained here: every box is still leased. The arena is
+		// simply full, and the message should say that rather than blaming
+		// wreckage that does not exist.
 		// BoxedTest asks for a 48x32 box in the Cavern, so exhaust exactly that.
 		var arena = new Arena(Small(), new ArenaOptions { WidthClasses = [48], HeightClasses = [32] });
 
@@ -244,8 +245,9 @@ public class TestRunnerTests
 
 		TestResult result = Single(Run(nameof(Fixtures.BoxedTest), Options(arena)));
 
-		XAssert.Equal(TestOutcome.Errored, result.Outcome);
-		XAssert.Contains("retained", result.Message);
+		XAssert.Equal(TestOutcome.Blocked, result.Outcome);
+		XAssert.Contains("too small", result.Message);
+		XAssert.DoesNotContain("retained from earlier failures", result.Message);
 	}
 
 	[Fact]
@@ -328,6 +330,57 @@ public class TestRunnerTests
 		public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
 		public void Advance(TimeSpan by) => now += by.Ticks;
+	}
+
+	[Fact]
+	public void A_test_that_cannot_get_a_box_is_blocked_rather_than_failed()
+	{
+		// Blocked says the test never ran. Failed would blame the subject for
+		// something it was never given a chance to do, and Skipped would imply
+		// somebody chose this.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+
+		while (arena.TryLease(BoxRequest.Banded(Band.Surface, 16, 16)) is BoxLease lease)
+			arena.Release(lease, keepForInspection: true);
+
+		Fixtures.Reset();
+		TestRunResult run = Run(nameof(Fixtures.PassingCoroutine), Options(arena));
+		TestResult result = Single(run);
+
+		XAssert.Equal(TestOutcome.Blocked, result.Outcome);
+		XAssert.False(Fixtures.Ran, "the test body should never have been entered");
+	}
+
+	[Fact]
+	public void A_blocked_test_says_what_is_holding_the_space_and_what_to_do()
+	{
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+
+		while (arena.TryLease(BoxRequest.Banded(Band.Surface, 16, 16)) is BoxLease lease)
+			arena.Release(lease, keepForInspection: true);
+
+		TestResult result = Single(Run(nameof(Fixtures.PassingCoroutine), Options(arena)));
+
+		XAssert.Contains("retained", result.Message);
+		XAssert.Contains("KeepFailedBoxes", result.Message);
+	}
+
+	[Fact]
+	public void A_run_with_a_blocked_test_fails_even_though_nothing_that_ran_failed()
+	{
+		// The point of the whole arrangement: a suite that quietly stopped
+		// running part of itself has not established what it was asked to.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+
+		while (arena.TryLease(BoxRequest.Banded(Band.Surface, 16, 16)) is BoxLease lease)
+			arena.Release(lease, keepForInspection: true);
+
+		TestRunResult run = Run(nameof(Fixtures.PassingCoroutine), Options(arena));
+
+		XAssert.Equal(0, run.Failures);
+		XAssert.Equal(0, run.Errors);
+		XAssert.Equal(1, run.Blocked);
+		XAssert.False(run.IsSuccess);
 	}
 
 	public class Fixtures

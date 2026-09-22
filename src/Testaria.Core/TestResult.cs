@@ -60,6 +60,10 @@ public sealed record TestResult
 	public static TestResult Fail(string className, string name, string message, string? stackTrace = null, TimeSpan duration = default)
 		=> new() { ClassName = className, Name = name, Outcome = TestOutcome.Failed, Message = message, StackTrace = stackTrace, Duration = duration };
 
+	/// <summary>A test the harness could not find room to run.</summary>
+	public static TestResult Block(string className, string name, string reason)
+		=> new() { ClassName = className, Name = name, Outcome = TestOutcome.Blocked, Message = reason };
+
 	/// <summary>Convenience constructor for a skipped result.</summary>
 	public static TestResult Skip(string className, string name, string reason)
 		=> new() { ClassName = className, Name = name, Outcome = TestOutcome.Skipped, Message = reason };

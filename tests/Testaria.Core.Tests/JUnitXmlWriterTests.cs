@@ -233,4 +233,22 @@ public class JUnitXmlWriterTests
 		using var reader = XmlReader.Create(new StringReader(xml), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit });
 		while (reader.Read()) { }
 	}
+
+	[Fact]
+	public void A_blocked_test_is_written_as_an_error_so_ci_agrees_with_the_runner()
+	{
+		// Every CI system treats skipped as harmless. Writing one would make
+		// the report say the run was fine while the runner said it was not.
+		TestRunResult run = TestRunResult.FromResults("run", [
+			TestResult.Block("Suite", "A", "the arena had no box for it"),
+		]);
+
+		XDocument doc = XDocument.Parse(JUnitXmlWriter.ToXml(run, DateTimeOffset.UnixEpoch));
+		XElement error = doc.Descendants("testcase").Single().Element("error")!;
+
+		XAssert.Equal("Testaria.Blocked", error.Attribute("type")!.Value);
+		XAssert.Equal("the arena had no box for it", error.Attribute("message")!.Value);
+		XAssert.Equal("1", doc.Descendants("testsuite").Single().Attribute("errors")!.Value);
+		XAssert.False(run.IsSuccess);
+	}
 }

@@ -138,6 +138,33 @@ An entity of a test's own that leaves its box is recorded, not punished. Leaving
 
 That note is usually the explanation for a neighbouring box behaving oddly a few tests later, which is otherwise a very hard thing to work out. Something that was never the test's to begin with is a different matter: that is contamination, and it errors the test, because a box someone else was in cannot honestly be said to have tested anything.
 
+## Retained boxes, and tests that never ran
+
+A test that fails keeps its box. The tiles it placed, the entities it spawned and whatever state it left behind all stay exactly as they were, so you can load the world and go and look. That is what `KeepFailedBoxes` is for, and it is on by default.
+
+Retained boxes are never recycled. Nothing reuses that ground to keep the run moving, because doing so would destroy the evidence the retention existed for.
+
+The consequence is that a run with many failures can run out of room. When that happens the tests that could not be given a box are reported as **blocked**:
+
+```
+1324 tests: 1290 passed, 9 failed, 0 errored, 25 blocked, 0 skipped
+```
+
+Blocked is its own outcome, distinct from the other three:
+
+| Outcome | Means |
+|---|---|
+| Failed | An assertion did not hold. The subject is wrong. |
+| Errored | The test threw, or could not run properly. The test is wrong. |
+| Skipped | Somebody decided not to run it. |
+| **Blocked** | It never got its turn. Says nothing about the subject either way. |
+
+A blocked test's message names what is holding the space and what to do about it:
+
+> This test never ran: the arena had no box for it. 49 of 49 slots are retained from earlier failures and are never reused, so that the state a failing test left behind survives for you to go and look at. Inspect them, then rerun. Set `KeepFailedBoxes` to false to give that ground up instead.
+
+**A run containing blocked tests fails**, even when everything that actually ran passed. A suite that quietly stopped running part of itself has not established what it was asked to establish, and reporting success would be a lie of omission. In the JUnit report a blocked test is written as an `<error type="Testaria.Blocked">` rather than as `<skipped>`, so that CI reaches the same verdict the runner does; every CI system treats skipped as harmless.
+
 ## Running it
 
 ```

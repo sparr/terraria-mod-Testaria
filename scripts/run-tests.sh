@@ -209,8 +209,18 @@ python3 - "$RESULTS" <<'PY'
 import sys, xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
 tests, fails = int(root.get("tests", 0)), int(root.get("failures", 0))
-errors, skipped = int(root.get("errors", 0)), int(root.get("skipped", 0))
-print(f"{tests} tests: {tests - fails - errors - skipped} passed, {fails} failed, {errors} errored, {skipped} skipped")
+problems, skipped = int(root.get("errors", 0)), int(root.get("skipped", 0))
+# Blocked tests are written as errors so that CI reaches the same verdict the
+# runner does, but they mean something different and are worth counting apart:
+# a blocked test never ran, and says nothing at all about its subject.
+blocked = sum(1 for case in root.iter("testcase")
+              for bad in case.findall("error")
+              if bad.get("type") == "Testaria.Blocked")
+errors = problems - blocked
+summary = f"{tests} tests: {tests - fails - problems - skipped} passed, {fails} failed, {errors} errored"
+if blocked:
+    summary += f", {blocked} blocked"
+print(summary + f", {skipped} skipped")
 for case in root.iter("testcase"):
     for bad in list(case.findall("failure")) + list(case.findall("error")):
         # The whole message, not just its first line. Assertion messages put
@@ -219,5 +229,7 @@ for case in root.iter("testcase"):
         print(f"  {bad.tag.upper()} {case.get('classname')}.{case.get('name')}:")
         for line in (bad.get("message", "") or "(no message)").splitlines():
             print(f"      {line}")
-sys.exit(1 if fails or errors else 0)
+# problems, not errors: a run that could not run part of itself has not
+# established what it was asked to, even if everything that did run passed.
+sys.exit(1 if fails or problems else 0)
 PY

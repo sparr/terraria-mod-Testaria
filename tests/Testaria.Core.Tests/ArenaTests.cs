@@ -385,63 +385,46 @@ public class ArenaTests
 		XAssert.Equal(lease.Interior.ToString(), lease.ToString());
 	}
 
-	/// <summary>A world small enough that the arena runs out of room quickly.</summary>
-	private static WorldGeometry Tiny() => new(120, 160, 10, 20, 60, 140);
-
 	[Fact]
-	public void Retaining_boxes_never_starves_the_arena()
+	public void A_retained_box_is_never_handed_out_again()
 	{
-		// Retention keeps a failure's wreckage for an author to look at, but
-		// not at the cost of every later test. Before this, a suite with more
-		// failures than slots reported "the arena had no room" for everything
-		// after the last slot went: nine real failures became thirty-three.
-		var arena = new Arena(Tiny(), new ArenaOptions { QuarantineTicks = 0 });
-		BoxRequest request = BoxRequest.Banded(Band.Cavern, 16, 16);
-
-		for (int i = 0; i < 500; i++) {
-			BoxLease? lease = arena.TryLease(request);
-
-			XAssert.NotNull(lease);
-			arena.Release(lease!, keepForInspection: true);
-		}
-
-		XAssert.True(arena.ReclaimedRetainedBoxes > 0, "the arena should have had to recycle wreckage by now");
-	}
-
-	[Fact]
-	public void The_oldest_wreckage_is_the_first_to_be_recycled()
-	{
-		// The most recent failure is the one an author is most likely to still
-		// care about, so it is the last to go.
-		var arena = new Arena(Tiny(), new ArenaOptions { QuarantineTicks = 0 });
-		BoxRequest request = BoxRequest.Banded(Band.Cavern, 16, 16);
-		var retainedInOrder = new List<TileRect>();
-
-		for (int i = 0; i < 500; i++) {
-			BoxLease lease = arena.TryLease(request)!;
-
-			if (arena.ReclaimedRetainedBoxes > 0) {
-				XAssert.Equal(retainedInOrder[0], lease.Interior);
-				return;
-			}
-
-			retainedInOrder.Add(lease.Interior);
-			arena.Release(lease, keepForInspection: true);
-		}
-
-		XAssert.Fail("the arena never ran out of room, so nothing was recycled");
-	}
-
-	[Fact]
-	public void Nothing_is_recycled_while_there_is_still_room()
-	{
+		// Somebody kept that wreckage because they mean to go and look at it.
+		// Handing the ground to a later test would destroy the evidence the
+		// retention existed for.
 		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
 		BoxRequest request = BoxRequest.Banded(Band.Cavern, 16, 16);
 
-		BoxLease first = arena.TryLease(request)!;
-		arena.Release(first, keepForInspection: true);
+		BoxLease kept = arena.TryLease(request)!;
+		arena.Release(kept, keepForInspection: true);
 
-		XAssert.NotNull(arena.TryLease(request));
-		XAssert.Equal(0, arena.ReclaimedRetainedBoxes);
+		for (int i = 0; i < 20; i++) {
+			BoxLease? next = arena.TryLease(request);
+
+			XAssert.NotNull(next);
+			XAssert.NotEqual(kept.Interior, next!.Interior);
+		}
+
+		XAssert.Equal(1, arena.Stats.Retained);
+	}
+
+	[Fact]
+	public void An_arena_filled_with_retained_boxes_refuses_rather_than_recycling()
+	{
+		// Refusing is the correct answer. The run reports the tests it could
+		// not run and fails; it does not quietly carry on over the top of the
+		// evidence.
+		var arena = new Arena(Small(), new ArenaOptions { QuarantineTicks = 0 });
+		BoxRequest request = BoxRequest.Banded(Band.Cavern, 16, 16);
+
+		int retained = 0;
+
+		while (arena.TryLease(request) is BoxLease lease) {
+			arena.Release(lease, keepForInspection: true);
+			retained++;
+		}
+
+		XAssert.True(retained > 0, "the arena should have fitted at least one box");
+		XAssert.Equal(retained, arena.Stats.Retained);
+		XAssert.Null(arena.TryLease(request));
 	}
 }

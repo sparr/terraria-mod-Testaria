@@ -168,9 +168,7 @@ public sealed class TestRunner
 			lease = options.Arena.TryLease(request);
 
 			if (lease is null) {
-				Complete(TestOutcome.Errored,
-					"The arena had no room for this test's box. Every slot is leased or retained; " +
-					"retained boxes from earlier failures are the usual cause.");
+				Complete(TestOutcome.Blocked, DescribeExhaustion(options.Arena));
 				return false;
 			}
 		}
@@ -233,6 +231,31 @@ public sealed class TestRunner
 			arguments[i + 1] = test.Arguments[i];
 
 		return arguments;
+	}
+
+	/// <summary>
+	/// Why there was no box, in terms of what the reader can do about it.
+	/// <para/>
+	/// Retained boxes are the usual cause and the message says so plainly,
+	/// because the remedy is a decision only the author can make: go and look
+	/// at the wreckage, or give up the evidence and rerun. Nothing here
+	/// recycles a retained box to keep going, since that would destroy the
+	/// very thing retention was for.
+	/// </summary>
+	private static string DescribeExhaustion(Arena arena)
+	{
+		ArenaStats stats = arena.Stats;
+
+		if (stats.Retained == 0) {
+			return "This test needs a box and the arena has none left: " +
+				$"{stats.Active} of {stats.SlotsCarved} slots are in use and {stats.Quarantined} are cooling down, " +
+				"with no room to carve another. The world is too small for this suite.";
+		}
+
+		return "This test never ran: the arena had no box for it. " +
+			$"{stats.Retained} of {stats.SlotsCarved} slots are retained from earlier failures and are never reused, " +
+			"so that the state a failing test left behind survives for you to go and look at. " +
+			"Inspect them, then rerun. Set KeepFailedBoxes to false to give that ground up instead.";
 	}
 
 	private object? Instantiate(Type type)

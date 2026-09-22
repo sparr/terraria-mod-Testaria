@@ -49,11 +49,11 @@ public static class JUnitXmlWriter
 	{
 		writer.WriteStartDocument();
 		writer.WriteStartElement("testsuites");
-		WriteCounts(writer, run.Name, run.Total, run.Failures, run.Errors, run.Skipped, run.Duration);
+		WriteCounts(writer, run.Name, run.Total, run.Failures, run.Errors + run.Blocked, run.Skipped, run.Duration);
 
 		foreach (TestSuiteResult suite in run.Suites) {
 			writer.WriteStartElement("testsuite");
-			WriteCounts(writer, suite.Name, suite.Total, suite.Failures, suite.Errors, suite.Skipped, suite.Duration);
+			WriteCounts(writer, suite.Name, suite.Total, suite.Failures, suite.Errors + suite.Blocked, suite.Skipped, suite.Duration);
 			writer.WriteAttributeString("timestamp", timestamp.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
 
 			foreach (TestResult result in suite.Results)
@@ -101,6 +101,15 @@ public static class JUnitXmlWriter
 				WriteProblem(writer, "error", result);
 				break;
 
+			// Written as an error, not as skipped. JUnit's "error" means the
+			// test could not be run, which is exactly this, and every CI
+			// system treats skipped as harmless: emitting skipped would make
+			// the report say the run was fine while the runner said it was
+			// not. The type attribute keeps it distinguishable.
+			case TestOutcome.Blocked:
+				WriteProblem(writer, "error", result, "Testaria.Blocked");
+				break;
+
 			case TestOutcome.Skipped:
 				writer.WriteStartElement("skipped");
 				if (result.Message is not null)
@@ -124,11 +133,11 @@ public static class JUnitXmlWriter
 		writer.WriteEndElement();
 	}
 
-	private static void WriteProblem(XmlWriter writer, string element, TestResult result)
+	private static void WriteProblem(XmlWriter writer, string element, TestResult result, string? type = null)
 	{
 		writer.WriteStartElement(element);
 		writer.WriteAttributeString("message", Sanitize(result.Message ?? string.Empty));
-		writer.WriteAttributeString("type", element == "failure" ? nameof(AssertionException) : "Exception");
+		writer.WriteAttributeString("type", type ?? (element == "failure" ? nameof(AssertionException) : "Exception"));
 
 		if (result.StackTrace is not null)
 			writer.WriteString(Sanitize(result.StackTrace));

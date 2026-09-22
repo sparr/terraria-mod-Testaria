@@ -24,6 +24,9 @@ public sealed record TestSuiteResult
 	/// <summary>Number of tests that were not run.</summary>
 	public int Skipped => Results.Count(r => r.Outcome == TestOutcome.Skipped);
 
+	/// <summary>Tests that never got a chance to run.</summary>
+	public int Blocked => Results.Count(r => r.Outcome == TestOutcome.Blocked);
+
 	/// <summary>Number of tests that ran and passed.</summary>
 	public int Passed => Results.Count(r => r.Outcome == TestOutcome.Passed);
 
@@ -54,6 +57,9 @@ public sealed record TestRunResult
 	/// <summary>Total skipped tests across all suites.</summary>
 	public int Skipped => Suites.Sum(s => s.Skipped);
 
+	/// <summary>Tests that never got a chance to run.</summary>
+	public int Blocked => Suites.Sum(s => s.Blocked);
+
 	/// <summary>Total passing tests across all suites.</summary>
 	public int Passed => Suites.Sum(s => s.Passed);
 
@@ -64,7 +70,12 @@ public sealed record TestRunResult
 	/// True when nothing failed and nothing errored. This is what a runner
 	/// should map to its process exit code.
 	/// </summary>
-	public bool IsSuccess => Failures == 0 && Errors == 0;
+	/// <para/>
+	/// Blocked tests count against it. They say nothing about the subject, but
+	/// a run that quietly stopped running part of itself has not established
+	/// what it was asked to establish, and reporting success would be a lie of
+	/// omission.
+	public bool IsSuccess => Failures == 0 && Errors == 0 && Blocked == 0;
 
 	/// <summary>
 	/// Groups a flat sequence of results into suites by
