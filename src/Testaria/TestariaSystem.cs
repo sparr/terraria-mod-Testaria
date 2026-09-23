@@ -39,11 +39,38 @@ public sealed class TestariaSystem : ModSystem
 		// Without a world, Tier 2 and above cannot be honoured, and the runner
 		// reports them as skipped rather than running them somewhere undefined.
 		TestTier maxTier = Main.maxTilesX > 0 ? TestTier.World : TestTier.Loaded;
+
+		ClearStrayNpcs();
+
 		List<Assembly> assemblies = LoadedModAssemblies();
 
 		session = TestSession.Create(assemblies, runName, maxTier, filter);
 
 		return session;
+	}
+
+	/// <summary>
+	/// Empties the world of NPCs before a run begins.
+	/// <para/>
+	/// Natural spawning is suppressed while a run is in progress, but not
+	/// before one starts, and the window between a world loading and the first
+	/// test is long enough for the game to put a critter somewhere. It then
+	/// sits there until a box happens to be leased around it, and the test
+	/// unlucky enough to get that box is failed for contamination it had
+	/// nothing to do with. A worm did exactly that, intermittently.
+	/// <para/>
+	/// Nothing owned by a test can be caught by this, because no test has
+	/// started yet.
+	/// </summary>
+	private static void ClearStrayNpcs()
+	{
+		if (Main.maxTilesX <= 0)
+			return;
+
+		for (int i = 0; i < Main.npc.Length; i++) {
+			if (Main.npc[i].active)
+				Main.npc[i].active = false;
+		}
 	}
 
 	/// <summary>

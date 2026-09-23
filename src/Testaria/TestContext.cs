@@ -58,6 +58,24 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 	public NPC SpawnNPC(int type, int offsetX, int offsetY)
 		=> SpawnNPC(type, At(offsetX, offsetY));
 
+	/// <summary>
+	/// Takes ownership of an NPC that came into existence inside this box.
+	/// <para/>
+	/// Something born here during this test was produced by this test, if only
+	/// because the game reacted to what the test did: breaking ExampleMod's
+	/// natural rubble releases a worm, by design. Treating that as an intruder
+	/// blames the test for its own consequences. Anything that merely wandered
+	/// in was born somewhere else and is still caught.
+	/// </summary>
+	internal void Adopt(NPC npc)
+	{
+		if (!ownedNpcs.Add(npc.whoAmI))
+			return;
+
+		spawned.Add(new SpawnedNpc(npc.whoAmI, npc.type));
+		TestOwnership.OwnNpc(npc.whoAmI);
+	}
+
 	/// <summary>Spawns an NPC at a world position, which must lie inside the box.</summary>
 	public NPC SpawnNPC(int type, WorldPoint at)
 	{
