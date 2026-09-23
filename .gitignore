@@ -16,6 +16,7 @@ compile_temp/
 .vs/
 .vscode/
 .idea/
+Testaria.code-workspace
 
 # OS
 .DS_Store
