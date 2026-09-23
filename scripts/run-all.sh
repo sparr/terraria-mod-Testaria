@@ -15,6 +15,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
+# shellcheck source=scripts/paths.sh
+. "$HERE/paths.sh"
 failures=0
 
 step() {
@@ -46,7 +48,7 @@ fi
 if [ "${SKIP_CALIBRATION:-0}" = "1" ]; then
 	echo
 	echo "=== calibration: skipped by request ==="
-elif [ -f "$HOME/.local/share/Terraria/tModLoader-dev/Mods/ExampleMod.tmod" ]; then
+elif [ -f "$MODS_SRC/ExampleMod.tmod" ]; then
 	step "calibration against ExampleMod" env \
 		ENABLED="Testaria ExampleMod TestariaExampleTest" \
 		RUN_NAME="ExampleModSuite" \

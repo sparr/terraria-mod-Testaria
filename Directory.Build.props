@@ -10,15 +10,20 @@
   </PropertyGroup>
 
   <!--
-    Locate a tModLoader install for the projects that need one. Set TML_PATH to
-    override; otherwise the usual Steam library locations are tried. Projects
-    that reference tModLoader guard on TestariaHasTml so that a checkout
-    without the game still builds, which is what keeps CI green.
+    Locate a tModLoader install for the projects that need one. Set the
+    TML_PATH environment variable to the folder holding tMLMod.targets to say
+    where it is; otherwise only the default Steam library on each platform is
+    probed, so an install on another drive or in a custom library folder needs
+    the variable. Projects that reference tModLoader guard on TestariaHasTml
+    so that a checkout without the game still builds, which is what keeps CI
+    green.
   -->
   <PropertyGroup>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.local/share/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.steam/steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
     <TestariaHasTml Condition="'$(tModLoaderSteamPath)' != '' And Exists('$(tModLoaderSteamPath)/tMLMod.targets')">true</TestariaHasTml>
     <TestariaHasTml Condition="'$(TestariaHasTml)' == ''">false</TestariaHasTml>
   </PropertyGroup>

@@ -12,7 +12,15 @@
 
 set -euo pipefail
 
-TML="${TML_PATH:-$HOME/.local/share/Steam/steamapps/common/tModLoader}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/paths.sh
+. "$HERE/paths.sh"
+
+TML="$TML_PATH"
+# No default, deliberately: ExampleMod lives in a tModLoader source checkout
+# rather than in an install, so only you know where yours is. Point
+# EXAMPLEMOD_SRC at the ExampleMod directory inside a checkout of
+# https://github.com/tModLoader/tModLoader.
 SRC="${EXAMPLEMOD_SRC:-}"
 # A stable location rather than a fresh mktemp each run, for two reasons: the
 # build is then incremental instead of recompiling 451 files every time, and
@@ -22,6 +30,7 @@ WORK="${WORK:-${XDG_CACHE_HOME:-$HOME/.cache}/testaria/examplemod-build}"
 mkdir -p "$WORK"
 
 [ -f "$TML/tMLMod.targets" ] || { echo "no tModLoader at $TML (set TML_PATH)" >&2; exit 2; }
+[ -n "$SRC" ] || { echo "set EXAMPLEMOD_SRC to the ExampleMod directory inside a tModLoader checkout" >&2; exit 2; }
 [ -d "$SRC" ] || { echo "no ExampleMod sources at $SRC (set EXAMPLEMOD_SRC)" >&2; exit 2; }
 
 echo "copying ExampleMod sources to $WORK"

@@ -9,8 +9,12 @@
 
 set -euo pipefail
 
-TML="${TML_PATH:-$HOME/.local/share/Steam/steamapps/common/tModLoader}"
-MODS_SRC="${MODS_SRC:-$HOME/.local/share/Terraria/tModLoader-dev/Mods}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# TML_PATH and MODS_SRC, with the only defaults anything here assumes.
+# shellcheck source=scripts/paths.sh
+. "$HERE/paths.sh"
+
+TML="$TML_PATH"
 RUN_NAME="${RUN_NAME:-TestariaSelfTest}"
 ENABLED="${ENABLED:-Testaria TestariaSelfTest}"
 TIMEOUT="${TIMEOUT:-600}"
@@ -39,7 +43,7 @@ DOTNET="${DOTNET:-$(command -v dotnet || true)}"
 
 [ -f "$TML/tModLoader.dll" ] || { echo "no tModLoader at $TML (set TML_PATH)" >&2; exit 2; }
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(dirname "$HERE")"
 
 # Build every enabled mod that has a project here, before copying any .tmod.
 # Without this a gate happily runs whatever .tmod was last built, so a test

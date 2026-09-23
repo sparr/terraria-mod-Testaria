@@ -20,3 +20,6 @@ compile_temp/
 # OS
 .DS_Store
 Thumbs.db
+
+# Machine-specific paths for the scripts; see scripts/paths.sh
+scripts/paths.local.sh

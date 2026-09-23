@@ -7,12 +7,19 @@
   to reference, the Testaria assemblies, and the handful of properties a
   .tmod-producing project must set. Importing this file supplies all three.
 
-  Import it with an explicit path to this checkout:
+  Importing it needs the path to a Testaria checkout, which is the one thing
+  this file cannot work out for itself. Either set the TESTARIA_PATH
+  environment variable to that checkout, or set the TestariaPath property in
+  the importing project:
 
     <PropertyGroup>
       <TestariaPath>../path/to/testaria</TestariaPath>
     </PropertyGroup>
     <Import Project="$(TestariaPath)/build/Testaria.props" />
+
+  An environment variable suits a machine that has one checkout everything
+  builds against; the property suits a suite that sits at a fixed offset from
+  it, such as a sibling directory.
 
   Once Testaria.Core is published to NuGet a suite will be able to reference
   the package instead and drop the path. Until then this is the supported way.
@@ -23,14 +30,22 @@
 -->
 <Project>
 
+  <PropertyGroup>
+    <TestariaPath Condition="'$(TestariaPath)' == ''">$(TESTARIA_PATH)</TestariaPath>
+  </PropertyGroup>
+
   <!--
-    Locate a tModLoader install. Set TML_PATH to override; otherwise the usual
-    Steam library locations are tried.
+    Locate a tModLoader install. Set the TML_PATH environment variable to the
+    folder holding tMLMod.targets to say where it is; otherwise only the
+    default Steam library on each platform is probed, so an install on another
+    drive or in a custom library folder needs the variable.
   -->
   <PropertyGroup>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.local/share/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.steam/steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
     <TestariaHasTml Condition="'$(tModLoaderSteamPath)' != '' And Exists('$(tModLoaderSteamPath)/tMLMod.targets')">true</TestariaHasTml>
     <TestariaHasTml Condition="'$(TestariaHasTml)' == ''">false</TestariaHasTml>
   </PropertyGroup>
@@ -77,7 +92,7 @@
   </Target>
 
   <Target Name="TestariaRequirePath" BeforeTargets="Build" Condition="!Exists('$(TestariaPath)/src/Testaria/Testaria.csproj')">
-    <Error Text="TestariaPath does not point at a Testaria checkout (looked for $(TestariaPath)/src/Testaria/Testaria.csproj)." />
+    <Error Text="TestariaPath does not point at a Testaria checkout (looked for $(TestariaPath)/src/Testaria/Testaria.csproj). Set the TESTARIA_PATH environment variable, or the TestariaPath property, to a checkout of this repository." />
   </Target>
 
 </Project>
