@@ -70,6 +70,25 @@ public sealed record TestRunnerOptions
 	/// </summary>
 	public RunPacing? Pacing { get; init; }
 
+	/// <summary>
+	/// The game's random generators, or null when the host controls none.
+	/// <para/>
+	/// Null means tests run against whatever roll the game happens to be on,
+	/// and their results carry no seed, so a report never claims a
+	/// reproducibility it cannot deliver.
+	/// </summary>
+	public IRandomControl? Random { get; init; }
+
+	/// <summary>
+	/// Shifts every test's seed at once, so a suite can be rerun against
+	/// different rolls without editing a line of it.
+	/// <para/>
+	/// Zero by default, which makes the default run of a suite identical
+	/// everywhere. A suite that only passes at one run seed is a suite with a
+	/// real dependency on luck, and changing this is how that gets found.
+	/// </summary>
+	public int RunSeed { get; init; }
+
 	/// <summary>Clock used for wall clock durations. Injectable so runs are reproducible under test.</summary>
 	public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }

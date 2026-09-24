@@ -49,6 +49,16 @@ public sealed record TestResult
 	/// </summary>
 	public string? Box { get; init; }
 
+	/// <summary>
+	/// The seed this test's randomness started from, or null when the runner
+	/// controls no generators.
+	/// <para/>
+	/// In the report because a gameplay failure is only reproducible if the
+	/// roll that produced it is. Without it, "it failed on CI and passes here"
+	/// has no next step.
+	/// </summary>
+	public int? Seed { get; init; }
+
 	/// <summary>True when the test finished without a failure or an error.</summary>
 	public bool IsSuccess => Outcome is TestOutcome.Passed or TestOutcome.Skipped;
 

@@ -67,6 +67,12 @@ public sealed record TestCase
 
 	/// <summary>True when the world should be frozen from the test's first tick.</summary>
 	public bool StartPaused { get; init; }
+
+	/// <summary>
+	/// The seed this test asked for by name, or null to take the one derived
+	/// from its identity.
+	/// </summary>
+	public int? Seed { get; init; }
 }
 
 /// <summary>

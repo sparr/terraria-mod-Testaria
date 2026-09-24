@@ -28,6 +28,7 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
 | `[RealTime]` | Exempts a test from the run's fast forward, running it at 60 ticks per second |
 | `[StartPaused]` | Freezes the world as the test begins, for a test that steps it by hand |
+| `[Seed]` | Pins a test's randomness to a particular seed, rather than the one derived from its name |
 | `[RequiresLoadedGame]` | Declares that a member needs the game, so tier 0 code cannot reach it by accident |
 
 ## The tier 0 boundary
@@ -180,11 +181,11 @@ What fast forward cannot preserve is anything keyed to the wall clock rather tha
 public IEnumerator A_cooldown_measured_in_real_seconds(ITestContext ctx) { ... }
 ```
 
-`[RealTime]` works on a class as well as a method, and the run's own speed is restored as soon as the test finishes.
+`[RealTime]` works on a whole class as well as a single method. The run's default speed is restored as soon as the test(s) finishes.
 
 ## Pausing and single stepping
 
-A test can stop the world and walk it forward a tick at a time, which is how you pin down the exact tick something goes wrong on:
+A test can stop the world and walk it forward one tick at a time:
 
 ```csharp
 [GameTest(Band = Band.Cavern)]
@@ -270,6 +271,8 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `MODS_SRC` | Where a mod build leaves its `.tmod`, the `Mods` directory under tModLoader's save path | The save path of a **dev** build, since 1.4.5 is only available as one |
 | `EXAMPLEMOD_SRC` | `ExampleMod` inside a tModLoader source checkout | None. It is a checkout you made, not something an install provides |
 | `SPEED` | [Fast forward](#fast-forward) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
+| `RUN_SEED` | Shifts every test's [seed](#seeds-and-reproducibility) at once, for rerunning a suite against different rolls | 0, so a run draws the same rolls everywhere |
+| `SEED` | The world's generation seed, which is a different thing entirely | 42 |
 
 The build itself reads `TML_PATH` too, so an install anywhere unusual needs setting once and no more.
 
@@ -329,6 +332,7 @@ This functionality is in `Testaria.Core`, doesn't reference tModLoader, and is a
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
 | `GameState`, `[RequiresLoadedGame]` | The runtime half of the tier 0 boundary: a flag the game raises, and a guard that fails loudly without it |
 | `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all: realtime, a bounded rate, or as fast as the machine manages |
+| `TestSeed`, `IRandomControl` | Which seed a test's randomness starts from, derived from the test's identity so filtering a suite cannot change it |
 | `ISteppableContext` | Stopping the world and stepping it a tick at a time |
 
 ## License

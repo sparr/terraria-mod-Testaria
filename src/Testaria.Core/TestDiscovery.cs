@@ -33,6 +33,7 @@ public static class TestDiscovery
 			bool typeFreshWorld = type.GetCustomAttribute<FreshWorldAttribute>() is not null;
 			bool typeRealTime = type.GetCustomAttribute<RealTimeAttribute>() is not null;
 			bool typeStartPaused = type.GetCustomAttribute<StartPausedAttribute>() is not null;
+			int? typeSeed = type.GetCustomAttribute<SeedAttribute>()?.Seed;
 
 			foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
 				if (method.GetCustomAttribute<TestariaTestAttribute>() is not TestariaTestAttribute marker)
@@ -48,6 +49,7 @@ public static class TestDiscovery
 				bool freshWorld = typeFreshWorld || method.GetCustomAttribute<FreshWorldAttribute>() is not null;
 				bool realTime = typeRealTime || method.GetCustomAttribute<RealTimeAttribute>() is not null;
 				bool startPaused = typeStartPaused || method.GetCustomAttribute<StartPausedAttribute>() is not null;
+				int? seed = method.GetCustomAttribute<SeedAttribute>()?.Seed ?? typeSeed;
 				bool wantsContext = WantsContext(method);
 				int dataParameters = method.GetParameters().Length - (wantsContext ? 1 : 0);
 
@@ -63,6 +65,7 @@ public static class TestDiscovery
 					FreshWorld = freshWorld,
 					RealTime = realTime,
 					StartPaused = startPaused,
+					Seed = seed,
 				};
 
 				if (dataParameters == 0) {

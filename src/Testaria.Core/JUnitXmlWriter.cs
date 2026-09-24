@@ -92,6 +92,9 @@ public static class JUnitXmlWriter
 		if (result.Box is not null)
 			writer.WriteAttributeString("testaria-box", Sanitize(result.Box));
 
+		if (result.Seed is int seed)
+			writer.WriteAttributeString("testaria-seed", Int(seed));
+
 		switch (result.Outcome) {
 			case TestOutcome.Failed:
 				WriteProblem(writer, "failure", result);

@@ -52,6 +52,15 @@ public sealed class TestSession
 	/// </summary>
 	public const string FreshWorldFlag = "-testariafreshworld";
 
+	/// <summary>
+	/// Launch parameter shifting every test's seed at once, for rerunning a
+	/// suite against different rolls without editing it.
+	/// </summary>
+	public const string SeedFlag = "-testariaseed";
+
+	/// <summary>The run seed every test's own seed is derived from.</summary>
+	public int RunSeed { get; private set; }
+
 	/// <summary>Name recorded on the run and used for the results file.</summary>
 	public string RunName { get; }
 
@@ -96,6 +105,8 @@ public sealed class TestSession
 
 		DiscoveryResult discovery = TestDiscovery.Discover(types);
 
+		int runSeed = ReadRunSeed();
+
 		var pacing = new RunPacing();
 
 		// The arena needs a loaded world to know where its bands are, so it is
@@ -125,9 +136,13 @@ public sealed class TestSession
 			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
 			CreateContext = lease => new TestContext(lease, pacing),
 			Pacing = pacing,
+			// Pinned for every tier, not just the ones with a world. A Tier 1
+			// test reading a drop table or a recipe can roll too.
+			Random = new TerrariaRandomControl(),
+			RunSeed = runSeed,
 		});
 
-		var session = new TestSession(runner, pacing, runName, discovery.Tests.Count);
+		var session = new TestSession(runner, pacing, runName, discovery.Tests.Count) { RunSeed = runSeed };
 		session.ApplyLaunchPacing();
 
 		return session;
@@ -146,6 +161,20 @@ public sealed class TestSession
 		else
 			Governor.Reset();
 	}
+
+	/// <summary>
+	/// Reads <c>-testariaseed</c>, defaulting to zero.
+	/// <para/>
+	/// Zero rather than the world seed or the clock, so that the default run
+	/// of a suite draws the same rolls on every machine and in every world. A
+	/// suite that only passes at one run seed depends on luck, and changing
+	/// this flag is how that gets found rather than discovered by a user.
+	/// </summary>
+	private static int ReadRunSeed()
+		=> Program.LaunchParameters.TryGetValue(SeedFlag, out string? value)
+			&& int.TryParse(value?.Trim(), out int seed)
+				? seed
+				: 0;
 
 	/// <summary>
 	/// Reads <c>-testariaspeed</c> so a harness can fast forward without a

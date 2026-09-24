@@ -86,6 +86,26 @@ public sealed class GameTestAttribute : TestariaTestAttribute
 public sealed class FreshWorldAttribute : Attribute;
 
 /// <summary>
+/// Pins this test's randomness to a particular seed instead of the one
+/// derived from its name.
+/// <para/>
+/// Every test is seeded, so this is not how a test becomes deterministic, it
+/// is how a test asks for a *specific* roll: the seed that reproduced a bug,
+/// or one chosen because it happens to make a rare branch happen. Written
+/// down in the test rather than in a comment, it survives being reported and
+/// rerun.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class SeedAttribute : Attribute
+{
+	/// <param name="seed">The seed this test's generators start from.</param>
+	public SeedAttribute(int seed) => Seed = seed;
+
+	/// <summary>The seed this test's generators start from.</summary>
+	public int Seed { get; }
+}
+
+/// <summary>
 /// Exempts a test from the run's fast forward, running it at the game's own
 /// 60 ticks per second.
 /// <para/>

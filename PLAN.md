@@ -18,7 +18,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 439 core self-tests and 14 analyzer self-tests pass in under two seconds |
+| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 462 core self-tests and 14 analyzer self-tests pass in under two seconds |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
 | Tier 3 | Not started. No second process, no client, no netcode fixtures |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
@@ -27,7 +27,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
-| Seed control (risk 5) | World seed only, passed to the harness. Nothing pins `Main.rand` or `WorldGen.genRand` per test |
+| Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | Still unmeasured. `ArenaOptions.Gutter` remains a guess at 8 |
 
 The holes in that table are the subject of section 8.5, and they come before any distribution work.
@@ -413,7 +413,7 @@ Three clocks, kept deliberately separate:
 2. **False confidence at the Tier 0 boundary** (section 2.2). This is the highest-severity design risk, because the failure mode is a green test suite that proves nothing.
 3. **World state isolation between Tier 2 tests** is the hardest engineering problem, and section 2.4 sets out a four-mechanism working design that is explicitly provisional pending real test surface. Five numbers in it are unverified and must be measured rather than hardcoded on a guess: the `Main.SceneMetrics` scan radius, which sets the gutter for any biome-sensitive test; the default banded box size; the quarantine duration before a released box is safe to re-lease, which is longer for columns than for banded boxes; the split between the banded and column arena regions; and the width at which a spanning column stops being cheaper than `[FreshWorld]`.
 4. **Reload safety.** Every hook, event subscription, and static registration the framework makes must be undone in `Unload()`, or it pins dead `AssemblyLoadContext` instances (`AssemblyManager.cs:177`, `196`). A test framework that leaks across reloads will be blamed for the leaks of the mods it tests.
-5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature.
+5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature. **Built** (section 8.5b). There is one generator rather than two: on the 1.4.5 line `WorldGen.genRand` is a property returning `Main.rand`.
 6. **The 1.4.5 toolchain, settled by opting into the beta branch.** Everything above tier 0 builds and runs against a `1.4.5-dev` Steam install. The reasoning is worth keeping because CI has to solve the same problem without Steam (section 8.3a), and because the naming trap at the end of this item still catches people. The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
 7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once.
 8. **Upstreaming.** The TML team currently has only hand-driven failure-case mods in `test/Test Local/`. If this framework works, they may want it in-tree. Keeping it MIT and structurally separable from any one mod preserves that option at no cost.
@@ -597,7 +597,7 @@ Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaus
 Everything in section 0.1's table that is not a tier. These come first because each one is a correctness problem in what already exists, and shipping over them would make them permanent:
 
 1. ~~**The section 2.2 boundary mitigations.**~~ Done, section 8.5a. The analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, the `[RequiresLoadedGame]` marker, and the runtime guard behind it.
-2. **Seed control (risk 5).** `Main.rand` and `WorldGen.genRand` pinned per test and recorded in the report. The harness pins the world seed today and nothing else, so gameplay tests are one unlucky roll away from flaking, and retrofitting determinism after a suite exists is much harder than having it.
+2. ~~**Seed control (risk 5).**~~ Done, section 8.5b. Pinned per test, derived from the test's identity, and recorded in the report.
 3. **Artifacts B, C, and D (section 4.2).** D, the `testaria` CLI, matters most: the scripts under `scripts/` do its job but only from a checkout of this repository, so nobody else can currently run the framework at all. D is also what section 8.3a's CI job would invoke, so it unblocks that too.
 4. **The five unmeasured numbers (risk 3).** Chiefly the `Main.SceneMetrics` scan radius, since `ArenaOptions.Gutter` is a guess at 8 and any biome-sensitive test is only as isolated as that number is right.
 
@@ -622,6 +622,22 @@ Three decisions worth keeping.
 **Measured rather than assumed, twice.** The analyzer's own suite runs it against a stub of the Terraria surface, 14 cases split between what must be flagged and what must not. The packaged analyzer is then built into a scratch project referencing the *real* `tModLoader.dll`: four errors on the four loader-dependent lines, nothing on `ItemID.Count` or `new Item().damage`. The second check is the one that proves the package rather than the code, and it has to clear the global NuGet cache to run at all, since a cached `Testaria.Core` shadows a local feed and a project can restore an older package while every unit test passes.
 
 In the game, one self-test asserts `GameState.IsLoaded` is true, which is the only place that direction can be asserted, since it is the mod's own load pass that raises it.
+
+### 8.5b Seeded per test, by identity rather than by order
+
+Risk 5, and the reason it was worth doing before a real suite exists rather than after: retrofitting determinism onto tests written without it means rewriting the tests, not just the framework.
+
+**One generator, not two.** The plan said `Main.rand` and `WorldGen.genRand`. On the 1.4.5 line `WorldGen.genRand` is a property returning `Main.rand`, confirmed in the decompiled 1.4.5.8 source and again in tModLoader's own `WorldGen.cs.patch`. They were separate fields on 1.4.4, so this is exactly the kind of difference that would silently halve a fix ported between branches. A self-test asserts the two are the same instance, so a version that separates them again says so rather than quietly leaving world generation unseeded.
+
+**Seeded in place, not by swapping the instance.** `UnifiedRandom.SetSeed` is public, and setting the seed on the generator the game already holds covers anything that cached a reference to it, which swapping `Main.rand` would not. The cost is that there is no old stream position to restore, so teardown reseeds from the clock instead. Nothing depends on the game's randomness resuming where it left off, and the alternative leaves cached references unseeded, which is the failure that would be hardest to notice.
+
+**A test's seed comes from its own identity, never from a counter.** `TestSeed.For(runSeed, className, name)` is FNV-1a over the test's full name mixed with the run seed. A counter would have made a test's seed depend on how many tests ran before it, so filtering a suite down to the one failing test would hand it a different seed and quite possibly a pass, which is precisely when reproducibility is worth the most. Hand-rolled rather than `string.GetHashCode`, which is randomized per process by design and would have made seeds differ between two runs of the same suite on one machine.
+
+Measured end to end: the same test reports seed 991526881 in the full 36 test run and in a filtered single test run, and `RUN_SEED=7` moves it to 991519236.
+
+**`[Seed(n)]` pins a particular roll**, for the seed that reproduced a bug or one chosen to make a rare branch happen. It ignores the run seed, since a seed that only reproduces the bug at one run seed is not what the author asked for.
+
+**What seeding can and cannot promise.** A Tier 1 body runs synchronously the moment its test begins, so its first draw genuinely is the first draw after the reseed, which is what lets the self-tests assert exact values. A Tier 2 body resumes a tick later, by which point the world has drawn from the same generator on its own account, so Tier 2 reproducibility is "given the same world and the same ticks" rather than absolute. Worth stating plainly in the documentation rather than letting an author discover it from a flaky test.
 
 ### 8.6 Tier 3, and worked examples on a real mod
 

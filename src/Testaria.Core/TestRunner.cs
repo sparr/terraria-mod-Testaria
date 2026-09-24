@@ -38,6 +38,7 @@ public sealed class TestRunner
 	private BoxLease? lease;
 	private ITestContext? context;
 	private long startedAt;
+	private int? seed;
 
 	/// <summary>Creates a runner over a discovery result, folding in its errors.</summary>
 	public TestRunner(DiscoveryResult discovery, TestRunnerOptions? options = null)
@@ -158,6 +159,17 @@ public sealed class TestRunner
 	{
 		current = test;
 		startedAt = options.TimeProvider.GetTimestamp();
+		seed = null;
+
+		// Before the body is invoked, because an immediate test's entire life
+		// happens inside that call. Derived from the test's own identity, so
+		// running one test out of a suite of a thousand gives it the seed it
+		// would have had in the full run, which is what makes a reported
+		// failure reproducible by rerunning just that test.
+		if (options.Random is IRandomControl random) {
+			seed = test.Seed ?? TestSeed.For(options.RunSeed, test.ClassName, test.Name);
+			random.Reseed(seed.Value);
+		}
 
 		// Each test starts from the run's own pacing, whatever the last one
 		// left behind. A test that pauses and then throws must not freeze the
@@ -301,6 +313,11 @@ public sealed class TestRunner
 		// has to be moving again for the next one to get its ticks.
 		options.Pacing?.ResetForNextTest();
 
+		// Likewise the generators: a seeded one left in place would make
+		// everything after the run deterministic in a way nobody asked for,
+		// including the next world the process generates.
+		options.Random?.Restore();
+
 		TestCase test = current!;
 		TimeSpan duration = options.TimeProvider.GetElapsedTime(startedAt);
 
@@ -318,6 +335,7 @@ public sealed class TestRunner
 			Duration = duration,
 			Ticks = ticks,
 			Box = lease?.Interior.ToString(),
+			Seed = seed,
 		});
 
 		// A test whose box was not its own did not really run, whatever its

@@ -37,6 +37,12 @@ BLANK_ARG=""
 # way; only the wall clock differs.
 SPEED_ARG=""
 [ -n "${SPEED:-}" ] && SPEED_ARG="-testariaspeed $SPEED"
+# RUN_SEED shifts every test's own randomness at once, which is how a suite is
+# rerun against different rolls to find out whether it depends on luck. Not to
+# be confused with SEED above, which is the world's: one decides the terrain,
+# the other decides what the dice do once a test starts.
+RUN_SEED_ARG=""
+[ -n "${RUN_SEED:-}" ] && RUN_SEED_ARG="-testariaseed $RUN_SEED"
 MEM_MAX="${MEM_MAX:-4G}"
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
@@ -145,6 +151,7 @@ export SDL_AUDIODRIVER=dummy
 
 echo "seed:     $SEED${BLANK_ARG:+  (blank world)}"
 [ -n "$SPEED_ARG" ] && echo "speed:    ${SPEED}"
+[ -n "$RUN_SEED_ARG" ] && echo "run seed: ${RUN_SEED}"
 echo "scratch:  $SCRATCH"
 echo "mods:     $ENABLED"
 [ -n "$FILTER" ] && echo "filter:   $FILTER"
@@ -170,6 +177,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     $BLANK_ARG \
     $FRESH_ARG \
     $SPEED_ARG \
+    $RUN_SEED_ARG \
     -players 1 \
     -port 7777 \
     -password "" \
