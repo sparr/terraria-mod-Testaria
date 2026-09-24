@@ -58,25 +58,35 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 
 		Start(arguments);
 
-		WaitFor(
-			() => ReadyMarkers.Any(marker => Log.Contains(marker, StringComparison.Ordinal)),
-			deadline,
-			timeout,
-			"the server to finish starting");
+		// Everything from here is inside a finally, because every one of the
+		// steps below can throw and none of them cleans up after itself. Left
+		// as it was, any failure orphaned a server holding port 7777 and,
+		// where tier 3 was involved, a client alongside it. Measured: a gate
+		// that threw left both running, and the next three gates in the same
+		// `run-all.sh` failed with "Address already in use", which points at
+		// the gate that noticed rather than the gate that leaked.
+		try {
+			WaitFor(
+				() => ReadyMarkers.Any(marker => Log.Contains(marker, StringComparison.Ordinal)),
+				deadline,
+				timeout,
+				"the server to finish starting");
 
-		progress.WriteLine($"world ready after {deadline.Elapsed.TotalSeconds:F0}s");
+			progress.WriteLine($"world ready after {deadline.Elapsed.TotalSeconds:F0}s");
 
-		if (clientSaves is { Count: > 0 })
-			JoinClients(clientSaves, display, deadline, timeout);
+			if (clientSaves is { Count: > 0 })
+				JoinClients(clientSaves, display, deadline, timeout);
 
-		progress.WriteLine($"sending: {command}");
+			progress.WriteLine($"sending: {command}");
 
-		server!.StandardInput.WriteLine(command);
-		server.StandardInput.Flush();
+			server!.StandardInput.WriteLine(command);
+			server.StandardInput.Flush();
 
-		WaitFor(() => File.Exists(resultsPath), deadline, timeout, "the run to write its report");
-
-		Stop();
+			WaitFor(() => File.Exists(resultsPath), deadline, timeout, "the run to write its report");
+		}
+		finally {
+			Stop();
+		}
 	}
 
 	/// <summary>What the game printed about the mods it actually loaded.</summary>
@@ -279,8 +289,14 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 
 	private void Stop()
 	{
+		// A server that has already gone still leaves its clients behind, and
+		// that is the case where a client is most likely to be orphaned: the
+		// server died, so nothing asked the clients to leave. So this falls
+		// through to Kill rather than returning.
 		if (server is null || server.HasExited) {
+			Kill();
 			WriteLog();
+
 			return;
 		}
 
