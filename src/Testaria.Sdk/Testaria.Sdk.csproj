@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <PackageId>Testaria.Sdk</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Runs a mod's Testaria suite from MSBuild: one target that provisions a scratch tModLoader save, runs the tests in a headless server, and fails the build if any of them fail. Carries the testaria command inside itself, so a build needs no separate tool install.</Description>
+    <PackageTags>terraria;tmodloader;testing;modding;msbuild;ci</PackageTags>
+    <!-- A build-only package carries no lib assets of its own; the placeholder
+         below is the conventional answer and this silences the warning it
+         exists to satisfy. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="build/Testaria.Sdk.props" Pack="true" PackagePath="build/" />
+    <None Include="build/Testaria.Sdk.targets" Pack="true" PackagePath="build/" />
+    <None Include="../Testaria.Unit/_._" Pack="true" PackagePath="lib/net8.0/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!--
+    The CLI travels inside this package rather than being a prerequisite.
+    A mod repository that wants its tests run in CI should need one
+    PackageReference and no install step, and a tool pinned by the package it
+    came with cannot drift from the targets that invoke it.
+
+    ReferenceOutputAssembly is false because nothing here compiles against the
+    tool; the project reference exists to order the build and to give the pack
+    target something to copy.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../Testaria.Tool/Testaria.Tool.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="TestariaPackTool" BeforeTargets="_GetPackageFiles" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <!--
+        The whole publish-shaped output, not just the assembly: running
+        "dotnet testaria.dll" needs its deps.json and runtimeconfig.json
+        beside it, and it would fail at run time rather than at pack time if
+        they were left out.
+      -->
+      <TestariaToolFiles Include="../Testaria.Tool/bin/$(Configuration)/net8.0/*.dll" />
+      <TestariaToolFiles Include="../Testaria.Tool/bin/$(Configuration)/net8.0/testaria.runtimeconfig.json" />
+      <TestariaToolFiles Include="../Testaria.Tool/bin/$(Configuration)/net8.0/testaria.deps.json" />
+      <None Include="@(TestariaToolFiles)" Pack="true" PackagePath="tools/net8.0/" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+</Project>

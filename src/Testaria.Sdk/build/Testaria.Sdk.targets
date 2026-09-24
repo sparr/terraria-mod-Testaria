@@ -1,0 +1,87 @@
+<Project>
+
+  <!--
+    Imported at the bottom of any project referencing Testaria.Sdk.
+
+    One target, TestariaRun, which is the whole point of the package: the
+    command line tool travels inside it, so a mod repository needs a single
+    PackageReference and no install step to have its tests run by a build.
+  -->
+
+  <PropertyGroup>
+    <!-- build/ inside the package; the tool sits beside it in tools/. -->
+    <TestariaToolPath Condition="'$(TestariaToolPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../tools/net8.0/testaria.dll'))</TestariaToolPath>
+    <!--
+      Below the project body, so these see the name the project chose rather
+      than the one it had before it was read.
+    -->
+    <TestariaRunName Condition="'$(TestariaRunName)' == ''">$(MSBuildProjectName)</TestariaRunName>
+    <!--
+      Under the project's own directory so that a CI job collecting artifacts
+      finds the report without being told where to look.
+    -->
+    <TestariaResults Condition="'$(TestariaResults)' == ''">$(MSBuildProjectDirectory)/TestResults/$(TestariaRunName).xml</TestariaResults>
+
+    <!-- Set by the SDK in every modern host, but not by every host. -->
+    <TestariaDotnetHost Condition="'$(TestariaDotnetHost)' == ''">$(DOTNET_HOST_PATH)</TestariaDotnetHost>
+    <TestariaDotnetHost Condition="'$(TestariaDotnetHost)' == ''">dotnet</TestariaDotnetHost>
+  </PropertyGroup>
+
+  <!--
+    The hook is conditional; the target it calls is not. Putting the condition
+    on TestariaRun itself would make "dotnet build -t:TestariaRun" skip
+    silently, which is the worst answer available: an explicit request that
+    does nothing and says nothing.
+  -->
+  <Target Name="TestariaRunAfterBuild"
+          AfterTargets="Build"
+          Condition="'$(TestariaRunOnBuild)' == 'true'"
+          DependsOnTargets="TestariaRun" />
+
+  <Target Name="TestariaRun" DependsOnTargets="TestariaCheckSetup">
+
+    <PropertyGroup>
+      <!--
+        Each mod becomes its own "mod" argument, in declared order, because
+        that order is load order and load order decides modded id assignment.
+        (An XML comment cannot contain two dashes in a row, which is why the
+        flag is not written out here.)
+      -->
+      <_TestariaMods>@(TestariaTestMod->'--mod &quot;%(Identity)&quot;', ' ')</_TestariaMods>
+      <_TestariaProjects>@(TestariaModProject->'--project &quot;%(FullPath)&quot;', ' ')</_TestariaProjects>
+      <_TestariaArgs>run $(_TestariaProjects) $(_TestariaMods) --name "$(TestariaRunName)" --timeout $(TestariaTimeout) --results "$(TestariaResults)"</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaBlankWorld)' == 'true'">$(_TestariaArgs) --blank</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaSpeed)' != ''">$(_TestariaArgs) --speed $(TestariaSpeed)</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaFilter)' != ''">$(_TestariaArgs) --filter "$(TestariaFilter)"</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaRunSeed)' != ''">$(_TestariaArgs) --seed $(TestariaRunSeed)</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaWorldSeed)' != ''">$(_TestariaArgs) --world-seed $(TestariaWorldSeed)</_TestariaArgs>
+      <_TestariaArgs Condition="'$(TestariaExtraArgs)' != ''">$(_TestariaArgs) $(TestariaExtraArgs)</_TestariaArgs>
+    </PropertyGroup>
+
+    <Message Importance="high" Text="Testaria: running $(TestariaRunName)" />
+
+    <!--
+      ContinueOnError is deliberately absent, so a failing suite fails the
+      build. That is the entire reason to run tests from MSBuild rather than by
+      hand: a red suite that leaves the build green has told nobody anything.
+
+      The tool's own exit code carries the distinction that matters: 1 for a
+      test that failed and 2 for a harness that could not run the tests at all.
+      Both fail the build, and the message says which happened.
+    -->
+    <Exec Command="&quot;$(TestariaDotnetHost)&quot; &quot;$(TestariaToolPath)&quot; $(_TestariaArgs)"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <Target Name="TestariaCheckSetup">
+    <Error Condition="'@(TestariaTestMod)' == ''"
+           Code="TSTS001"
+           Text="Testaria.Sdk has nothing to run. Name the test mod with an item: &lt;TestariaTestMod Include=&quot;MyModTests&quot; /&gt;. A mod can be named by its internal name, which is looked up in the tModLoader Mods folder, or by the path to its .tmod." />
+
+    <Error Condition="!Exists('$(TestariaToolPath)')"
+           Code="TSTS002"
+           Text="Testaria.Sdk cannot find the testaria tool it ships with, expected at $(TestariaToolPath). Set TestariaToolPath to a testaria.dll if you are running from a source checkout rather than from the package." />
+  </Target>
+
+</Project>

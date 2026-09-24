@@ -2,7 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Testaria.Analyzers/Testaria.Analyzers.csproj" />
     <Project Path="src/Testaria.Core/Testaria.Core.csproj" />
+    <Project Path="src/Testaria.Sdk/Testaria.Sdk.csproj" />
     <Project Path="src/Testaria.Tool/Testaria.Tool.csproj" />
+    <Project Path="src/Testaria.Unit/Testaria.Unit.csproj" />
     <Project Path="src/Testaria/Testaria.csproj" />
   </Folder>
   <Folder Name="/templates/">

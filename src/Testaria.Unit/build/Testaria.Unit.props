@@ -1,0 +1,56 @@
+<Project>
+
+  <!--
+    Imported at the top of any project referencing Testaria.Unit.
+
+    Its job is to find a tModLoader install and to say, before anything else
+    has an opinion, that this project compiles against the game but does not
+    package a mod.
+  -->
+
+  <PropertyGroup>
+    <!--
+      The sanctioned pair, from tModLoader's own analyzer test project
+      (tModCodeAssist.Tests.csproj). BuildMod=false keeps the references and
+      skips the .tmod packaging target; OutputTmlReferences=true copies the
+      referenced assemblies next to the test assembly, which a test host needs
+      in order to load them.
+    -->
+    <BuildMod Condition="'$(BuildMod)' == ''">false</BuildMod>
+    <OutputTmlReferences Condition="'$(OutputTmlReferences)' == ''">true</OutputTmlReferences>
+
+    <!--
+      tMLMod.targets sets LangVersion only when it is building a mod, so a
+      project like this one has to set its own. 14.0 matches what the 1.4.5
+      line builds mods with, so code can move between this project and the mod
+      it tests without tripping over language features.
+    -->
+    <LangVersion Condition="'$(LangVersion)' == ''">14.0</LangVersion>
+  </PropertyGroup>
+
+  <!--
+    Where tModLoader is. TML_PATH first, so one variable covers a machine whose
+    install is on another drive, in a second Steam library, or from GOG; then
+    the conventional Steam location for each platform.
+
+    The same probing as the Testaria repository's own build, deliberately
+    duplicated here rather than shared: a consumer has no access to that file,
+    and a package that only works for people who have the repository checked
+    out would defeat the point of being a package.
+  -->
+  <PropertyGroup>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.local/share/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/.steam/steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(HOME)/Library/Application Support/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+    <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And Exists('$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader/tMLMod.targets')">$(MSBuildProgramFiles32)/Steam/steamapps/common/tModLoader</tModLoaderSteamPath>
+  </PropertyGroup>
+
+  <!--
+    Whether that path holds an install is decided in the targets file, not here.
+    A package's props are imported above the project body, so a project setting
+    tModLoaderSteamPath for itself does so after this file has run: deciding
+    here would answer for a path nobody is going to use.
+  -->
+
+</Project>

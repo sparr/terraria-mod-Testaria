@@ -1,0 +1,44 @@
+<Project>
+
+  <!--
+    Imported at the bottom of any project referencing Testaria.Unit, which is
+    where tMLMod.targets has to go: it defines targets, and it reads properties
+    the project may have set for itself.
+  -->
+
+  <!--
+    Here rather than in the props file: this is below the project body, so it
+    sees the install path the project actually ended up with, including one the
+    project set for itself.
+  -->
+  <PropertyGroup>
+    <TestariaHasTml Condition="'$(tModLoaderSteamPath)' != '' And Exists('$(tModLoaderSteamPath)/tMLMod.targets')">true</TestariaHasTml>
+    <TestariaHasTml Condition="'$(TestariaHasTml)' == ''">false</TestariaHasTml>
+  </PropertyGroup>
+
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
+
+  <Target Name="TestariaUnitCheckInstall" BeforeTargets="BeforeBuild">
+    <!--
+      An error rather than a warning, and a build that stops rather than one
+      that produces an assembly missing every game type. A test project whose
+      references silently vanished would fail to compile anyway; saying why
+      here saves reading a hundred CS0246s to find out.
+    -->
+    <Error
+      Condition="'$(TestariaHasTml)' != 'true'"
+      Code="TSTU001"
+      Text="Testaria.Unit needs a tModLoader install and found none. Set the TML_PATH environment variable to the folder holding tMLMod.targets, or set the tModLoaderSteamPath property in this project. If this project does not actually need tModLoader types, reference Testaria.Core on its own instead: keeping the game out of scope is the strongest form of the Tier 0 boundary." />
+
+    <!--
+      The 1.4.5 line is net10.0. A project on an older target framework will
+      fail at load time rather than at compile time, with an error about an
+      assembly built for a newer runtime, which is a long way from the cause.
+    -->
+    <Warning
+      Condition="'$(TestariaHasTml)' == 'true' And '$(TargetFramework)' != '' And '$(TargetFramework)' != 'net10.0'"
+      Code="TSTU002"
+      Text="This project targets $(TargetFramework), but tModLoader on the 1.4.5 line is net10.0. Referencing its assemblies from another target framework will fail when the test host tries to load them." />
+  </Target>
+
+</Project>

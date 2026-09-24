@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A build-only package: everything it does is MSBuild, and the code a
+      consumer wants is Testaria.Core's, which it depends on. net8.0 to match
+      the core, which is the oldest framework either can be referenced from.
+    -->
+    <TargetFramework>net8.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <PackageId>Testaria.Unit</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Wires a .NET test project against a tModLoader install: references the game's assemblies without packaging a .tmod, and brings Testaria's Tier 0 boundary analyzer with it. For unit tests that genuinely need tModLoader types in scope; a test project that does not need them should reference Testaria.Core alone and keep the game out of reach entirely.</Description>
+    <PackageTags>terraria;tmodloader;testing;modding;msbuild</PackageTags>
+    <!--
+      NU5128: the package carries a dependency but no compiled assets of its
+      own, which is exactly what a build-only package is. The empty lib
+      placeholder below is the conventional answer, and this silences the
+      warning that the placeholder exists to satisfy.
+    -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="build/Testaria.Unit.props" Pack="true" PackagePath="build/" />
+    <None Include="build/Testaria.Unit.targets" Pack="true" PackagePath="build/" />
+    <None Include="_._" Pack="true" PackagePath="lib/net8.0/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      A single PackageReference should be enough to get the assertions, the
+      helpers, and the analyzer that stops this project's tModLoader reference
+      from becoming the silent failure of PLAN.md section 2.2.
+    -->
+    <ProjectReference Include="../Testaria.Core/Testaria.Core.csproj" />
+  </ItemGroup>
+
+</Project>

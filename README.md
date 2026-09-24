@@ -155,6 +155,37 @@ Common flags:
 
 `testaria list` takes the same options and catalogues the tests without running any of them.
 
+### From a build, rather than by hand
+
+`Testaria.Sdk` is the same run wired into MSBuild, for a mod repository that wants `dotnet build` to be the only command anyone has to know. It carries the `testaria` tool inside itself, so there is no install step:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Testaria.Sdk" Version="0.1.0-alpha.1" />
+</ItemGroup>
+
+<ItemGroup>
+  <TestariaTestMod Include="MyModTests" />
+  <TestariaModProject Include="../MyMod" />
+</ItemGroup>
+```
+
+```
+dotnet build -t:TestariaRun
+```
+
+A failing suite fails the build. Set `TestariaRunOnBuild` to true to hang it off every ordinary build instead; it is off by default because a run starts a game and takes tens of seconds. `TestariaSpeed`, `TestariaFilter`, `TestariaRunSeed`, `TestariaWorldSeed`, `TestariaBlankWorld`, `TestariaTimeout`, and `TestariaResults` map to the flags of the same name, and the report lands in `TestResults/`.
+
+### Unit tests that need the game's types in scope
+
+Tier 0's strongest protection is that `Testaria.Core` cannot reach loader state, because the game is not referenced at all. Some unit tests genuinely need the types anyway, to test a method that takes an `Item` or returns a `TagCompound`. `Testaria.Unit` enables that sort of test:
+
+```xml
+<PackageReference Include="Testaria.Unit" Version="0.1.0-alpha.1" />
+```
+
+It references the install's assemblies without packaging a `.tmod` (similar to tModLoader's analyzers), sets the language version the 1.4.5 line builds with, and brings `Testaria.Core` and [the boundary analyzer](#the-tier-0-boundary) with it.
+
 Set `TML_PATH`, or pass `--tml`, if your tModLoader installation is somewhere other than the default Steam library.
 
 Once the placeholder tests run successfully to confirm your installation, then you can replace them with tests of your mod.
@@ -345,6 +376,8 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | [`src/Testaria/`](src/Testaria) | The tModLoader-facing half. Needs a 1.4.5 install to build. |
 | [`src/Testaria.Analyzers/`](src/Testaria.Analyzers) | The tier 0 boundary analyzer, shipped inside the `Testaria.Core` package. |
 | [`src/Testaria.Tool/`](src/Testaria.Tool) | The `testaria` command: provision, run, report, exit code. Needs no game to build. |
+| [`src/Testaria.Unit/`](src/Testaria.Unit) | Build-only package wiring a test project against an install, for tier 0 tests that need the game's types. |
+| [`src/Testaria.Sdk/`](src/Testaria.Sdk) | Build-only package running a suite from MSBuild, carrying the CLI inside it. |
 | [`tests/Testaria.Core.Tests/`](tests/Testaria.Core.Tests) | Self-tests for the core. Plain `dotnet test`, no game required. |
 | [`tests/Testaria.Analyzers.Tests/`](tests/Testaria.Analyzers.Tests) | Self-tests for the analyzer, run against a stub of the Terraria surface. |
 | [`tests/Testaria.Tool.Tests/`](tests/Testaria.Tool.Tests) | Self-tests for the CLI: its command line, its provisioning, and its reading of a report. |
@@ -352,7 +385,7 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
 | [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
 | [`templates/`](templates) | The two `dotnet new` templates. |
-| [`scripts/`](scripts) | The headless harness and its gates. |
+| [`scripts/`](scripts) | The headless harness and its gates, including `check-packages.sh`, which consumes the packages the way a stranger would. |
 | [`build/`](build) | `Testaria.props`, for suites that live outside this repository. |
 
 ## What is built

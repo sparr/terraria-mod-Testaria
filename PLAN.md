@@ -24,7 +24,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
-| Artifacts B and C | Not built. The analyzer rides in the `Testaria.Core` package rather than waiting for B, and the CLI covers what most of C would have automated |
+| Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
@@ -599,7 +599,7 @@ Everything in section 0.1's table that is not a tier. These come first because e
 
 1. ~~**The section 2.2 boundary mitigations.**~~ Done, section 8.5a. The analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, the `[RequiresLoadedGame]` marker, and the runtime guard behind it.
 2. ~~**Seed control (risk 5).**~~ Done, section 8.5b. Pinned per test, derived from the test's identity, and recorded in the report.
-3. **Artifacts B and C (section 4.2).** ~~D, the `testaria` CLI~~, is done (section 8.5c). B and C remain, and are worth less than D was: B is a convenience over an ordinary xUnit project that already works, and C automates from MSBuild what the CLI now does from a command line.
+3. ~~**Artifacts B, C, and D (section 4.2).**~~ All three are done: D in section 8.5c, B and C in section 8.5e. Every artifact in the matrix now exists.
 4. **The five unmeasured numbers (risk 3).** The `SceneMetrics` scan radius is measured (section 8.5d). The remaining four, the default banded box size, the quarantine duration, the banded and column region split, and the `[FreshWorld]` crossover width, all want a real test corpus to calibrate against rather than another reading of the source.
 
 ### 8.5a The Tier 0 boundary, enforced rather than documented
@@ -685,6 +685,26 @@ Two things keep that from being an emergency.
 So the number is recorded in `BiomeScan`, with the derivation and the citation, and the gutter stays at 8 as a deliberate floor rather than an unexamined guess. Paying eighty-four tiles of dead space on every side of every box buys nothing today. The decision belongs with the parallel scheduler, which is the change that makes it matter, and the measurement is recorded for it.
 
 The remaining four numbers, the default banded box size, the quarantine duration, the region split, and the `[FreshWorld]` crossover, are not readable from any source file. They want a real corpus to calibrate against, which is section 8.6's business.
+
+### 8.5e Artifacts B and C, and a gate that consumes them
+
+`Testaria.Unit` is the `BuildMod=false` wiring from section 1.1.5, packaged: references an install's assemblies without packaging a `.tmod`, sets the `LangVersion` that `tMLMod.targets` only sets while building a mod, carries `Testaria.Core` and the boundary analyzer with it, and errors with `TSTU001` when there is no install rather than emitting a hundred missing-type errors. Deliberately the second choice: a test project that never references the game cannot accidentally depend on a loaded one, which is mitigation 1 and still the strongest.
+
+`Testaria.Sdk` is one MSBuild target. `dotnet build -t:TestariaRun` provisions, runs, writes the report to `TestResults/`, and fails the build when the suite fails, which is the whole reason to run tests from a build. It ships the CLI inside itself under `tools/`, so a mod repository needs one `PackageReference` and no install step, and the tool cannot drift from the targets that invoke it.
+
+Worth recording: **a mod project can consume a build-only package**, even though section 1.1.1 says mods cannot consume NuGet. The rule is about *assemblies*: `ModCompile` packs only `dllReferences`, so a package that contributes a library leaves a mod broken at run time. A package that contributes nothing but MSBuild has no assembly to lose, so `Testaria.Sdk` works in a mod project as well as beside one.
+
+#### The gate that consumes them
+
+`scripts/check-packages.sh` packs all four packages into a temporary feed and consumes them as a stranger would: the analyzer must fire from `Testaria.Core`, `Testaria.Unit` must report a missing install and must put the game in scope when there is one, and `Testaria.Sdk` must run a real suite green from MSBuild and leave the report where it said it would.
+
+Three things it checks that no unit test can see, each of them a way a well-formed package fails a project that references it.
+
+1. An **XML comment containing `--mod`** makes MSBuild refuse to load the file at all, while `dotnet pack` considers the package well formed.
+2. **`TestariaHasTml` belongs in the targets, not the props.** A package's props are imported *above* the project body, so a project setting `tModLoaderSteamPath` for itself would be overridden by a decision made before it spoke. The targets are below the body.
+3. **`TestariaResults` belongs there too**, for the same reason with a quieter symptom: derived above the body it takes the project's default name rather than the `TestariaRunName` the project chose, and a CI job collecting `TestResults/MyMod.xml` finds nothing and reports no tests rather than a failure.
+
+The pattern behind all three is worth keeping: **the packages are the product, and the only way to test a product is to consume it.** The gate clears the NuGet cache itself, so it cannot answer from yesterday's build.
 
 ### 8.6 Tier 3, and worked examples on a real mod
 

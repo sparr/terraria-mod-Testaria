@@ -1,0 +1,47 @@
+<Project>
+
+  <!--
+    Imported at the top of any project referencing Testaria.Sdk.
+
+    Everything here is a default a project may override. The run itself is in
+    the targets file beside this one.
+  -->
+
+  <PropertyGroup>
+    <!--
+      Off by default. A test run starts a game, generates a world, and takes
+      tens of seconds; making that part of every ordinary build would be a
+      surprise, and a slow one. Ask for it explicitly with
+      "dotnet build -t:TestariaRun", or set this to true in a CI-only
+      configuration.
+    -->
+    <TestariaRunOnBuild Condition="'$(TestariaRunOnBuild)' == ''">false</TestariaRunOnBuild>
+
+    <!--
+      Fast forward by default. A build is not a demonstration: nothing is
+      watching the simulation, so there is no reason to pay real time for it.
+      Set a number instead of "max" if reproducibility across machines matters
+      more than the last few seconds.
+    -->
+    <TestariaSpeed Condition="'$(TestariaSpeed)' == ''">max</TestariaSpeed>
+
+    <!--
+      A blank world by default: a deterministic stone-and-air substrate with no
+      liquid, no ore, and nothing growing or spreading. Contamination a warden
+      cannot see is removed at the root rather than watched for.
+    -->
+    <TestariaBlankWorld Condition="'$(TestariaBlankWorld)' == ''">true</TestariaBlankWorld>
+
+    <!-- Seconds the whole run may take before the harness gives up. -->
+    <TestariaTimeout Condition="'$(TestariaTimeout)' == ''">600</TestariaTimeout>
+
+  </PropertyGroup>
+
+  <!--
+    TestariaRunName and TestariaResults are deliberately not defaulted here.
+    They are derived from other properties, and a package's props are imported
+    above the project body, so defaulting them here would bake in a name the
+    project is about to change. They are set in the targets file instead.
+  -->
+
+</Project>
