@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6a. Tiers 0 through 2 run green in a headless server; tier 3 is not started; nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and section 8.5 onward is what remains, in order. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
+Status: implemented through section 8.6d. All four tiers run green in a live headless game, every artifact in the matrix is built, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.4, 8.7 and 8.8 are what remains. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
 
 ## 0. The short version
 
@@ -14,24 +14,25 @@ Status: implemented through section 8.6a. Tiers 0 through 2 run green in a headl
 
 ## 0.1 Where this stands
 
-Measured on 2026-09-24 against the checkout this document lives in, by running the core gate and the green path rather than by reading the code.
+Measured on 2026-09-24 against the checkout this document lives in, by running the gates rather than by reading the code.
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 45 tool, and 14 analyzer self-tests pass in under two seconds |
-| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
+| Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 65 tool, and 14 analyzer self-tests pass in under two seconds |
+| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, and restoring the ground at teardown all run inside a live headless server. The self-test mod reports 40 tests; the ExampleMod calibration suite reports 927 |
 | Tier 3 | Works, sections 8.6a and 8.6c. A client process joins a real server, four self-tests and three worked examples against ExampleMod pass. Rendering and input remain out of scope |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
+| Gates | Seven, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
-| CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
+| CI | Core tiers only, on three operating systems. The game tiers have no job, and by section 5.1 that job ships with the first GitHub release (sections 8.3a and 8.7) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
-The holes in that table are the subject of section 8.5, and they come before any distribution work.
+Section 8.5 is finished, and with it every hole that stood before distribution work. What remains is section 8.4, a load test aimed at the arena, and sections 8.7 and 8.8, which are the publication sequence and are gated on decisions and secrets that are not the code's to supply (section 5.1).
 
 ## 1. Constraints this plan rests on
 
