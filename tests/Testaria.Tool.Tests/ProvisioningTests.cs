@@ -165,6 +165,29 @@ public class ProvisioningTests : IDisposable
 		XAssert.DoesNotContain("-testariafreshworld", arguments);
 		XAssert.DoesNotContain("-testariaspeed", arguments);
 		XAssert.DoesNotContain("-testariaseed", arguments);
+		XAssert.DoesNotContain(RequiredMods.Flag, arguments);
+	}
+
+	[Fact]
+	public void The_run_is_told_which_mods_it_must_find()
+	{
+		using ScratchSave scratch = ScratchSave.Create();
+
+		IReadOnlyList<string> arguments =
+			ServerArguments.For(new RunOptions(), scratch, ["Testaria", "ExampleMod", "ExampleModTests"]);
+
+		// The whole point: without this the game cannot tell "this suite has
+		// no tests" from "this suite's subject failed to load", and reports
+		// the second as a clean run.
+		XAssert.Equal("Testaria,ExampleMod,ExampleModTests", Next(arguments, RequiredMods.Flag));
+	}
+
+	[Fact]
+	public void No_mods_means_no_demand()
+	{
+		using ScratchSave scratch = ScratchSave.Create();
+
+		XAssert.DoesNotContain(RequiredMods.Flag, ServerArguments.For(new RunOptions(), scratch, []));
 	}
 
 	[Fact]

@@ -61,6 +61,14 @@ public sealed class TestariaCommand : ModCommand
 			if (!TryParseFilter(caller, args.Length > 1 ? args[1] : null, out TestFilter listFilter))
 				return;
 
+			// A catalogue taken while the subject is missing is a catalogue of
+			// the wrong thing, and an empty one looks like a mod with no
+			// tests rather than a mod that is not there.
+			if (TestariaSystem.Preflight() is string listRefusal) {
+				caller.Reply("Testaria refused to list: " + listRefusal, Color.Yellow);
+				return;
+			}
+
 			(string? path, string summary) = TestariaSystem.Catalog(listFilter);
 
 			caller.Reply($"Testaria discovered {summary}.", Color.White);
@@ -103,6 +111,13 @@ public sealed class TestariaCommand : ModCommand
 		if (!TryParseFilter(caller, args.Length > 2 ? args[2] : null, out TestFilter filter))
 			return;
 
+		// Before anything else: a run whose subject is absent has nothing to
+		// say, and saying it quietly is the worst thing this can do.
+		if (TestariaSystem.Preflight() is string refusal) {
+			Refuse(caller, runName, refusal);
+			return;
+		}
+
 		TestSession? session = TestariaSystem.Start(runName, filter);
 
 		if (session is null) {
@@ -111,14 +126,25 @@ public sealed class TestariaCommand : ModCommand
 		}
 
 		if (session.Discovered == 0) {
-			// Saying nothing was found beats a silent green run, which reads
-			// identically to a passing suite.
-			caller.Reply("Testaria found no tests. Is the test mod enabled?", Color.Yellow);
+			// A run that found nothing has established nothing, so it is an
+			// error rather than a clean sheet. Saying so on the console was
+			// not enough: the report still came out empty and green, and a
+			// harness reading the report reached the opposite verdict from
+			// the person reading the console.
+			Refuse(caller, runName,
+				"Testaria found no tests at all. Either no test mod is enabled, or the one that is "
+				+ "failed to load. Nothing was established, so this is reported as an error rather "
+				+ "than an empty pass.");
+
 			return;
 		}
 
 		if (session.Selected == 0) {
-			caller.Reply($"Testaria matched no tests against '{filter}' out of {session.Discovered} discovered.", Color.Yellow);
+			Refuse(caller, runName,
+				$"Testaria matched no tests against '{filter}' out of {session.Discovered} discovered. "
+				+ "A filter that selects nothing leaves the run proving nothing, so it is an error "
+				+ "rather than an empty pass.");
+
 			return;
 		}
 
@@ -127,6 +153,24 @@ public sealed class TestariaCommand : ModCommand
 			: $"{session.Discovered} test(s)";
 
 		caller.Reply($"Testaria running {scope} as '{runName}'. Results land under {ResultsLocation.Directory(Main.SavePath)}.", Color.White);
+	}
+
+	/// <summary>
+	/// Turns down a run, on the console and in the report both.
+	/// <para/>
+	/// Both, because they are read by different parties who must not be able
+	/// to disagree: a person watching the console, and a harness that only
+	/// ever sees the XML.
+	/// </summary>
+	private static void Refuse(CommandCaller caller, string runName, string reason)
+	{
+		caller.Reply("Testaria refused to run: " + reason, Color.Yellow);
+
+		string? path = TestariaSystem.RefuseRun(runName, reason);
+
+		caller.Reply(path is null
+			? "The refusal could not be written to a report, so a harness will see only a timeout."
+			: $"Reported as an error in {path}.", Color.Yellow);
 	}
 
 	private static bool IsPacingVerb(string verb)

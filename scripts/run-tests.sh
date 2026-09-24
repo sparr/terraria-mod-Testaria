@@ -43,6 +43,12 @@ SPEED_ARG=""
 # the other decides what the dice do once a test starts.
 RUN_SEED_ARG=""
 [ -n "${RUN_SEED:-}" ] && RUN_SEED_ARG="-testariaseed $RUN_SEED"
+# The mods this gate installed, which the run is told to insist on. A mod that
+# throws during its load pass is disabled by the game and everything carries
+# on, so without this the suite aimed at it finds nothing and the report comes
+# back clean. Measured: a mod that threw from Load() took its test mod with it
+# and the run reported "0 tests: 0 passed" and exited 0.
+REQUIRE_MODS_ARG="-testariarequiremods $(printf '%s,' $ENABLED | sed 's/,$//')"
 MEM_MAX="${MEM_MAX:-4G}"
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
@@ -178,6 +184,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     $FRESH_ARG \
     $SPEED_ARG \
     $RUN_SEED_ARG \
+    $REQUIRE_MODS_ARG \
     -players 1 \
     -port 7777 \
     -password "" \

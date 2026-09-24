@@ -12,7 +12,15 @@ namespace Testaria.Tool;
 public static class ServerArguments
 {
 	/// <summary>Builds the server's command line for a run.</summary>
-	public static IReadOnlyList<string> For(RunOptions options, ScratchSave scratch)
+	/// <param name="options">What the run was asked to do.</param>
+	/// <param name="scratch">The throwaway save directory it runs in.</param>
+	/// <param name="enabled">
+	/// The mods actually installed and enabled, which the run is told to
+	/// insist on. Without this a mod that fails its load pass is disabled by
+	/// the game, the suite aimed at it finds nothing, and the report comes
+	/// back clean; with it, the run refuses and names the mod.
+	/// </param>
+	public static IReadOnlyList<string> For(RunOptions options, ScratchSave scratch, IEnumerable<string>? enabled = null)
 	{
 		ArgumentNullException.ThrowIfNull(options);
 		ArgumentNullException.ThrowIfNull(scratch);
@@ -54,6 +62,15 @@ public static class ServerArguments
 		if (options.RunSeed is int seed) {
 			arguments.Add("-testariaseed");
 			arguments.Add(seed.ToString());
+		}
+
+		if (enabled is not null) {
+			string names = string.Join(",", enabled);
+
+			if (names.Length > 0) {
+				arguments.Add(RequiredMods.Flag);
+				arguments.Add(names);
+			}
 		}
 
 		return arguments;

@@ -95,7 +95,7 @@ public static class Program
 
 		harness
 			.Run(
-				ServerArguments.For(options, scratch),
+				ServerArguments.For(options, scratch, enabled),
 				command,
 				resultsPath,
 				TimeSpan.FromSeconds(options.TimeoutSeconds),

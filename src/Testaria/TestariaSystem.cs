@@ -383,6 +383,76 @@ public sealed class TestariaSystem : ModSystem
 	}
 
 	/// <summary>
+	/// The names of every mod the game currently has loaded.
+	/// </summary>
+	public static IReadOnlyList<string> LoadedModNames()
+		=> [.. ModLoader.Mods.Select(m => m.Name)];
+
+	/// <summary>
+	/// Why this run must not go ahead, or null if it may.
+	/// <para/>
+	/// Only one reason so far: a mod the harness said it installed is not
+	/// loaded. That is worth refusing over rather than reporting afterwards,
+	/// because every test in the suite is about to be skipped or absent and
+	/// the resulting clean report is indistinguishable from a passing one.
+	/// </summary>
+	public static string? Preflight()
+	{
+		if (!Program.LaunchParameters.TryGetValue(RequiredMods.Flag, out string? value))
+			return null;
+
+		IReadOnlyList<string> loaded = LoadedModNames();
+		IReadOnlyList<string> missing = RequiredMods.Missing(RequiredMods.Parse(value), loaded);
+
+		return missing.Count == 0 ? null : RequiredMods.Describe(missing, loaded);
+	}
+
+	/// <summary>
+	/// Writes a report saying the run was refused, so that a harness reading
+	/// the report reaches the same verdict a person reading the console does.
+	/// <para/>
+	/// A report rather than silence: the harness waits for one, and a run that
+	/// merely never produced it would time out, which is a far worse signal
+	/// than a named error. Recorded as an error rather than a failure because
+	/// nothing was tested.
+	/// </summary>
+	/// <returns>The written path, or null if it could not be written.</returns>
+	public static string? RefuseRun(string runName, string reason)
+	{
+		ArgumentException.ThrowIfNullOrEmpty(runName);
+		ArgumentException.ThrowIfNullOrEmpty(reason);
+
+		TestRunResult result = new() {
+			Name = runName,
+			Suites = [
+				new TestSuiteResult {
+					Name = "Testaria.Preflight",
+					Results = [
+						new TestResult {
+							ClassName = "Testaria.Preflight",
+							Name = "The run was refused before it started",
+							Outcome = TestOutcome.Errored,
+							Message = reason,
+						},
+					],
+				},
+			],
+		};
+
+		try {
+			string path = ResultsLocation.ForRun(Main.SavePath, runName);
+
+			Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+			File.WriteAllText(path, JUnitXmlWriter.ToXml(result));
+
+			return path;
+		}
+		catch {
+			return null;
+		}
+	}
+
+	/// <summary>
 	/// Lists the discovered tests without running any of them, so a harness
 	/// can plan. Chiefly: which tests asked for a fresh world, each of which
 	/// needs a process of its own to honestly get one.
