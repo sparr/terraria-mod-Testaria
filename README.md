@@ -286,9 +286,9 @@ yield return ClientLink.AwaitAnswer("MyMod.SeesWidget", w => { w.Write(x); w.Wri
 
 Asking more than `ClientLink.MaxQuestionsInFlight` questions without waiting for any of them fails the test that did it, by name, rather than wedging the run.
 
-A question the client does not have registered, or a handler that throws, comes back as an error rather than not coming back at all. `Request.Failed` says so, `Request.Error` says why, and `Request.Read()` fails the test rather than handing back an empty reader that would read as a legitimate "no".
+### Testing a client-only mod
 
-Rendering, pixel diffing, and input replay remain out of scope: tier 3 here means netcode.
+Client-only mods still rely on the tier 3 server/client architecture. Anything you want to know about the client must still be implemented using the Query registration and answer system described above. The client can read pixels on the screen and report facts about them, but there not yet a way to send an image back to the server or the output report.
 
 ## Parameterised tests
 

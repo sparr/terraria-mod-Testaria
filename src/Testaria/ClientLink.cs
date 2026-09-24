@@ -139,6 +139,36 @@ public static class ClientLink
 			Pending.Clear();
 	}
 
+	/// <summary>
+	/// Fails every waiting question if there is no longer a client to answer
+	/// it.
+	/// <para/>
+	/// A client can die mid-run: it is a whole game process, and unlike the
+	/// server it draws, so it meets a category of failure the server never
+	/// does. Measured, a mod whose shader asset was missing took the client
+	/// down at the first frame that wanted it, well after the harness had
+	/// watched it join. Every tier 3 test then sat waiting for an answer that
+	/// was never coming and failed on its tick budget, which reads as "the
+	/// network is slow" rather than "the other process is gone".
+	/// <para/>
+	/// Called every tick while a run is in progress.
+	/// </summary>
+	public static void FailPendingIfClientsGone()
+	{
+		lock (Pending) {
+			if (Pending.Count == 0 || ConnectedClients > 0)
+				return;
+
+			foreach (Request request in Pending.Values) {
+				request.Error = "The client is no longer connected: it exited or crashed during the run. "
+					+ "Its log is under clients/ in the scratch directory, which --keep-scratch preserves.";
+				request.Answered = true;
+			}
+
+			Pending.Clear();
+		}
+	}
+
 	/// <summary>Forgets which clients have reported in, on unload.</summary>
 	public static void Reset()
 	{

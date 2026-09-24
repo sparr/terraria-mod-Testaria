@@ -31,6 +31,10 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 
 	private readonly StringBuilder log = new();
 	private readonly List<Process> clients = [];
+
+	// Where each client's output was written, so a client that dies can be
+	// reported with the one file that says why.
+	private readonly Dictionary<int, string> clientLogs = [];
 	private Process? server;
 
 	/// <summary>
@@ -192,6 +196,7 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			client.BeginErrorReadLine();
 
 			clients.Add(client);
+			clientLogs[client.Id] = logPath;
 			progress.WriteLine($"client:   pid {client.Id}, log {logPath}");
 		}
 
@@ -269,12 +274,29 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			progress.WriteLine("  | " + line);
 	}
 
+	private string ClientLogPath(Process client)
+		=> clientLogs.TryGetValue(client.Id, out string? path) ? path : "the scratch directory";
+
 	private void WaitFor(Func<bool> done, Stopwatch elapsed, TimeSpan timeout, string what)
 	{
 		while (!done()) {
 			if (server!.HasExited) {
 				WriteLog();
 				throw new HarnessException($"The server exited while waiting for {what}. Its log is at {scratch.LogPath}.{Tail()}");
+			}
+
+			// A client is a whole game process, and unlike the server it
+			// draws, so it meets failures the server never does: measured, a
+			// missing shader asset took one down at the first frame that
+			// wanted it, long after it had joined. Without this the run waits
+			// out its whole timeout and blames the wait.
+			if (clients.FirstOrDefault(client => client.HasExited) is Process dead) {
+				WriteLog();
+				Kill();
+
+				throw new HarnessException(
+					$"A client exited while waiting for {what}. Tier 3 tests cannot be answered without it. "
+					+ $"Its log is at {ClientLogPath(dead)}.");
 			}
 
 			if (elapsed.Elapsed > timeout) {

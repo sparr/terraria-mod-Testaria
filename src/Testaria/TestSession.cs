@@ -258,6 +258,10 @@ public sealed class TestSession
 	/// <returns>True while there is more to do.</returns>
 	public bool Step()
 	{
+		// Before stepping, so a test that is about to resume finds its answer
+		// already settled rather than waiting one more tick for nothing.
+		ClientLink.FailPendingIfClientsGone();
+
 		bool more = runner.Step();
 
 		ArenaMetrics.Observe();
