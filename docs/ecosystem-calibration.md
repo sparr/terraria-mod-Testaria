@@ -6,9 +6,10 @@ rather than at ExampleMod and its own self-tests.
 Run on 2026-09-24 against tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`,
 commit `39e7995f`, built the same day and the newest dev build available.
 
-Ten findings came out of it, and closing them turned up three more. All of
-them are now fixed or documented, apart from one that is not fixable in
-general and is written down instead.
+Sixteen findings came out of it: ten from writing the first two suites, three
+from fixing those, and three more from writing suites for the other two mods
+once they built. All are fixed or documented apart from one that is not
+fixable in general and is written down instead.
 
 ## The corpus
 
@@ -69,7 +70,24 @@ Both live on a `testaria-tests` branch in their own repository.
   the same NPC in the same routine dies when the set says nothing and lives
   when the set says no. All 16 pass.
 
-Writing them is where the findings below came from.
+Cheat Sheet and SilkyUI are ported far enough to build and load, and have
+suites of their own:
+
+- **Cheat Sheet**, 21 tests. It is a client-side cheat menu, so nearly all of
+  it is UI and does not exist on a server. What does is the NPC filter, a
+  `GlobalNPC` that kills any NPC whose net ID is listed, and that is real
+  gameplay in a real world: tier 2 filters a type, spawns one, and watches it
+  die, with two controls. Tier 2 also covers `TileData`, the five components
+  the paint tools lift off each tile, whose failure mode is silent and
+  permanent. Tier 1 covers the stamp chunking arithmetic.
+- **SilkyUI**, 25 tests. A UI framework on a headless server sounds like a
+  contradiction and mostly is, but two things are reachable: the value types
+  the engine is built out of, and the flexbox layout engine itself, which is
+  pure computation over a tree and the one thing in a UI framework really
+  worth testing.
+
+174 tests across four mods nobody here wrote. Writing them is where the
+findings below came from.
 
 ## Findings
 
@@ -81,10 +99,6 @@ Four findings, every one of them a limit rather than a defect: two belong to the
 | 2 | A box cannot contain world-global state | documented; not fixable in general |
 | 3 | Tier 0 is out of reach for a normal mod | documented |
 | 4 | A mod that keeps its types internal cannot be tested without opting in | documented |
-
-The last three were found by fixing the second, which is the usual way: a
-capability nobody had exercised had never had its neighbours exercised
-either.
 
 ### 1. Adding a suite to a mod's own repository breaks the mod's build
 
@@ -140,6 +154,20 @@ Two things follow. The docs should say this plainly, so that nobody reads the
 tier table and expects to put their mod's logic in tier 0. And the speed of
 tier 1 matters more than the tier 0 story does, because tier 1 is where the
 cheap tests of a real mod actually live.
+
+### 4. A mod that keeps its types internal cannot be tested without opting in
+
+A test suite is a separate assembly by construction: it is a separate `.tmod`
+that the loader enables on its own. So a mod that keeps its types `internal`,
+which is the right default for a mod, is invisible to its own tests.
+
+Cheat Sheet keeps essentially everything internal, including its `Mod` class.
+A suite referencing it can see one public record struct.
+
+The answer is one line, `[assembly: InternalsVisibleTo("MyModTests")]`, and it
+is worth documenting rather than leaving people to discover: the obvious
+alternative, making types public so they can be tested, changes the mod's own
+surface for the sake of its tests.
 
 ## What works
 

@@ -97,6 +97,34 @@ public class TeardownTests
 	}
 
 	/// <summary>
+	/// Tier 1 gets this too, which is not obvious: a tier 1 test has no box,
+	/// and a context is the thing a box comes with. The runner makes one for
+	/// any test that asks for the parameter, boxed or not, and disposes it the
+	/// same way, so a test with no world can still put a static back.
+	/// <para/>
+	/// Worth a test of its own because the alternative is a reasonable-looking
+	/// assumption that it does not work, and a tier 1 test quietly leaking its
+	/// changes into the rest of the suite.
+	/// </summary>
+	[LoadedTest]
+	public void A_tier_1_test_can_register_a_restoration_too(ITestContext ctx)
+	{
+		var box = (TestContext)ctx;
+
+		Assert.Null(box.Lease);
+
+		int global = 3;
+
+		box.Change(() => global, value => global = value, 4);
+
+		Assert.Equal(4, global);
+
+		box.Dispose();
+
+		Assert.Equal(3, global);
+	}
+
+	/// <summary>
 	/// Registering nothing is not an error, and teardown is not surprised by
 	/// a test that asked for no restorations at all.
 	/// </summary>

@@ -18,8 +18,8 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 512 core, 75 tool, and 14 analyzer self-tests pass in under two seconds. Section 8.6e records the honest limit: a mod's own code lives in a mod assembly, so for most mods tier 1 is the practical floor |
-| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, registered teardown, placing a tile as a player does, and restoring the ground all run inside a live headless server. The self-test mod reports 56 tests; the ExampleMod calibration suite reports 927; two foreign mods report 112 and 16 |
+| Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 512 core, 76 tool, and 14 analyzer self-tests pass in under two seconds. Section 8.6e records the honest limit: a mod's own code lives in a mod assembly, so for most mods tier 1 is the practical floor |
+| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, registered teardown, placing a tile as a player does, and restoring the ground all run inside a live headless server. The self-test mod reports 57 tests; the ExampleMod calibration suite reports 927; four foreign mods report 174 between them |
 | Tier 3 | Works, sections 8.6a, 8.6c and 8.6e. A client process joins a real server; twelve self-tests, three worked examples against ExampleMod, and five replication tests against InnoVault pass. A test mod can register questions the client answers, so a mod's own synced state is reachable. Rendering and input remain out of scope |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
@@ -34,7 +34,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 
 Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1).
 
-Section 8.6e is the one to read before trusting any of the above. Six mods nobody here wrote produce thirteen findings between them, three of which no existing gate catches and two of which exist *because* of how a gate is written.
+Section 8.6e is the one to read before trusting any of the above. Six mods nobody here wrote produce sixteen findings between them, three of which no existing gate catches and two of which exist *because* of how a gate is written.
 
 ## 1. Constraints this plan rests on
 
@@ -853,7 +853,7 @@ So the framework is pointed at **every published mod with active 1.4.5 work**, t
 
 The shape of those failures matters more than the count. Four of the six are renames or a single moved method. What makes them expensive is not their size but that the 1.4.5 line moves underneath the mods targeting it: `FocusHelper.AllowUIInputs` and `AllowGameplayInputs` stopped existing in the 1.4.5.8 update of 2026-09-16, and SilkyUI's branch carries commits from a week *after* that update that still reference them. This is risk 7 in the ecosystem rather than in this repository.
 
-**Suites were then written against the two that worked**, 112 tests for InnoVault and 16 for DAYBREAK, and writing them is what produced the findings. Ten came from writing the suites, one from fixing those ten, and three more from fixing that one. Twelve are closed; the thirteenth is not fixable in general and is written down instead. The full account, with the evidence for each, is in `docs/ecosystem-calibration.md`.
+**Every mod that works has a suite**: 112 tests for InnoVault, 16 for DAYBREAK, 21 for Cheat Sheet and 25 for SilkyUI, 174 in all, across four mods nobody here wrote. They establish both halves of what follows: the capabilities a foreign mod needs, and four limits that belong to the ecosystem or to the design rather than to anything a framework can answer. The full account, with the evidence for each, is in `docs/ecosystem-calibration.md`.
 
 The four worth recording here:
 
@@ -864,6 +864,8 @@ The four worth recording here:
 **A client can be asked about a mod's own state, not only vanilla's.** A mod's synced state is the entire reason a mod has netcode, and the missing piece is the extension point rather than the transport. A test mod is loaded on both sides, so the code that knows how to inspect a mod's own objects already sits on the client. `ClientQuery.Register` names a handler during a load pass and `ClientLink.Ask` calls it by name. InnoVault's suite now tests TileProcessor replication end to end: a processor the server creates reaching the client, its own `SendData` payload arriving with it, repeated syncing not multiplying it, and a client knowing nothing of one it was never told about.
 
 **A gate has to find its subject by something the subject declares.** The report carries `testaria-tier` on each `testcase` and the tier 3 gate reads it, so a tier 3 test written in a class called anything at all is still covered. Selecting by naming convention is the version of this that stops working without saying so, and it takes the whole suite's coverage with it: running everything with a client attached is also what catches a tier 2 test that counts the connected client's player among the ones it fabricated.
+
+**Two findings are about the shape of the ecosystem rather than about this framework, and neither is fixable here.** Every tier above zero runs in a `-server` process, so a mod that is entirely client-side has almost nothing a test can reach; of Cheat Sheet's whole surface, one `GlobalNPC` runs on a server. And a suite is a separate assembly by construction, so a mod that keeps its types `internal`, which is the right default, is invisible to its own tests until it says `[assembly: InternalsVisibleTo]`. Both belong in the documentation rather than in the code, and both bear on section 5's expectations about who will adopt this.
 
 **What this adds to the plan.** Section 2.4 wants a real test corpus to adjudicate the isolation design, and there is one, partly: boxes hold across 128 tests on two foreign mods with no cross-contamination. But a box isolates a region and nothing else, and a test that flips a static field needs `ctx.Restore` rather than geometry. That is built, and is the fifth mechanism section 2.4 does not anticipate.
 
