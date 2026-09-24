@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6d. All four tiers run green in a live headless game, every artifact in the matrix is built, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.4, 8.7 and 8.8 are what remains. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
+Status: implemented through section 8.6d, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.4, 8.7 and 8.8 are what remains. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
 
 ## 0. The short version
 
@@ -23,7 +23,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Tier 3 | Works, sections 8.6a and 8.6c. A client process joins a real server, four self-tests and three worked examples against ExampleMod pass. Rendering and input remain out of scope |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
-| Gates | Seven, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration |
+| Gates | Seven by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. An eighth, the arena load test, is deliberate (`RUN_LOAD=1`) |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Core tiers only, on three operating systems. The game tiers have no job, and by section 5.1 that job ships with the first GitHub release (sections 8.3a and 8.7) |
@@ -32,7 +32,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
-Section 8.5 is finished, and with it every hole that stood before distribution work. What remains is section 8.4, a load test aimed at the arena, and sections 8.7 and 8.8, which are the publication sequence and are gated on decisions and secrets that are not the code's to supply (section 5.1).
+Sections 8.4 and 8.5 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1).
 
 ## 1. Constraints this plan rests on
 
@@ -590,9 +590,41 @@ Two consequences worth keeping. A bounded rate is reproducible across machines a
 
 Stopping the world came with it. `ITestContext.Pause`, `Step(n)`, and `Resume`, plus `[StartPaused]`, let a test walk the simulation a tick at a time, which is how you pin down the exact tick something goes wrong on. It reuses the game's own debug gate: `DoUpdate` keeps running and only `DoUpdateInWorld` is skipped, so a frozen tick is a shape the game already produces. A test that pauses and neither steps nor resumes is thawed by the harness after 1800 frames with a note on its result, so a wedged test cannot hang a run.
 
-### 8.4 Complex mods are a load test, not a graduation
+### 8.4 The arena under load
 
 Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaustion, mod-count interactions, world generation at scale, long reload times. That deserves to be a named milestone aimed at the **arena**, run deliberately, rather than something stumbled into while trying to test gameplay.
+
+#### There is no Calamity-class mod for 1.4.5, measured rather than assumed
+
+Calamity is installed, in four Workshop builds. The newest, 2.2.2, is a 1.4.4 build, and on this 1.4.5 install it fails at load with `Method 'Place' in type 'CalamityMod.World.Planets.Planetoid' does not have an implementation`, which is what section 1.1.14's hard fork looks like from the inside. Nothing of that size has been ported yet.
+
+**The attempt exposes a reporting hole.** A run whose mod fails to load reports on a game nobody asked for: three mods requested, two run, *six of six tests passing*, and nothing saying so. The tool compares the mods it enabled against the list the game prints at run start, and fails with exit 2 naming the missing ones. It is the same shape as the stale package in 8.5a and the silent skip in 8.6b: **the run reports on a game that is not the one anybody asked for.**
+
+#### So the stresses were applied directly
+
+`TestariaLoadTest`, run by `scripts/check-load.sh` and by `RUN_LOAD=1 scripts/run-all.sh`, applies what a huge mod would apply, more precisely than a huge mod would:
+
+- **Churn**: 300 boxed tests in a row, leasing and returning, exercising the free list, carving and quarantine.
+- **Every size class**, including the 384 by 256 largest and the spanning columns nothing else asks for. Measured across a corpus of 967 in section 8.5f: zero spanning requests, so the column path runs nowhere but in unit tests.
+- **Entity pool pressure**: 260 spawns into a 200 slot pool, and a following test asserting the next box is clean.
+
+Result: 308 boxes leased and returned in about 40 seconds of wall clock, covering 48x32, 96x64, 192x128, 384x256, and columns of 48x879 and 96x879. The slowest restore was 21.5 ms, for the 384 by 256 box. No box took more than two ticks to go quiet. Per-tile snapshot and restore cost held at 0.25 microseconds across a sixty-fold range of box sizes, which retires the worry in section 2.4 that recycling a column would be prohibitively expensive: the largest column in a small world costs about 20 ms.
+
+Spawning past the pool behaves: the spawns start coming back inactive rather than wrapping onto somebody else's slot, and the next box is clean.
+
+#### A box taller than the band it names
+
+**An impossible box request hangs an unguarded run.** `Arena.Carve` throws an `ArgumentOutOfRangeException` that says exactly what is wrong and what to do about it, and **tModLoader silently catches exceptions in its hooks**, so an exception escaping there completes no test, advances no session, and leaves the run to sit until the harness times out: the clearest error message in the framework, inside an exception nobody ever sees.
+
+The runner turns a failed lease into an errored result carrying the arena's own message. There is a unit test for it, and the request lives in `TestariaRedTest` where the red gate checks it arrives as an error rather than as a hang.
+
+The general rule matters more than the one case: **an exception is not a report.** Anywhere this framework throws inside a game hook, it is one silent catch away from hanging a run, and only running it finds those.
+
+#### Mod count and load time
+
+Measured on this install: two mods load in 867 ms; five, including ExampleMod's 563 files and 6 MB, in 1570 ms. So ExampleMod costs about 700 ms of load on its own, and a run's fixed cost is dominated by world generation (5 seconds) and mod loading rather than by tests, which averaged 130 ms each in the churn.
+
+Calamity is roughly an order of magnitude larger again than ExampleMod, so the plan's worry about long reload times is real but is a property of tModLoader rather than of the arena, and it will have to be measured again when a mod that size exists for 1.4.5.
 
 ### 8.5 Fill the holes before building anything outward facing
 

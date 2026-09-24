@@ -39,12 +39,13 @@ def expect(label, got, want):
     if got != want:
         problems.append(f"{label}: expected {want}, got {got}")
 
-# Two assertion failures (one direct, one timeout) and three errors: one
-# thrown, one malformed and caught at discovery, and one whose assertions all
-# passed but whose box was contaminated.
-expect("tests",    int(root.get("tests", 0)),    5)
+# Two assertion failures (one direct, one timeout) and four errors: one
+# thrown, one malformed and caught at discovery, one whose assertions all
+# passed but whose box was contaminated, and one asking for a box the world
+# cannot hold, which has to be reported rather than hanging the run.
+expect("tests",    int(root.get("tests", 0)),    6)
 expect("failures", int(root.get("failures", 0)), 2)
-expect("errors",   int(root.get("errors", 0)),   3)
+expect("errors",   int(root.get("errors", 0)),   4)
 expect("skipped",  int(root.get("skipped", 0)),  0)
 
 outcomes = {}
@@ -64,6 +65,7 @@ want = {
     "Deliberately_throws":             "error",
     "Deliberately_malformed":          "error",
     "Deliberately_contaminates_its_own_box": "error",
+    "Deliberately_asks_for_an_impossible_box": "error",
 }
 
 for name, kind in want.items():

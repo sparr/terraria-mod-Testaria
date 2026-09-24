@@ -330,38 +330,35 @@ public IEnumerator A_slime_lands_on_the_third_tick(ITestContext ctx)
 }
 ```
 
-`ctx.Step(n)` grants the world exactly `n` ticks and returns a wait covering them, so the body resumes on the last one and can ask for more. `[StartPaused]` freezes the world before the body's first yield, for a test that wants to set up and inspect before anything moves.
-
-This is the same gate Terraria's own debug stepper uses: `DoUpdate` keeps running and only `DoUpdateInWorld` is skipped, so a frozen tick is a shape the game already produces. A test that pauses and then neither steps nor resumes is thawed by the harness after 1800 frames, with a note on its result, rather than hanging the run.
+`[StartPaused]` freezes the world before the body's first yield.
 
 From the console, the same controls work on whatever is running: `testaria pause`, `testaria step 5`, `testaria resume`. `testaria status` reports the speed and whether the world is frozen, so a paused run never looks like a hung one.
+
+## Seeds and reproducibility
+
+By default, each test seeds the RNG based on the test's identity, and reports that seed in the test output:
+
+```xml
+<testcase name="A_slime_falls" classname="MyModTests.SlimeTests" testaria-seed="991526881" />
+```
+
+You can specify the seed for a test, if you have a RNG-driven failure:
+
+```csharp
+[GameTest(Band = Band.Cavern)]
+[Seed(4242)]
+public IEnumerator A_slime_drops_its_banner(ITestContext ctx) { ... }
+```
 
 ## Boxes and what they cost
 
 A tier 2 or tier 3 test runs inside a box the arena leases it: a rectangle of world, in a band the test names, with a gutter of dead space around it. Teardown deactivates everything the test spawned and puts the ground back exactly as it was, so the next tenant of that slot inherits nothing.
 
-The numbers behind that are measured rather than chosen, over a corpus of 967 tests:
-
-| Setting | Value | Why |
-| --- | --- | --- |
-| Default box | 48 by 32 tiles | The furthest any test's own entities ranged was 25 by 21, and the largest patch of ground any of them changed was 5 by 3 |
-| Quarantine | 12 ticks | 31 boxes of 33 were quiet the tick after teardown; the slowest took 2 |
-| Gutter | 8 tiles | Covers tile framing and liquid. It does **not** cover biome scanning, which reaches 84 tiles, and cannot until boxes run concurrently |
-| Snapshot and restore | 0.35 microseconds per tile | An ordinary box costs well under a millisecond to save and put back |
-
-Ask for more room when a test needs it, with `[GameTest(Width = 160, Height = 96)]`. A test that needs a whole world rather than a box says `[FreshWorld]`, and that is a statement about semantics rather than cost: a column spanning an entire small world costs under two seconds to scrub, against five and a half to generate a blank world, so there is no width at which a fresh world is the cheaper option.
-
-To collect the same measurements from your own suite:
-
-```
-testaria run --mod MyModTests --measure --results out.xml
-```
-
-which writes `out-arena.tsv` beside the report: a row per boxed test with the size it was granted, the ground it changed, how far its entities roamed, what snapshot and restore cost, and how many ticks the box took to go quiet.
+Ask for more room when a test needs it, with `[GameTest(Width = 160, Height = 96)]`. A test that needs a whole world rather than a box says `[FreshWorld]`. FreshWorld is seconds slower than even the largest GameTest box size, so use it sparingly.
 
 ## Escapes
 
-An entity of a test's own that leaves its box is recorded for review, and never fails anything. Leaving may be exactly what the test is watching, and dragging it back would change the behaviour under test. It appears in the report, as `<system-out>` on that test's `<testcase>`:
+An entity of a test's own that leaves its box is recorded for review but does not fail the test. It appears in the report, as `<system-out>` on that test's `<testcase>`:
 
 ```xml
 <testcase name="A_slime_falls" classname="MyModTests.SlimeTests">
@@ -476,6 +473,7 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | [`tests/TestariaSelfTest/`](tests/TestariaSelfTest) | The in-game self-test mod, which is the green path. |
 | [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
 | [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
+| [`tests/TestariaLoadTest/`](tests/TestariaLoadTest) | The arena under load: 300 boxes, every size class, spanning columns, and a full entity pool. |
 | [`templates/`](templates) | The two `dotnet new` templates. |
 | [`scripts/`](scripts) | The headless harness and its gates, including `check-packages.sh`, which consumes the packages the way a stranger would. |
 | [`build/`](build) | `Testaria.props`, for suites that live outside this repository. |

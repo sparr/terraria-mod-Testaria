@@ -40,6 +40,37 @@ public class TestRunnerTests
 	private static TestResult Single(TestRunResult run) => run.Suites.Single().Results.Single();
 
 	[Fact]
+	public void A_box_the_world_cannot_hold_errors_the_test_rather_than_hanging_the_run()
+	{
+		// A band far too short for the box the fixture asks for. The arena
+		// throws, because the request is impossible rather than merely
+		// unlucky, and the runner has to turn that into a result: an
+		// exception escaping here is swallowed by tModLoader in the game, and
+		// the run then hangs forever waiting for a test that will never
+		// finish. Found by the load test in PLAN.md section 8.4.
+		var thin = new WorldGeometry(4200, 1200, 87, 250, 260, 1000);
+
+		TestRunResult run = Run(
+			nameof(Fixtures.PassingCoroutine),
+			new TestRunnerOptions {
+				MaxTier = TestTier.World,
+				Arena = new Arena(thin, new ArenaOptions { HeightClasses = [1024] }),
+				CreateContext = lease => new StubContext(lease),
+			});
+
+		TestResult result = Single(run);
+
+		XAssert.Equal(TestOutcome.Errored, result.Outcome);
+		XAssert.Contains("could not be leased", result.Message);
+		// The arena's own explanation survives, because it is the part that
+		// says what to change.
+		XAssert.Contains("band", result.Message);
+		// And the run reached an end at all, which before the fix it did not:
+		// the exception escaped RunToCompletion instead of becoming a result.
+		XAssert.Equal(1, run.Total);
+	}
+
+	[Fact]
 	public void An_empty_run_finishes_immediately_and_succeeds()
 	{
 		var runner = new TestRunner([], Options());

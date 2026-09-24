@@ -7,6 +7,7 @@
 #   3. the red path           deliberate failures must be reported as such
 #   4. packages              the artifacts must work when consumed as packages
 #   5. tier 3                 a client must join, and must be missed when absent
+#   5a. load                  the arena under pressure, only when asked for
 #   6. fresh worlds           tests wanting an untouched world get one
 #   7. calibration            the framework must work on someone else's mod
 #
@@ -56,6 +57,12 @@ if [ "${SKIP_NET:-0}" = "1" ]; then
 	echo "=== tier 3: skipped by request ==="
 else
 	step "tier 3" "$HERE/check-net.sh"
+fi
+
+# Deliberate rather than automatic, as PLAN.md section 8.4 asks: a minute of
+# work aimed at one component, worth running when the arena changes.
+if [ "${RUN_LOAD:-0}" = "1" ]; then
+	step "load" "$HERE/check-load.sh"
 fi
 
 # Slow by construction: a server start per test. Skippable for a quick loop.

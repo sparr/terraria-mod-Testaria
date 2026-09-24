@@ -196,7 +196,26 @@ public sealed class TestRunner
 				return false;
 			}
 
-			lease = options.Arena.TryLease(request);
+			try {
+				lease = options.Arena.TryLease(request);
+			}
+			catch (Exception ex) {
+				// A request the world cannot satisfy at all, such as a box
+				// taller than the band it named, rather than an arena that is
+				// merely full. The arena says exactly what is wrong, so the
+				// message is passed through rather than replaced.
+				//
+				// Caught here because the alternative is much worse than it
+				// looks: measured, an exception thrown out of a test hook is
+				// silently swallowed by tModLoader, so the test never
+				// completes, the session never advances, and the run hangs
+				// until the harness gives up ten minutes later. A clear
+				// message inside an exception nobody sees is no message at all
+				// (PLAN.md section 8.4).
+				Complete(TestOutcome.Errored, $"This test's box could not be leased. {ex.Message}");
+
+				return false;
+			}
 
 			if (lease is null) {
 				Complete(TestOutcome.Blocked, DescribeExhaustion(options.Arena));

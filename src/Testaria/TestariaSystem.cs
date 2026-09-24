@@ -50,6 +50,12 @@ public sealed class TestariaSystem : ModSystem
 
 		ClientLink.Clear();
 
+		// To the console, where the harness can see it. A mod that was asked
+		// for and did not load is the quietest way for a run to test nothing:
+		// measured, a run with Calamity enabled reported six of six tests
+		// passing while Calamity had failed to load and been disabled.
+		Console.WriteLine("Testaria: mods loaded: " + string.Join(" ", ModLoader.Mods.Select(m => m.Name)));
+
 		ClearStrayNpcs();
 
 		List<Assembly> assemblies = LoadedModAssemblies();

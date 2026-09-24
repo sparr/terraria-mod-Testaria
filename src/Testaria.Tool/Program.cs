@@ -91,7 +91,9 @@ public static class Program
 		if (display is not null)
 			progress.WriteLine($"display:  {display.Name}");
 
-		new ServerHarness(tml, scratch, progress, options.Verbose)
+		var harness = new ServerHarness(tml, scratch, progress, options.Verbose);
+
+		harness
 			.Run(
 				ServerArguments.For(options, scratch),
 				command,
@@ -99,6 +101,18 @@ public static class Program
 				TimeSpan.FromSeconds(options.TimeoutSeconds),
 				clientSaves,
 				display?.Name);
+
+		// Every mod that was asked for has to have loaded. A mod that failed
+		// to load is disabled by tModLoader and the run carries on without it,
+		// reporting on a game that is not the one anybody asked for.
+		string[] missing = [..enabled.Where(mod => !harness.LoadedMods.Contains(mod, StringComparer.OrdinalIgnoreCase))];
+
+		if (harness.LoadedMods.Count > 0 && missing.Length > 0) {
+			throw new HarnessException(
+				$"These mods were enabled but did not load: {string.Join(", ", missing)}. "
+				+ $"The game loaded: {string.Join(", ", harness.LoadedMods)}. "
+				+ $"Its log is at {scratch.LogPath}, and the reason is usually in the first few lines.");
+		}
 
 		if (options.ResultsOut is string destination) {
 			Copy(resultsPath, destination, progress);

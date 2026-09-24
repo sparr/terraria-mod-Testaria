@@ -79,6 +79,29 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 		Stop();
 	}
 
+	/// <summary>What the game printed about the mods it actually loaded.</summary>
+	private const string LoadedMarker = "Testaria: mods loaded: ";
+
+	/// <summary>
+	/// The mods the game said it loaded, or empty when it has not said yet.
+	/// </summary>
+	public IReadOnlyList<string> LoadedMods
+	{
+		get {
+			string log = Log;
+			int at = log.LastIndexOf(LoadedMarker, StringComparison.Ordinal);
+
+			if (at < 0)
+				return [];
+
+			int start = at + LoadedMarker.Length;
+			int end = log.IndexOf('\n', start);
+			string line = end < 0 ? log[start..] : log[start..end];
+
+			return [..line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+		}
+	}
+
 	/// <summary>Everything the server has said so far.</summary>
 	public string Log
 	{

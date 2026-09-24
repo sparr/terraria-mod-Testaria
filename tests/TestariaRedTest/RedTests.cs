@@ -7,7 +7,7 @@ using Testaria;
 namespace TestariaRedTest;
 
 /// <summary>
-/// Tests that are meant to fail, and to fail in four distinguishable ways.
+/// Tests that are meant to fail, and to fail in distinguishable ways.
 /// <para/>
 /// A framework that can only report green is indistinguishable from one that
 /// works. Nothing here proves the framework is correct; what it proves is that
@@ -25,6 +25,21 @@ public class RedTests
 	[LoadedTest]
 	public void Deliberately_throws()
 		=> throw new InvalidOperationException("deliberate error, not an assertion");
+
+	/// <summary>
+	/// Asks for a box the world cannot hold: the underworld is two hundred
+	/// tiles tall by construction, and this wants 256 plus gutters.
+	/// <para/>
+	/// The arena throws, which is right, but a tModLoader hook silently
+	/// swallows exceptions, so an escaping one completes no test and hangs the
+	/// whole run until the harness times out. PLAN.md section 8.4. An
+	/// impossible request has to arrive as a result.
+	/// </summary>
+	[GameTest(Band = Band.Underworld, Width = 384, Height = 256, Timeout = 120)]
+	public IEnumerator Deliberately_asks_for_an_impossible_box()
+	{
+		yield break;
+	}
 
 	[GameTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 30)]
 	public IEnumerator Deliberately_times_out()
