@@ -61,7 +61,7 @@ public static class TestDiscovery
 					WantsContext = wantsContext,
 					SkipReason = skip ?? marker.Skip,
 					TimeoutTicks = marker.Timeout,
-					Box = marker is GameTestAttribute game ? game.ToRequest() : null,
+					Box = marker is IBoxedTest boxed ? boxed.ToRequest() : null,
 					FreshWorld = freshWorld,
 					RealTime = realTime,
 					StartPaused = startPaused,

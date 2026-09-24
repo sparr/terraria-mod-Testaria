@@ -40,6 +40,16 @@ public sealed class TestariaSystem : ModSystem
 		// reports them as skipped rather than running them somewhere undefined.
 		TestTier maxTier = Main.maxTilesX > 0 ? TestTier.World : TestTier.Loaded;
 
+		// Tier 3 needs a second process that has actually arrived. Counted
+		// rather than promised: a harness flag saying a client was launched
+		// would let a netcode test run single-player and report a pass when
+		// the client had failed to connect, which is the one thing worth being
+		// paranoid about here.
+		if (maxTier == TestTier.World && ClientLink.ConnectedClients > 0)
+			maxTier = TestTier.MultiProcess;
+
+		ClientLink.Clear();
+
 		ClearStrayNpcs();
 
 		List<Assembly> assemblies = LoadedModAssemblies();

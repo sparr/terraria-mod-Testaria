@@ -88,6 +88,43 @@ public sealed class ScratchSave : IDisposable
 		return enabled;
 	}
 
+	/// <summary>The save directory for one client process.</summary>
+	public string ClientDirectory(int index) => Path.Combine(Root, "clients", index.ToString());
+
+	/// <summary>
+	/// Gives a client its own save directory, holding the same mods as the
+	/// server and the configuration it needs to reach a menu at all.
+	/// <para/>
+	/// Its own, rather than the server's: two processes sharing a save
+	/// directory would write over each other's players and logs, and a client
+	/// that wrote into the server's Worlds folder would be indistinguishable
+	/// from a test that did.
+	/// </summary>
+	public string PrepareClient(int index, IEnumerable<string> enabled, string tmlPath)
+	{
+		ArgumentNullException.ThrowIfNull(enabled);
+
+		string directory = ClientDirectory(index);
+
+		Directory.CreateDirectory(Path.Combine(directory, "Mods"));
+		Directory.CreateDirectory(Path.Combine(directory, "Worlds"));
+		Directory.CreateDirectory(Path.Combine(directory, "Players"));
+
+		// From the server's own Mods folder, so both sides are running exactly
+		// the same builds. Resolving the names again could pick up a mod that
+		// was rebuilt in between.
+		foreach (string name in enabled)
+			File.Copy(Path.Combine(ModsDirectory, name + ".tmod"), Path.Combine(directory, "Mods", name + ".tmod"), overwrite: true);
+
+		File.WriteAllText(
+			Path.Combine(directory, "Mods", "enabled.json"),
+			$"[{string.Join(",", enabled.Select(name => $"\"{name}\""))}]\n");
+
+		ClientSave.WriteConfig(directory, tmlPath);
+
+		return directory;
+	}
+
 	/// <summary>
 	/// Writes <c>enabled.json</c>, which is all that enabling a mod takes.
 	/// <para/>

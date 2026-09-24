@@ -18,7 +18,11 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	/// <summary>What the server prints once it is ready for commands.</summary>
 	private static readonly string[] ReadyMarkers = ["Server started", "Listening on port"];
 
+	/// <summary>What the server prints when a client finishes joining.</summary>
+	private const string JoinedMarker = "has joined";
+
 	private readonly StringBuilder log = new();
+	private readonly List<Process> clients = [];
 	private Process? server;
 
 	/// <summary>
@@ -29,8 +33,16 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	/// <param name="command">The console command to send once the world is up.</param>
 	/// <param name="resultsPath">The file the command is expected to write.</param>
 	/// <param name="timeout">How long the whole business may take.</param>
+	/// <param name="clientSaves">Prepared save directories, one per client to start, or none.</param>
+	/// <param name="display">Display for the clients to draw into, or null where they need none.</param>
 	/// <exception cref="HarnessException">The server died, or nothing arrived in time.</exception>
-	public void Run(IEnumerable<string> arguments, string command, string resultsPath, TimeSpan timeout)
+	public void Run(
+		IEnumerable<string> arguments,
+		string command,
+		string resultsPath,
+		TimeSpan timeout,
+		IReadOnlyList<string>? clientSaves = null,
+		string? display = null)
 	{
 		ArgumentNullException.ThrowIfNull(arguments);
 
@@ -45,6 +57,10 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			"the server to finish starting");
 
 		progress.WriteLine($"world ready after {deadline.Elapsed.TotalSeconds:F0}s");
+
+		if (clientSaves is { Count: > 0 })
+			JoinClients(clientSaves, display, deadline, timeout);
+
 		progress.WriteLine($"sending: {command}");
 
 		server!.StandardInput.WriteLine(command);
@@ -62,6 +78,99 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			lock (log)
 				return log.ToString();
 		}
+	}
+
+	/// <summary>
+	/// Starts the client processes and waits until the server says they have
+	/// all arrived.
+	/// <para/>
+	/// Waiting on the server's own "has joined" line rather than on the
+	/// clients' logs, because that is the event the tests care about: a client
+	/// process that is running but has not finished the handshake is no use to
+	/// a netcode test, and the server is the side that knows the difference.
+	/// </summary>
+	private void JoinClients(IReadOnlyList<string> saves, string? display, Stopwatch deadline, TimeSpan timeout)
+	{
+		foreach (string save in saves) {
+			var start = new ProcessStartInfo("dotnet") {
+				WorkingDirectory = tmlPath,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				UseShellExecute = false,
+			};
+
+			start.ArgumentList.Add(Path.Combine(tmlPath, "tModLoader.dll"));
+			start.ArgumentList.Add("-tmlsavedirectory");
+			start.ArgumentList.Add(save);
+			start.ArgumentList.Add("-nosteam");
+			// The mod on the client side reads this and drives the join, since
+			// nothing on the command line reaches Main.AutoJoin.
+			start.ArgumentList.Add("-testariajoin");
+			start.ArgumentList.Add("127.0.0.1:7777");
+
+			// A client needs a real framebuffer: measured, one started with
+			// SDL_VIDEODRIVER=dummy exits within five seconds. The server is
+			// the opposite case and uses the dummy driver happily.
+			if (!string.IsNullOrEmpty(display))
+				start.Environment["DISPLAY"] = display;
+
+			start.Environment["SDL_AUDIODRIVER"] = "dummy";
+
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) {
+				string natives = Path.Combine(tmlPath, "Libraries", "Native", "Linux");
+				string existing = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? string.Empty;
+
+				start.Environment["LD_LIBRARY_PATH"] = existing.Length > 0 ? natives + ":" + existing : natives;
+			}
+
+			Process client = Process.Start(start)
+				?? throw new HarnessException("Could not start a client process.");
+
+			string logPath = Path.Combine(save, "client.log");
+			var clientLog = new StringBuilder();
+
+			void Capture(string? line)
+			{
+				if (line is null)
+					return;
+
+				lock (clientLog)
+					clientLog.AppendLine(line);
+
+				try {
+					File.WriteAllText(logPath, clientLog.ToString());
+				}
+				catch (IOException) {
+					// A diagnostic, not the run.
+				}
+			}
+
+			client.OutputDataReceived += (_, e) => Capture(e.Data);
+			client.ErrorDataReceived += (_, e) => Capture(e.Data);
+			client.BeginOutputReadLine();
+			client.BeginErrorReadLine();
+
+			clients.Add(client);
+			progress.WriteLine($"client:   pid {client.Id}, log {logPath}");
+		}
+
+		WaitFor(
+			() => Occurrences(Log, JoinedMarker) >= saves.Count,
+			deadline,
+			timeout,
+			$"{saves.Count} client(s) to join");
+
+		progress.WriteLine($"clients joined after {deadline.Elapsed.TotalSeconds:F0}s");
+	}
+
+	private static int Occurrences(string text, string marker)
+	{
+		int count = 0;
+
+		for (int i = text.IndexOf(marker, StringComparison.Ordinal); i >= 0; i = text.IndexOf(marker, i + marker.Length, StringComparison.Ordinal))
+			count++;
+
+		return count;
 	}
 
 	private void Start(IEnumerable<string> arguments)
@@ -152,17 +261,29 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			// Already on its way out, which is the outcome this was asking for.
 		}
 
-		// A server that will not leave after being asked is killed rather than
-		// left running: this tool is often the last thing a CI job does, and an
-		// orphaned game process would hold the job open.
 		if (!server.WaitForExit(TimeSpan.FromSeconds(30)))
-			Kill();
+			progress.WriteLine("the server did not exit when asked, killing it");
+
+		// Either way, and clients always: they have no console to be asked
+		// politely through, and this tool is often the last thing a CI job
+		// does, where an orphaned game process would hold the job open.
+		Kill();
 
 		WriteLog();
 	}
 
 	private void Kill()
 	{
+		foreach (Process client in clients) {
+			try {
+				if (!client.HasExited)
+					client.Kill(entireProcessTree: true);
+			}
+			catch (InvalidOperationException) {
+				// Exited between the check and the kill, which is fine.
+			}
+		}
+
 		try {
 			server?.Kill(entireProcessTree: true);
 		}

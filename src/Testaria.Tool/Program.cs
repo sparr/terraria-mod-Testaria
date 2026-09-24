@@ -78,8 +78,27 @@ public static class Program
 
 		(string command, string resultsPath) = ServerArguments.Command(options, scratch);
 
+		// A display only when there are clients to draw into it: a server-only
+		// run needs none, and starting Xvfb for one would be a dependency
+		// nobody asked for.
+		using VirtualDisplay? display = options.Clients > 0 ? VirtualDisplay.Provide() : null;
+
+		List<string> clientSaves = [];
+
+		for (int i = 0; i < options.Clients; i++)
+			clientSaves.Add(scratch.PrepareClient(i, enabled, tml));
+
+		if (display is not null)
+			progress.WriteLine($"display:  {display.Name}");
+
 		new ServerHarness(tml, scratch, progress, options.Verbose)
-			.Run(ServerArguments.For(options, scratch), command, resultsPath, TimeSpan.FromSeconds(options.TimeoutSeconds));
+			.Run(
+				ServerArguments.For(options, scratch),
+				command,
+				resultsPath,
+				TimeSpan.FromSeconds(options.TimeoutSeconds),
+				clientSaves,
+				display?.Name);
 
 		if (options.ResultsOut is string destination)
 			Copy(resultsPath, destination, progress);

@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.3e. Tiers 0 through 2 run green in a headless server; tier 3 is not started; nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and section 8.5 onward is what remains, in order. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
+Status: implemented through section 8.6a. Tiers 0 through 2 run green in a headless server; tier 3 is not started; nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and section 8.5 onward is what remains, in order. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
 
 ## 0. The short version
 
@@ -20,7 +20,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | --- | --- |
 | Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 45 tool, and 14 analyzer self-tests pass in under two seconds |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
-| Tier 3 | Not started. No second process, no client, no netcode fixtures |
+| Tier 3 | Netcode works, section 8.6a. A client process joins a real server, `[NetTest]` runs on the server with the client as a puppet, and four self-tests pass. Rendering and input remain out of scope; worked examples on somebody else's mod are still to come |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
@@ -708,9 +708,31 @@ The pattern behind all three is worth keeping: **the packages are the product, a
 
 ### 8.6 Tier 3, and worked examples on a real mod
 
-The last tier and the publication gate in one milestone (section 5.1). Two processes, a virtual framebuffer for anything with a client, and fixtures for `ModPacket` round trips, `netMode` branching, and server-versus-client ownership.
+The last tier and the publication gate in one milestone (section 5.1). Two processes, a virtual framebuffer for anything with a client, and fixtures for `ModPacket` round trips, `netMode` branching, and server-versus-client ownership. **The two-process half is done (section 8.6a); the worked examples are not.**
 
-Worked examples are half the milestone rather than a garnish. Tiers 1 and 2 are trustworthy because section 8.3b's real suite against ExampleMod found three framework gaps that smoke tests miss; there is no reason to expect tier 3 to be different, and a netcode fixture nobody has pointed at real cross-process behaviour is a guess.
+Worked examples are half the milestone rather than a garnish. Tiers 1 and 2 are trustworthy because section 8.3b's real suite against ExampleMod found three framework gaps that smoke tests miss; there is no reason to expect tier 3 to be different, and a netcode fixture nobody has pointed at real cross-process behaviour is a guess. ExampleMod is again the obvious subject: it has `ModPacket` traffic of its own, and it is maintained by the people who wrote the netcode.
+
+### 8.6a Two processes, and what it takes to start a client
+
+The crux of tier 3 is not the test API, it is whether a client can be started and joined with nobody at the keyboard. It can, and almost none of what that takes is where the plan expected it.
+
+**There is no launch parameter that joins a server.** `Main.AutoJoin` exists, but nothing on the command line reaches it, and it waits for a character to be chosen regardless. So the client has to be driven from inside, by the one part of Testaria that runs on a client: a `-testariajoin host:port` flag, a fabricated character, and `Netplay.StartTcpClient`. Everything is gated on that flag, so a person playing with Testaria installed is untouched.
+
+**A client will not start headlessly.** A server runs happily under `SDL_VIDEODRIVER=dummy`; a client started the same way exits within five seconds. It wants a real X display, so the harness starts `Xvfb` on a spare number and stops it afterwards. That is a real CI dependency and is named as one in the tool's own help.
+
+**Three first-run screens stand in front of mod loading**, and none can be suppressed by a mod, because the mod that would suppress them has not been loaded when they appear: "Select language", then "Welcome to tModLoader", then a change-notes dialog. The logs say nothing about any of them, so they are visible only in the client's framebuffer. All three are decided from `config.json`, so the harness seeds it: a language, a version far enough ahead to count as seen, and the commit the build was made from, which the install helpfully ships in `RecentGitHubCommits.txt`.
+
+**`ModSystem.UpdateUI` does not run at the main menu**, which is the only place the agent has work to do. A detour on `Main.Update` does, and is the same technique the server tick fix uses.
+
+#### The shape of a tier 3 test
+
+The body runs on the server, which owns the run, the arena and the report; the client answers questions. The alternative, running the same body on both sides and reconciling two verdicts, doubles what can go wrong and gives a failure two places to hide. Every question is a handle a test waits on rather than a value it reads, because the answer is a packet and arrives some ticks later.
+
+**A `[NetTest]` is skipped when no client is connected, never run.** The session counts connected clients rather than trusting the harness flag that says one was launched, because a netcode test that quietly ran single-player would report a pass while proving nothing, and a client that failed to start is exactly when that would happen.
+
+The four self-tests are: a client is connected; a packet makes the round trip and the answer identifies the client that sent it; a tile the server places *and sends* reaches the client; and a tile the server places *without sending* does not. The last pair matters more than it looks, because either alone would pass for the wrong reason.
+
+Those four rest on one more piece of Terraria: **a client only knows the world sections it has been sent**, which are the ones near its own player. A box in the cavern is nowhere near where a client spawns, so a tile edit there means nothing to the client until it has been given the ground. `ClientLink.SendSection` gives it.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 

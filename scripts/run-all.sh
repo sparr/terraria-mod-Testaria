@@ -6,8 +6,9 @@
 #   2. the green path         the self-test mod must pass in a live server
 #   3. the red path           deliberate failures must be reported as such
 #   4. packages              the artifacts must work when consumed as packages
-#   5. fresh worlds           tests wanting an untouched world get one
-#   6. calibration            the framework must work on someone else's mod
+#   5. tier 3                 a client must join, and must be missed when absent
+#   6. fresh worlds           tests wanting an untouched world get one
+#   7. calibration            the framework must work on someone else's mod
 #
 # Green alone proves little: a framework that cannot report failure looks
 # exactly like one that works, which is why 3 is not optional.
@@ -46,6 +47,15 @@ if [ "${SKIP_PACKAGES:-0}" = "1" ]; then
 	echo "=== packages: skipped by request ==="
 else
 	step "packages" "$HERE/check-packages.sh"
+fi
+
+# A second process, a framebuffer, and a handshake. Slower than the gates
+# above and faster than the two below.
+if [ "${SKIP_NET:-0}" = "1" ]; then
+	echo
+	echo "=== tier 3: skipped by request ==="
+else
+	step "tier 3" "$HERE/check-net.sh"
 fi
 
 # Slow by construction: a server start per test. Skippable for a quick loop.

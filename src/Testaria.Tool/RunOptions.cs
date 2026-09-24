@@ -45,6 +45,15 @@ public sealed record RunOptions
 	/// <summary>Where bare mod names are looked up, or null to go looking.</summary>
 	public string? ModsDirectory { get; init; }
 
+	/// <summary>
+	/// Client processes to start and join to the server, for tier 3.
+	/// <para/>
+	/// Zero by default, and tier 3 tests are then reported as skipped rather
+	/// than run, since a netcode test with nobody on the other end would pass
+	/// while proving nothing.
+	/// </summary>
+	public int Clients { get; init; }
+
 	/// <summary>Keep the scratch save directory instead of deleting it.</summary>
 	public bool KeepScratch { get; init; }
 
@@ -85,6 +94,13 @@ public static class CommandLine
 		usage:
 		  testaria run  [options]     run the tests and report the result
 		  testaria list [options]     catalogue the tests without running them
+
+		tier 3:
+		  --client [n]           Start n client processes and join them to the
+		                         server, so tier 3 tests can run. Default 1 when
+		                         the flag is given, 0 when it is not. Needs a
+		                         display: on Linux the harness starts Xvfb, which
+		                         a client requires and a server does not.
 
 		mods:
 		  --mod <name|path>      A .tmod to install and enable. Repeatable, and
@@ -234,6 +250,22 @@ public static class CommandLine
 					if (Value() is not string modsDirectory)
 						return Missing()!;
 					options = options with { ModsDirectory = modsDirectory };
+					break;
+
+				case "--client":
+					// The count is optional: "--client" on its own means one,
+					// which is what almost every run wants.
+					string? clientsText = Value();
+
+					if (clientsText is null) {
+						options = options with { Clients = 1 };
+						break;
+					}
+
+					if (!int.TryParse(clientsText, out int clients) || clients < 1)
+						return new ParseResult { Error = $"--client needs a positive number of clients, got '{clientsText}'." };
+
+					options = options with { Clients = clients };
 					break;
 
 				case "--blank":

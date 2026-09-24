@@ -2,7 +2,7 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-**Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, driven by the `testaria` command line tool, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started, and nothing is published to nuget.org or the Workshop yet. The design lives in [`PLAN.md`](PLAN.md).
+**Status: early alpha.** All four tiers run end to end in a live headless game, driven by the `testaria` command line tool, and the framework has been calibrated against ExampleMod. Tier 3 covers netcode, with a real client process joining a real server, and reaches far enough into a client to read back pixels it drew; what is out of scope is rendering *tooling* and input. Nothing is published to nuget.org or the Workshop yet. The design lives in [`PLAN.md`](PLAN.md).
 
 ## What does it do?
 
@@ -15,7 +15,7 @@ Some Terraria mods implement their own unit testing. A few load their mod into t
 | 0 | Unit | a normal `dotnet test` host | Pure logic with no dependency on loader state |
 | 1 | Loaded | tModLoader `-server`, no world | Content registration, recipes, ID sets, config, localization |
 | 2 | World | tModLoader `-server`, world loaded | NPC AI over ticks, world gen, tile framing, drop tables |
-| 3 | Multi-process | server plus client(s) | Netcode and sync, UI, rendering, input |
+| 3 | Multi-process | server plus client(s) | Netcode and sync: packet round trips, what each side believes |
 
 Tests are marked with attributes, and discovery finds them by reflection.
 
@@ -23,6 +23,7 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | --- | --- |
 | `[LoadedTest]` | A tier 1 test: needs a completed load pass, but no world |
 | `[GameTest]` | A tier 2 test: needs a world and a tick loop, and is given a box of its own |
+| `[NetTest]` | A tier 3 test: needs a client connected to the server, and is given a box of its own |
 | `[FreshWorld]` | A test no box can isolate, which needs a freshly generated world instead |
 | `[Case]` | One set of arguments for a parameterised test, reported as a case of its own |
 | `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
@@ -189,6 +190,51 @@ It references the install's assemblies without packaging a `.tmod` (similar to t
 Set `TML_PATH`, or pass `--tml`, if your tModLoader installation is somewhere other than the default Steam library.
 
 Once the placeholder tests run successfully to confirm your installation, then you can replace them with tests of your mod.
+
+## Tier 3: a server with a client attached
+
+A netcode test needs two processes, and `--client` provides the second one:
+
+```
+testaria run --mod MyModTests --client --blank
+```
+
+The harness starts a server and client, waits for the client to join, and only then runs the suite. A `[NetTest]` body runs **on the server**, which owns the run, the arena, and the report; the client is a puppet that answers questions about what it can see.
+
+```csharp
+[NetTest(Band = Band.Cavern)]
+public IEnumerator A_tile_the_server_places_reaches_the_client(ITestContext ctx)
+{
+    var box = (TestContext)ctx;
+    int x = ctx.Interior.Left + 4, y = ctx.Interior.Top + 4;
+
+    // A client only knows the world sections it has been sent, which are the
+    // ones near its own player. A box in the cavern is nowhere near where a
+    // client spawns, so it has to be given this ground first.
+    ClientLink.SendSection(x, y);
+    yield return Wait.Ticks(10);
+
+    box.PlaceTile(4, 4, TileID.Stone);
+    NetMessage.SendTileSquare(-1, x, y, 1);
+
+    ClientLink.Request seen = ClientLink.AskTile(x, y);
+    yield return Wait.Until(() => seen.Answered, "the client to report what it sees");
+
+    Assert.Equal(TileID.Stone, seen.Value);
+}
+```
+
+Every question is a handle you wait on, never a value you read: the answer is a packet, and it arrives some ticks later. `ClientLink.Ping()` is the smallest round trip there is, `ClientLink.AskTile(x, y)` asks what the client believes about a tile, and `ClientLink.SendSection(x, y)` gives it the ground to have a belief about.
+
+**Without a client, a `[NetTest]` is skipped, never run.** A netcode test that quietly runs single-player passes while proving nothing, so the session counts connected clients rather than trusting a flag that says one was launched. The report says so plainly: `Needs tier MultiProcess but this environment supports up to World.`
+
+What the harness does for you, each piece of it required to get a client into the world:
+
+- **Seeds the client's configuration.** A fresh save directory stops at "Select language", then at a welcome dialog, then at change notes, each waiting for a click. None can be suppressed by a mod, because they stand in front of mod loading.
+- **Provides a framebuffer.** A server is happy with `SDL_VIDEODRIVER=dummy`; a client started that way exits within five seconds. On Linux the harness starts `Xvfb` on a spare display and stops it afterwards.
+- **Drives the join from inside the game.** Nothing on the command line reaches `Main.AutoJoin`, so the client half of Testaria fabricates a character and connects, and does so only when `-testariajoin` is present, so a person's own game is untouched.
+
+Rendering, pixel diffing, and input replay remain out of scope: tier 3 here means netcode.
 
 ## Parameterised tests
 
@@ -358,7 +404,7 @@ scripts/run-fresh.sh                                   # a dedicated server per 
 
 `run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
 
-Still to come: Tier 3 (multi-process netcode and UI) and parallel box execution.
+Still to come: parallel box execution.
 
 ## Building against tModLoader
 

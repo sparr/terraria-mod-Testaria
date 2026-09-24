@@ -39,13 +39,26 @@ public sealed class LoadedTestAttribute : TestariaTestAttribute
 }
 
 /// <summary>
+/// A test that runs inside a box the arena leases it.
+/// <para/>
+/// Separate from the tier, because more than one tier wants ground of its own:
+/// a tier 2 test and a tier 3 test both edit tiles, and both need those edits
+/// to be somewhere nobody else is looking.
+/// </summary>
+public interface IBoxedTest
+{
+	/// <summary>Builds the arena request this test describes.</summary>
+	BoxRequest ToRequest();
+}
+
+/// <summary>
 /// A test needing a world and a tick loop, run inside a leased box.
 /// <para/>
 /// Declare <see cref="Spans"/> when the subject of the test is a band
 /// boundary itself, such as falling from the surface into the cavern. Height
 /// is then dictated by the world rather than by the author, so it is ignored.
 /// </summary>
-public sealed class GameTestAttribute : TestariaTestAttribute
+public sealed class GameTestAttribute : TestariaTestAttribute, IBoxedTest
 {
 	/// <summary>Marks a Tier 2 test.</summary>
 	public GameTestAttribute() : base(TestTier.World) { }
@@ -66,6 +79,40 @@ public sealed class GameTestAttribute : TestariaTestAttribute
 	/// Requested interior height in tiles, before size class rounding. Ignored
 	/// for a spanning box.
 	/// </summary>
+	public int Height { get; set; } = 48;
+
+	/// <summary>Builds the arena request this attribute describes.</summary>
+	public BoxRequest ToRequest()
+		=> Spans == Band.None
+			? BoxRequest.Banded(Band, Width, Height)
+			: BoxRequest.Spanning(Spans, Width);
+}
+
+/// <summary>
+/// A test needing a server and at least one connected client.
+/// <para/>
+/// Netcode, sync, packet round trips, and anything whose subject is the
+/// difference between what the two processes believe. The body runs on the
+/// server, which owns the run; the client is a puppet that answers questions
+/// about what it can see. A test declared here is reported as skipped rather
+/// than run when no client is connected, because a netcode test that quietly
+/// runs single-player proves nothing while reporting a pass.
+/// </summary>
+public sealed class NetTestAttribute : TestariaTestAttribute, IBoxedTest
+{
+	/// <summary>Marks a Tier 3 test.</summary>
+	public NetTestAttribute() : base(TestTier.MultiProcess) { }
+
+	/// <summary>The single band the box sits in. Ignored when <see cref="Spans"/> is set.</summary>
+	public Band Band { get; set; } = Band.Surface;
+
+	/// <summary>Bands the box must cross.</summary>
+	public Band Spans { get; set; } = Band.None;
+
+	/// <summary>Requested interior width in tiles, before size class rounding.</summary>
+	public int Width { get; set; } = 80;
+
+	/// <summary>Requested interior height in tiles, before size class rounding.</summary>
 	public int Height { get; set; } = 48;
 
 	/// <summary>Builds the arena request this attribute describes.</summary>
