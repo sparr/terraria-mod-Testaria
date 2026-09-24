@@ -18,7 +18,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 462 core self-tests and 14 analyzer self-tests pass in under two seconds |
+| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 45 tool, and 14 analyzer self-tests pass in under two seconds |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
 | Tier 3 | Not started. No second process, no client, no netcode fixtures |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
@@ -29,7 +29,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
-| The five unmeasured numbers (risk 3) | Still unmeasured. `ArenaOptions.Gutter` remains a guess at 8 |
+| The five unmeasured numbers (risk 3) | One measured, four to go (section 8.5d). The `SceneMetrics` scan is 169 by 124 tiles; `ArenaOptions.Gutter` is still 8, now knowingly a floor rather than a guess |
 
 The holes in that table are the subject of section 8.5, and they come before any distribution work.
 
@@ -600,7 +600,7 @@ Everything in section 0.1's table that is not a tier. These come first because e
 1. ~~**The section 2.2 boundary mitigations.**~~ Done, section 8.5a. The analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, the `[RequiresLoadedGame]` marker, and the runtime guard behind it.
 2. ~~**Seed control (risk 5).**~~ Done, section 8.5b. Pinned per test, derived from the test's identity, and recorded in the report.
 3. **Artifacts B and C (section 4.2).** ~~D, the `testaria` CLI~~, is done (section 8.5c). B and C remain, and are worth less than D was: B is a convenience over an ordinary xUnit project that already works, and C automates from MSBuild what the CLI now does from a command line.
-4. **The five unmeasured numbers (risk 3).** Chiefly the `Main.SceneMetrics` scan radius, since `ArenaOptions.Gutter` is a guess at 8 and any biome-sensitive test is only as isolated as that number is right.
+4. **The five unmeasured numbers (risk 3).** The `SceneMetrics` scan radius is measured (section 8.5d). The remaining four, the default banded box size, the quarantine duration, the banded and column region split, and the `[FreshWorld]` crossover width, all want a real test corpus to calibrate against rather than another reading of the source.
 
 ### 8.5a The Tier 0 boundary, enforced rather than documented
 
@@ -661,6 +661,30 @@ Decisions worth recording.
 Verified by packing the tool, installing it with `dotnet tool install` into a directory with no relationship to this repository, and running a real suite: four tests, green, exit 0. And by the red path: the deliberately broken mod reports two failures and three errors, and exits 1.
 
 The scripts stay as they are. They are this repository's own gates, they do things the tool has no business doing (building ExampleMod in a scratch copy, running the red check, giving each `[FreshWorld]` test a process), and having both means the tool's behaviour is checked against something rather than only against itself.
+
+### 8.5d The biome scan, and why the gutter stays at 8
+
+The first of risk 3's five numbers, and the one section 2.4 could not read from a checkout: `SceneMetrics.ScanAndExportToMain` is unpatched vanilla, so it lives in the generated `src/` tree that a fresh tModLoader checkout does not contain. It is perfectly readable in a decompile, which section 1.4 establishes as the faster way to read the game. From `Terraria/SceneMetrics.cs` in 1.4.5.8:
+
+```csharp
+private static readonly Point AssumedConstantScreenSize = new Point(1920, 1200);
+private static readonly int ZoneScanPadding = 25;
+public static readonly Point ZoneScanSize = new Point(
+    AssumedConstantScreenSize.X / 16 + ZoneScanPadding * 2 - 1,
+    AssumedConstantScreenSize.Y / 16 + ZoneScanPadding * 2 - 1);
+```
+
+`ScanTiles` scans `Utils.CenteredRectangle(TileCenter, ZoneScanSize)`, centred on the player's own tile. So the rectangle is **169 by 124 tiles**, reaching **84 tiles sideways and 62 up and down**. Against a gutter of 8, that is not a tuning discrepancy, it is an order of magnitude, and it settles the question section 2.4 left open: **geometry alone cannot biome-isolate a box.** Eight tiles of dead space covers tile framing and liquid, and nothing about biomes.
+
+Two things keep that from being an emergency.
+
+**A biome needs three hundred tiles of one kind before it counts** (`CorruptionTileThreshold` and its neighbours), so a stray block does nothing and a test has to mean it. What has no threshold is the singular scenery, a campfire, a heart lantern, a water candle, a music box, each of which counts from one.
+
+**Boxes run one at a time.** A released box has its tiles restored and sits in quarantine before the next tenant arrives, so there is nothing left of the last test to reach anybody. The reach only binds when two boxes are live at once, which is exactly the parallelism section 2.5 defers.
+
+So the number is recorded in `BiomeScan`, with the derivation and the citation, and the gutter stays at 8 as a deliberate floor rather than an unexamined guess. Paying eighty-four tiles of dead space on every side of every box buys nothing today. The decision belongs with the parallel scheduler, which is the change that makes it matter, and the measurement is recorded for it.
+
+The remaining four numbers, the default banded box size, the quarantine duration, the region split, and the `[FreshWorld]` crossover, are not readable from any source file. They want a real corpus to calibrate against, which is section 8.6's business.
 
 ### 8.6 Tier 3, and worked examples on a real mod
 

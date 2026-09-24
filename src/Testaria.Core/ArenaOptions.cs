@@ -12,9 +12,16 @@ public sealed record ArenaOptions
 {
 	/// <summary>
 	/// Tiles of dead space around every box. Cross-boundary effects have very
-	/// different radii (tile framing recurses one tile, lighting tens,
-	/// SceneMetrics biome scanning more still), so this is a floor rather than
-	/// a sufficient answer for biome-sensitive tests.
+	/// different radii: tile framing recurses one tile, lighting tens, and the
+	/// biome scan reaches <see cref="BiomeScan.HorizontalReach"/> tiles, which
+	/// is now measured rather than guessed at and is eighty-four.
+	/// <para/>
+	/// So this is deliberately a floor and not a sufficient answer. Covering
+	/// the biome scan would mean gutters ten times this, which buys nothing
+	/// while boxes run one at a time: a released box has its tiles restored
+	/// and sits in quarantine before the next tenant arrives, so there is
+	/// nothing left to leak. It becomes real the moment two boxes run at once,
+	/// which is where that cost belongs.
 	/// </summary>
 	public int Gutter { get; init; } = 8;
 

@@ -373,6 +373,7 @@ This functionality is in `Testaria.Core`, doesn't reference tModLoader, and is a
 | `GameState`, `[RequiresLoadedGame]` | The runtime half of the tier 0 boundary: a flag the game raises, and a guard that fails loudly without it |
 | `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all: realtime, a bounded rate, or as fast as the machine manages |
 | `TestSeed`, `IRandomControl` | Which seed a test's randomness starts from, derived from the test's identity so filtering a suite cannot change it |
+| `BiomeScan` | How far the game looks around a player to decide their biome, 169 by 124 tiles, which is the spacing biome isolation would really need |
 | `ISteppableContext` | Stopping the world and stepping it a tick at a time |
 
 ## License
