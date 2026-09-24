@@ -36,6 +36,9 @@ public static class Installation
 		return null;
 	}
 
+	/// <summary>The folder tModLoader installs into, inside a Steam library.</summary>
+	public const string SteamFolderName = "tModLoader";
+
 	/// <summary>Every place an install is looked for, in order, for an error message that can name them.</summary>
 	public static IEnumerable<string> Candidates(string? explicitPath = null)
 	{
@@ -45,21 +48,39 @@ public static class Installation
 		if (Environment.GetEnvironmentVariable(PathVariable) is string fromEnvironment)
 			yield return fromEnvironment;
 
+		foreach (string root in SteamRoots())
+			yield return SteamLibraries.AppDirectory(root, SteamFolderName);
+
+		// Steam keeps games in any number of library folders, on any number of
+		// drives, and only the first is where the roots above point. Asking
+		// Steam where the rest are is the difference between finding an
+		// install on a second drive and reporting that tModLoader is not
+		// installed at all.
+		foreach (string library in SteamLibraries.Discover(SteamRoots()))
+			yield return SteamLibraries.AppDirectory(library, SteamFolderName);
+	}
+
+	/// <summary>
+	/// Where Steam itself is installed, which is where its library index
+	/// lives. Not where games are: that is what the index is for.
+	/// </summary>
+	public static IEnumerable<string> SteamRoots()
+	{
 		string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-			yield return @"C:\Program Files (x86)\Steam\steamapps\common\tModLoader";
-			yield return @"C:\Program Files\Steam\steamapps\common\tModLoader";
+			yield return @"C:\Program Files (x86)\Steam";
+			yield return @"C:\Program Files\Steam";
 			yield break;
 		}
 
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
-			yield return Path.Combine(home, "Library/Application Support/Steam/steamapps/common/tModLoader");
+			yield return Path.Combine(home, "Library/Application Support/Steam");
 			yield break;
 		}
 
-		yield return Path.Combine(home, ".local/share/Steam/steamapps/common/tModLoader");
-		yield return Path.Combine(home, ".steam/steam/steamapps/common/tModLoader");
+		yield return Path.Combine(home, ".local/share/Steam");
+		yield return Path.Combine(home, ".steam/steam");
 	}
 
 	/// <summary>

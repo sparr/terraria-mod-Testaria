@@ -88,7 +88,13 @@
   <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
 
   <Target Name="TestariaRequireTml" BeforeTargets="Build" Condition="'$(TestariaHasTml)' != 'true'">
-    <Error Text="No tModLoader install found. Set TML_PATH to the folder containing tMLMod.targets." />
+    <!--
+      MSBuild cannot read Steam's libraryfolders.vdf the way the tool and the
+      shell scripts now do, so this probes the primary library only. Say so,
+      because "not found" on a machine where the game is plainly installed is
+      otherwise baffling: the usual cause is a second Steam library folder.
+    -->
+    <Error Text="No tModLoader install found. Set TML_PATH to the folder containing tMLMod.targets. Only the default Steam library on each platform is probed here, so an install in a second Steam library folder, on another drive, or from GOG needs the variable set even though `testaria` and the scripts can find it on their own." />
   </Target>
 
   <Target Name="TestariaRequirePath" BeforeTargets="Build" Condition="!Exists('$(TestariaPath)/src/Testaria/Testaria.csproj')">

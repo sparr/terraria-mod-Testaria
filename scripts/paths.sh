@@ -55,10 +55,60 @@ testaria_first_dir() {
   echo "$1"
 }
 
-TML_PATH="${TML_PATH:-$(testaria_first_dir \
-  "$HOME/.local/share/Steam/steamapps/common/tModLoader" \
-  "$HOME/.steam/steam/steamapps/common/tModLoader" \
-  "$HOME/Library/Application Support/Steam/steamapps/common/tModLoader")}"
+# Steam installs games into any number of library folders, on any number of
+# drives, and records them in steamapps/libraryfolders.vdf under wherever
+# Steam itself lives. Probing a fixed list of paths finds only the primary
+# library, so an install on a second drive looks exactly like no install at
+# all. Ask Steam instead. Prints one candidate tModLoader directory per
+# library, in the order Steam lists them.
+testaria_steam_libraries() {
+  local root index
+  for root in \
+    "$HOME/.local/share/Steam" \
+    "$HOME/.steam/steam" \
+    "$HOME/Library/Application Support/Steam"
+  do
+    index="$root/steamapps/libraryfolders.vdf"
+    [ -r "$index" ] || continue
+    # One "path" per library entry, so grabbing that key is unambiguous even
+    # though this is not a VDF parser.
+    sed -n 's/.*"path"[[:space:]]*"\(.*\)".*/\1/p' "$index"
+  done | awk '!seen[$0]++'
+}
+
+testaria_tml_candidates() {
+  echo "$HOME/.local/share/Steam/steamapps/common/tModLoader"
+  echo "$HOME/.steam/steam/steamapps/common/tModLoader"
+  echo "$HOME/Library/Application Support/Steam/steamapps/common/tModLoader"
+  local library
+  while IFS= read -r library; do
+    [ -n "$library" ] && echo "$library/steamapps/common/tModLoader"
+  done <<EOF
+$(testaria_steam_libraries)
+EOF
+}
+
+# Line by line rather than word by word: "Library/Application Support/Steam"
+# has a space in it, and splitting on whitespace would look for two
+# directories that do not exist.
+testaria_first_dir_from_stdin() {
+  local candidate first=""
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    [ -n "$first" ] || first="$candidate"
+    if [ -d "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  # Falling back to the first named, so a failure reports the conventional
+  # location rather than an empty string.
+  echo "$first"
+}
+
+if [ -z "${TML_PATH:-}" ]; then
+  TML_PATH="$(testaria_tml_candidates | testaria_first_dir_from_stdin)"
+fi
 
 MODS_SRC="${MODS_SRC:-$(testaria_first_dir \
   "$HOME/.local/share/Terraria/tModLoader-dev/Mods" \
