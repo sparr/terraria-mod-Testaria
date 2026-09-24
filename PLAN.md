@@ -865,7 +865,13 @@ The four worth recording here:
 
 **A gate has to find its subject by something the subject declares.** The report carries `testaria-tier` on each `testcase` and the tier 3 gate reads it, so a tier 3 test written in a class called anything at all is still covered. Selecting by naming convention is the version of this that stops working without saying so, and it takes the whole suite's coverage with it: running everything with a client attached is also what catches a tier 2 test that counts the connected client's player among the ones it fabricated.
 
-**Two findings are about the shape of the ecosystem rather than about this framework, and neither is fixable here.** Every tier above zero runs in a `-server` process, so a mod that is entirely client-side has almost nothing a test can reach; of Cheat Sheet's whole surface, one `GlobalNPC` runs on a server. And a suite is a separate assembly by construction, so a mod that keeps its types `internal`, which is the right default, is invisible to its own tests until it says `[assembly: InternalsVisibleTo]`. Both belong in the documentation rather than in the code, and both bear on section 5's expectations about who will adopt this.
+**A client-only mod is reachable, drawing included.** Every tier runs its test body on a server, and a server draws nothing, so the reach comes from the other side: the tier 3 client is a whole game process on a real framebuffer, and a client query runs arbitrary mod code inside it. Measured from a query running there, the client has a graphics device, an 800x720 back buffer, working render targets, a sprite batch, loaded fonts and a live `LocalPlayer`. Two self-tests read back pixels the GPU drew.
+
+Which is why section 2.5 scopes out rendering **tooling** rather than rendering: image comparison, golden files, and input replay are what is missing. The door is open and nothing has been built through it, which is the honest position to record.
+
+The ratio is still poor: of Cheat Sheet's whole surface, one `GlobalNPC` runs on a server. "Poor ratio, reachable through a query" is a different statement from "cannot be tested".
+
+**One finding really is about the ecosystem rather than this framework.** A suite is a separate assembly by construction, so a mod that keeps its types `internal`, which is the right default, is invisible to its own tests until it says `[assembly: InternalsVisibleTo]`. That belongs in the documentation, and it bears on section 5's expectations about who will adopt this.
 
 **What this adds to the plan.** Section 2.4 wants a real test corpus to adjudicate the isolation design, and there is one, partly: boxes hold across 128 tests on two foreign mods with no cross-contamination. But a box isolates a region and nothing else, and a test that flips a static field needs `ctx.Restore` rather than geometry. That is built, and is the fifth mechanism section 2.4 does not anticipate.
 

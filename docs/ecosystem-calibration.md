@@ -6,11 +6,6 @@ rather than at ExampleMod and its own self-tests.
 Run on 2026-09-24 against tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`,
 commit `39e7995f`, built the same day and the newest dev build available.
 
-Sixteen findings came out of it: ten from writing the first two suites, three
-from fixing those, and three more from writing suites for the other two mods
-once they built. All are fixed or documented apart from one that is not
-fixable in general and is written down instead.
-
 ## The corpus
 
 Six repositories, taken from a survey of the fifty most-subscribed mods on
