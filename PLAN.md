@@ -23,7 +23,8 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Tier 3 | Not started. No second process, no client, no netcode fixtures |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
-| Artifacts B, C, D | Not built. `scripts/*.sh` stands in for D and only works from a checkout. The analyzer rides in the `Testaria.Core` package rather than waiting for B |
+| Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
+| Artifacts B and C | Not built. The analyzer rides in the `Testaria.Core` package rather than waiting for B, and the CLI covers what most of C would have automated |
 | CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
@@ -598,7 +599,7 @@ Everything in section 0.1's table that is not a tier. These come first because e
 
 1. ~~**The section 2.2 boundary mitigations.**~~ Done, section 8.5a. The analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, the `[RequiresLoadedGame]` marker, and the runtime guard behind it.
 2. ~~**Seed control (risk 5).**~~ Done, section 8.5b. Pinned per test, derived from the test's identity, and recorded in the report.
-3. **Artifacts B, C, and D (section 4.2).** D, the `testaria` CLI, matters most: the scripts under `scripts/` do its job but only from a checkout of this repository, so nobody else can currently run the framework at all. D is also what section 8.3a's CI job would invoke, so it unblocks that too.
+3. **Artifacts B and C (section 4.2).** ~~D, the `testaria` CLI~~, is done (section 8.5c). B and C remain, and are worth less than D was: B is a convenience over an ordinary xUnit project that already works, and C automates from MSBuild what the CLI now does from a command line.
 4. **The five unmeasured numbers (risk 3).** Chiefly the `Main.SceneMetrics` scan radius, since `ArenaOptions.Gutter` is a guess at 8 and any biome-sensitive test is only as isolated as that number is right.
 
 ### 8.5a The Tier 0 boundary, enforced rather than documented
@@ -638,6 +639,28 @@ Measured end to end: the same test reports seed 991526881 in the full 36 test ru
 **`[Seed(n)]` pins a particular roll**, for the seed that reproduced a bug or one chosen to make a rare branch happen. It ignores the run seed, since a seed that only reproduces the bug at one run seed is not what the author asked for.
 
 **What seeding can and cannot promise.** A Tier 1 body runs synchronously the moment its test begins, so its first draw genuinely is the first draw after the reseed, which is what lets the self-tests assert exact values. A Tier 2 body resumes a tick later, by which point the world has drawn from the same generator on its own account, so Tier 2 reproducibility is "given the same world and the same ticks" rather than absolute. Worth stating plainly in the documentation rather than letting an author discover it from a flaky test.
+
+### 8.5c Artifact D, the `testaria` command
+
+The plan calls A and D the minimum viable pair. The shell scripts do D's job from a checkout of this repository and on a machine with bash, and nowhere else, which makes the honest answer to "how do I run my mod's tests?" into "clone Testaria first".
+
+`testaria run --mod MyModTests --blank --speed max` now provisions a scratch save directory, installs and enables the named mods, generates a world, starts a headless server, sends the console command, waits for the report, stops the server, and turns the result into an exit code. `testaria list` catalogues without running.
+
+Decisions worth recording.
+
+**A pipe rather than a FIFO.** The shell harness feeds the server's console through a named pipe, which is the part of it that is least portable. A redirected standard input does the same job through `Process`, and works on Windows, which is most of the argument for having the tool at all.
+
+**No Xvfb.** The scripts prefer a virtual framebuffer and fall back to `SDL_VIDEODRIVER=dummy`; the tool only ever uses the dummy driver, and the full self-test suite passes under it. One less thing to install, and one less Linux-shaped assumption.
+
+**The runtime mod is enabled whether or not it was named.** A run without `Testaria` loaded has nothing to run the tests, and would sit there until the timeout with no explanation of why.
+
+**Three exit codes, not two.** 0 for a clean run, 1 for a test that failed, errored, or was blocked, and 2 for a harness that could not run the tests at all. A build should be able to tell "your mod is broken" from "the game would not start", and collapsing those is how a flaky environment gets mistaken for a flaky suite.
+
+**Blocked counts as red**, as it does in the runner. A test that never ran has established nothing about its subject.
+
+Verified by packing the tool, installing it with `dotnet tool install` into a directory with no relationship to this repository, and running a real suite: four tests, green, exit 0. And by the red path: the deliberately broken mod reports two failures and three errors, and exits 1.
+
+The scripts stay as they are. They are this repository's own gates, they do things the tool has no business doing (building ExampleMod in a scratch copy, running the red check, giving each `[FreshWorld]` test a process), and having both means the tool's behaviour is checked against something rather than only against itself.
 
 ### 8.6 Tier 3, and worked examples on a real mod
 

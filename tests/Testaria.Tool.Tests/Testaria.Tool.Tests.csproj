@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net10.0 while the tool itself targets net8.0. The tool targets the older
+      framework so that installing it asks as little as possible of a user's
+      machine; these tests only have to run where CI already installs the
+      newest SDK, and a net8.0 test project would need a net8.0 *runtime*
+      there, which an SDK-only install does not provide.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Testaria.Tool.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Testaria.Tool\Testaria.Tool.csproj" />
+  </ItemGroup>
+
+</Project>

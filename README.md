@@ -111,13 +111,51 @@ Then launch tModLoader, enable **Testaria**, your own mod, and **MyModTests**, l
 
 It replies with the counts, and writes a JUnit report to `<tModLoader save path>/Testaria/MyModTests.xml`.
 
-The same command works on a server console without the leading slash, which is how [the headless harness](#run-the-self-tests) drives a run:
+The same command works on a server console without the leading slash, which is what the command line tool sends for you.
+
+## Running a suite without the game in front of you
+
+`Testaria.Tool` is the headless harness: it provisions a throwaway tModLoader save directory, installs the mods you name, generates a world, starts a server, runs the suite, writes the report, and turns the result into an exit code.
 
 ```
-ENABLED="Testaria MyMod MyModTests" RUN_NAME=MyModTests scripts/run-tests.sh
+dotnet tool install --global Testaria.Tool
+testaria run --mod MyMod --mod MyModTests --blank --speed max
 ```
 
-Set `TML_PATH` if the script fails to find your tModLoader installation.
+```
+tml:      /home/you/.local/share/Steam/steamapps/common/tModLoader
+mods:     Testaria MyMod MyModTests
+scratch:  /tmp/testaria-3nbvqzkh.2ax
+server:   pid 31337, log /tmp/testaria-3nbvqzkh.2ax/server.log
+world ready after 5s
+sending: testaria run Testaria
+39 tests: 39 passed, 0 failed, 0 errored, 0 skipped
+```
+
+Nothing it does touches your own installation: the run lives entirely inside that scratch directory, which is deleted afterwards unless you pass `--keep-scratch`.
+
+CI can read the `testaria` exit codes:
+* **0** when every test passed or was skipped
+* **1** when one failed, errored, or was blocked
+* **2** when the harness could not run the tests at all
+
+Common flags:
+
+| Flag | What it does |
+| --- | --- |
+| `--mod <name\|path>` | A `.tmod` to install and enable, by name or by path. Repeatable, and the order is load order |
+| `--project <dir>` | Build a mod project first, so a run cannot quietly test the last build |
+| `--filter <regex>` | Narrow the run to matching tests |
+| `--blank` | Generate Testaria's blank world, a deterministic stone-and-air substrate, rather than a real one |
+| `--speed max` | [Fast forward](#fast-forward) the whole run |
+| `--seed <n>` | Shift every test's [seed](#seeds-and-reproducibility) |
+| `--results <path>` | Copy the JUnit XML report somewhere CI will look |
+| `--keep-scratch` | Keep the save directory, and say where it is |
+| `--verbose` | Print the server's own log as it happens, for a run that will not start |
+
+`testaria list` takes the same options and catalogues the tests without running any of them.
+
+Set `TML_PATH`, or pass `--tml`, if your tModLoader installation is somewhere other than the default Steam library.
 
 Once the placeholder tests run successfully to confirm your installation, then you can replace them with tests of your mod.
 
@@ -306,8 +344,10 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | [`src/Testaria.Core/`](src/Testaria.Core) | Game-independent core. No tModLoader reference, by design. |
 | [`src/Testaria/`](src/Testaria) | The tModLoader-facing half. Needs a 1.4.5 install to build. |
 | [`src/Testaria.Analyzers/`](src/Testaria.Analyzers) | The tier 0 boundary analyzer, shipped inside the `Testaria.Core` package. |
+| [`src/Testaria.Tool/`](src/Testaria.Tool) | The `testaria` command: provision, run, report, exit code. Needs no game to build. |
 | [`tests/Testaria.Core.Tests/`](tests/Testaria.Core.Tests) | Self-tests for the core. Plain `dotnet test`, no game required. |
 | [`tests/Testaria.Analyzers.Tests/`](tests/Testaria.Analyzers.Tests) | Self-tests for the analyzer, run against a stub of the Terraria surface. |
+| [`tests/Testaria.Tool.Tests/`](tests/Testaria.Tool.Tests) | Self-tests for the CLI: its command line, its provisioning, and its reading of a report. |
 | [`tests/TestariaSelfTest/`](tests/TestariaSelfTest) | The in-game self-test mod, which is the green path. |
 | [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
 | [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
