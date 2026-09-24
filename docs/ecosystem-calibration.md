@@ -6,25 +6,37 @@ rather than at ExampleMod and its own self-tests.
 Run on 2026-09-24 against tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`,
 commit `39e7995f`, built the same day and the newest dev build available.
 
+Ten findings came out of it. Eight are fixed or documented in this repository,
+one is not fixable in general, and one, the tier 3 client question, is the
+substantial piece of work still outstanding.
+
 ## The corpus
 
 Six repositories, taken from a survey of the fifty most-subscribed mods on
 the Workshop. Ranks 1 to 10 have no 1.4.5 work at all; these six are the
 whole of it.
 
-| Mod | Branch | Builds | Loads | Notes |
-|---|---|---|---|---|
-| InnoVault | `tml145` | yes | yes | Clean, first try. The one subject that needed nothing. |
-| DAYBREAK | `1.4.5` | yes\* | after a one-line fix | `\*` its SDK cannot find tModLoader in a second Steam library |
-| Cheat Sheet | `1.4.5` | no | — | 6 errors: the `WorldItem` split, `NewItem`, `FocusHelper` |
-| SilkyUI | `1.4.5` | no | — | 18 errors: `FocusHelper`, plus its own source generator emitting nothing |
-| Quality of Terraria | `1.4.5` | no | — | Blocked behind SilkyUI, which it project-references |
-| Fargo's Mutant Mod | `1.4.5` | no | — | 23 errors: real porting work, `WorldItem` and `NewItem` throughout |
+As found, and then as left after a deliberately small amount of porting.
 
-So: **two of six could be tested at all**, and one of those two needed a
-source fix first. That is the ecosystem Testaria is aiming at, and it is
-worth knowing before concluding anything from a corpus of one mod plus
-ExampleMod.
+| Mod | Branch | As found | After | What it took |
+|---|---|---|---|---|
+| InnoVault | `tml145` | builds, loads | unchanged | Nothing. The one subject that needs no work at all. |
+| DAYBREAK | `1.4.5` | builds, fails to load | builds, loads | One IL hook retargeted from `Main.DoUpdateInWorld`, which 1.4.5.8 emptied, to `Main.UpdateWorld_NPCs`, where the loop it wants now lives. |
+| Cheat Sheet | `1.4.5` | 6 errors | builds, loads | Renames: `NewItem`'s trailing bool became `NewItemOwnership`, `Main.item` holds `WorldItem` so `newAndShiny` is reached through `.inner` and `SetDefaults` became `TurnToAir`, `FocusHelper.AllowGameplayInputs` became `GameplayActive`. |
+| SilkyUI | `1.4.5` | 18 errors | builds, loads | `FocusHelper.AllowUIInputs` to `AllowInputProcessing`, plus its XML components renamed to `*.sui.xml` and their `Class` and `Name` attributes moved into the generator's namespace. Needs SilkyUIAnalyzer at `827450e`, not `main`. |
+| Quality of Terraria | `1.4.5` | blocked | still blocked | Wants a SilkyUI with `Common.Tweening` and `StyleSystem`, which is the `1.4.5-preview` branch, not the `1.4.5` branch its sibling is on. A version skew between two of its own dependencies. |
+| Fargo's Mutant Mod | `1.4.5` | 23 errors | still 22 | One typo fix, `ShowExcalmation` to `ShowExclamation`, which vanilla stopped sharing. The rest is the `WorldItem` and `NewItem` port throughout, which is real work rather than renames. |
+
+So **two of six can be tested as found**, and **four of six after a
+deliberately small amount of porting**. That is the ecosystem Testaria is
+aiming at, and it is worth knowing before concluding anything from a corpus of
+one mod plus ExampleMod.
+
+The shape of the failures is worth as much as the count. Four of the six are
+renames or a single moved method, and only one is genuine porting work. What
+makes them expensive is not their size but that the 1.4.5 line moves under the
+mods targeting it: SilkyUI's branch carries commits from a week after the
+update that broke it.
 
 Two of the four failures share a cause. `FocusHelper.AllowUIInputs` and
 `FocusHelper.AllowGameplayInputs` stopped existing in tModLoader's 1.4.5.8
@@ -58,6 +70,16 @@ Both live on a `testaria-tests` branch in their own repository.
 Writing them is where the findings below came from.
 
 ## Findings
+
+Nine from writing the suites, and a tenth found while fixing them. Where they
+stand now:
+
+| | Finding | Status |
+|---|---|---|
+| 1 | Adding a suite to a mod's repository breaks the mod's build | documented |
+| 2 | A box cannot contain world-global state | documented; not fixable in general |
+| 3 | Tier 0 is out of reach for a normal mod | documented |
+| 4 | A mod that keeps its types internal cannot be tested without opting in | documented |
 
 ### 2. Tier 3 can only ask the client about vanilla state
 
@@ -150,15 +172,30 @@ Worth recording, because the list above is all limits.
 
 ## Reproducing
 
-The clones are in `mods/others/`, each on a `testaria-tests` branch where
-one exists. The two suites need:
+The clones are in `mods/others/`, each on a `testaria-tests` branch. The two
+suites need only a Testaria checkout to point at:
 
 ```
 export TESTARIA_PATH=/path/to/this/checkout
-export TML_PATH=/path/to/tModLoader        # for an install outside Steam's primary library
 dotnet build mods/others/InnoVault/InnoVaultTests/InnoVaultTests.csproj
 ```
 
-Daybreak additionally needs its SDK to find tModLoader, which on a
-multi-library Steam install means building with `-p:TmlVersion=steam` under a
-`HOME` whose primary Steam library has a symlink to the real install.
+`TML_PATH` is not required for the suites themselves, since the scripts and the tool ask Steam for its library folders, but `build/Testaria.props` probes a fixed list instead, so an install in a second library needs it set for an out-of-repo suite's own build.
+
+Three of the mods need a local workaround that is not a source change, and so
+is not committed to their branches:
+
+- **DAYBREAK** builds through `Tomat.Terraria.ModLoader.Sdk`, which finds
+  tModLoader only in Steam's primary library. Build with `-p:TmlVersion=steam`
+  under a `HOME` whose primary Steam library holds a symlink to the real
+  install.
+- **SilkyUI** needs `SilkyUIAnalyzer` checked out at `827450e` as a sibling
+  directory. Its own packaging step, `Solaestas.tModLoader.ModBuilder`, runs a
+  Windows XNA shader compiler that dies under wine-mono, and computes the
+  Windows save path on Linux; the build here sidesteps both by pre-creating the
+  compiled-shader outputs so the step skips as up to date, and by copying the
+  `.tmod` into the real `Mods` directory afterwards. Its shaders are therefore
+  not real, which is fine for a build-and-load check on a server that never
+  renders and not fine for anything else.
+- **Quality of Terraria** is not buildable as things stand: it wants SilkyUI's
+  `1.4.5-preview` branch while its sibling here is on `1.4.5`.
