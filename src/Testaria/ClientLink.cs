@@ -35,6 +35,12 @@ public static class ClientLink
 
 		/// <summary>Client's answer about a tile.</summary>
 		TellTile = 4,
+
+		/// <summary>Server asks a client what it sees in an NPC slot.</summary>
+		AskNpc = 5,
+
+		/// <summary>Client's answer about an NPC slot.</summary>
+		TellNpc = 6,
 	}
 
 	private static readonly Dictionary<int, Request> Pending = [];
@@ -112,6 +118,21 @@ public static class ClientLink
 		});
 
 	/// <summary>
+	/// Asks a client what it sees in an NPC slot.
+	/// <para/>
+	/// Slots are the same array index on both sides, since the server assigns
+	/// them and syncs by index, so this is a fair question to ask.
+	/// </summary>
+	/// <param name="index">The slot in <c>Main.npc</c>.</param>
+	/// <param name="to">Client slot, or -1 for the first connected one.</param>
+	/// <returns>
+	/// A request whose <see cref="Request.Value"/> is the NPC type the client
+	/// sees there, or -1 when the client has nothing active in that slot.
+	/// </returns>
+	public static Request AskNpc(int index, int to = -1)
+		=> Ask(Message.AskNpc, to, writer => writer.Write(index));
+
+	/// <summary>
 	/// Sends a client the world section holding a tile position.
 	/// <para/>
 	/// A client is only told about the sections it has been sent, which are the
@@ -176,8 +197,14 @@ public static class ClientLink
 				Reply(mod, Message.TellTile, id, writer => writer.Write(SeenTile(x, y)));
 				break;
 
+			case Message.AskNpc:
+				int index = reader.ReadInt32();
+				Reply(mod, Message.TellNpc, id, writer => writer.Write(SeenNpc(index)));
+				break;
+
 			case Message.Pong:
 			case Message.TellTile:
+			case Message.TellNpc:
 				Answer(id, reader.ReadInt32(), whoAmI);
 				break;
 
@@ -202,6 +229,18 @@ public static class ClientLink
 		Tile tile = Main.tile[x, y];
 
 		return tile.HasTile ? tile.TileType : -1;
+	}
+
+	// -1 for "nothing here", for the same reason as tiles: type 0 is a real
+	// NPC and a test asking about an empty slot should not be told about it.
+	private static int SeenNpc(int index)
+	{
+		if (index < 0 || index >= Main.npc.Length)
+			return -1;
+
+		NPC npc = Main.npc[index];
+
+		return npc.active ? npc.type : -1;
 	}
 
 	private static void Reply(Mod mod, Message message, int id, Action<BinaryWriter> payload)

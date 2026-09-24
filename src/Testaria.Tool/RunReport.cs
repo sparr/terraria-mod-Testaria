@@ -39,6 +39,15 @@ public sealed record RunReport
 	/// <summary>Tests that passed.</summary>
 	public int Passed => Total - Failures - Errors - Blocked - Skipped;
 
+	/// <summary>
+	/// Tests that actually ran, which is everything that was not skipped.
+	/// <para/>
+	/// The number worth guarding in CI. A suite whose subject went missing
+	/// skips every test and reports a clean run, which looks exactly like a
+	/// suite that passed.
+	/// </summary>
+	public int Ran => Total - Skipped;
+
 	/// <summary>Everything that did not pass, in report order.</summary>
 	public IReadOnlyList<Problem> Problems { get; init; } = [];
 

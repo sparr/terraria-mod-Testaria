@@ -151,6 +151,8 @@ Common flags:
 | `--speed max` | [Fast forward](#fast-forward) the whole run |
 | `--seed <n>` | Shift every test's [seed](#seeds-and-reproducibility) |
 | `--results <path>` | Copy the JUnit XML report somewhere CI will look |
+| `--require <n>` | Fail unless at least n tests actually ran, which catches a suite that skipped everything |
+| `--client [n]` | Start client processes and join them to the server, so [tier 3](#tier-3-a-server-with-a-client-attached) can run |
 | `--keep-scratch` | Keep the save directory, and say where it is |
 | `--verbose` | Print the server's own log as it happens, for a run that will not start |
 
@@ -341,6 +343,19 @@ That note is usually the explanation for a neighbouring box behaving oddly a few
 
 Something that enters a test that shouldn't is instead considered **contamination**, which errors the test.
 
+## A suite that skips everything is not a suite that passed
+
+That honesty has a failure mode of its own. A suite whose subject is another mod skips itself when that mod is absent, and tModLoader drops a mod that fails to load against a build it was not compiled for, which it does whenever the game updates under you. Every skip is then correct and the sum of them is a run that reports success having tested nothing.
+
+So a run can be asked to prove it did something:
+
+```
+testaria run --mod MyMod --mod MyModTests --require 100
+MIN_TESTS=100 scripts/run-tests.sh
+```
+
+Fewer tests than that actually running is a failure, with a message saying so. Worth setting for any suite whose subject is another mod, which is every suite this framework is for.
+
 ## Test Outcomes
 
 | Outcome | Means |
@@ -387,6 +402,7 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `EXAMPLEMOD_SRC` | `ExampleMod` inside a tModLoader source checkout | None. It is a checkout you made, not something an install provides |
 | `SPEED` | [Fast forward](#fast-forward) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
 | `RUN_SEED` | Shifts every test's [seed](#seeds-and-reproducibility) at once, for rerunning a suite against different rolls | 0, so a run draws the same rolls everywhere |
+| `MIN_TESTS` | Fails the run unless at least this many tests actually ran, rather than skipped | 0, meaning no such demand |
 | `SEED` | The world's generation seed, which is a different thing entirely | 42 |
 
 The build itself reads `TML_PATH` too, so an install anywhere unusual needs setting once and no more.

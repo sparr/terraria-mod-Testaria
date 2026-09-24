@@ -416,7 +416,7 @@ Three clocks, kept deliberately separate:
 4. **Reload safety.** Every hook, event subscription, and static registration the framework makes must be undone in `Unload()`, or it pins dead `AssemblyLoadContext` instances (`AssemblyManager.cs:177`, `196`). A test framework that leaks across reloads will be blamed for the leaks of the mods it tests.
 5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature. **Built** (section 8.5b). There is one generator rather than two: on the 1.4.5 line `WorldGen.genRand` is a property returning `Main.rand`.
 6. **The 1.4.5 toolchain, settled by opting into the beta branch.** Everything above tier 0 builds and runs against a `1.4.5-dev` Steam install. The reasoning is worth keeping because CI has to solve the same problem without Steam (section 8.3a), and because the naming trap at the end of this item still catches people. The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
-7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once.
+7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once. **This is not theoretical**: a tModLoader update renamed `ProjectileID.Sets.PlayerHurtDamageIgnoresDifficultyScaling` to `SelfHurtPlayers`, which stops an already built ExampleMod from loading at all (section 8.6b).
 8. **Upstreaming.** The TML team currently has only hand-driven failure-case mods in `test/Test Local/`. If this framework works, they may want it in-tree. Keeping it MIT and structurally separable from any one mod preserves that option at no cost.
 9. **Test mods under `ModSources`.** `ModSources` lives under the shared stable save path, so all build purposes (Stable, Preview, Dev) share it. A test mod placed there is visible to every tModLoader install on the machine, which is convenient for iteration and surprising if unexpected.
 
@@ -733,6 +733,22 @@ The body runs on the server, which owns the run, the arena and the report; the c
 The four self-tests are: a client is connected; a packet makes the round trip and the answer identifies the client that sent it; a tile the server places *and sends* reaches the client; and a tile the server places *without sending* does not. The last pair matters more than it looks, because either alone would pass for the wrong reason.
 
 Those four rest on one more piece of Terraria: **a client only knows the world sections it has been sent**, which are the ones near its own player. A box in the cavern is nowhere near where a client spawns, so a tile edit there means nothing to the client until it has been given the ground. `ClientLink.SendSection` gives it.
+
+### 8.6b Blocked: tier 3 worked examples, by a tModLoader update
+
+The tier 3 suite for ExampleMod is written (`tests/TestariaExampleTest/NetTests.cs`) and asserts the property that makes modded multiplayer work at all: modded content ids are assigned per load and synced, so an id meaning ExampleBlock on the server must mean ExampleBlock on the client. Nothing in it hardcodes an id; each test resolves one by name on the server and checks what the client reports back.
+
+**A tModLoader update renamed `ProjectileID.Sets.PlayerHurtDamageIgnoresDifficultyScaling` to `SelfHurtPlayers`.** An `ExampleMod.tmod` built against the old name fails to load with a `Field not found`, and tModLoader disables it. Rebuilding does not help while the local tModLoader checkout ExampleMod's source comes from predates the same change and still uses the old name, with no `SelfHurtPlayers` anywhere in it.
+
+So the fix is outside this repository: update the tModLoader checkout to at least the commit the install was built from (`39e7995f`, "Document and fix patches for new Projectile.SelfHurtPlayers method"), then rebuild ExampleMod with `scripts/build-examplemod.sh`. That is somebody else's working tree, so it is theirs to do.
+
+#### What that costs a run, and the guard it needs
+
+`Subject.Require()` skips when the mod under test is absent, which is the honest answer per test, and 924 correct skips sum to a run that reports success while testing nothing.
+
+So a run can be told the fewest tests that must actually run rather than skip, with `--require <n>` on the CLI and `MIN_TESTS` in the shell harness, and falling short is a failure whose message names the likely cause. The calibration gate asks for 100. Section 8.6e carries the stronger form of the same guard, which names the mods themselves rather than counting.
+
+This is the section 2.2 problem in a different costume. There, a test could pass while proving nothing; here, a whole suite could. Honest skipping is still right, and it needs a backstop that counts.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 

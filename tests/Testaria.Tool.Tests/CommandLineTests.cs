@@ -139,6 +139,18 @@ public class CommandLineTests
 		=> XAssert.Contains(flag, Error("run", "--mod", "A", flag, value));
 
 	[Fact]
+	public void A_minimum_number_of_tests_can_be_demanded()
+		=> XAssert.Equal(12, Parse("run", "--mod", "A", "--require", "12").Require);
+
+	[Fact]
+	public void Nothing_is_demanded_by_default()
+		=> XAssert.Equal(0, Parse("run", "--mod", "A").Require);
+
+	[Fact]
+	public void A_nonsensical_demand_is_refused()
+		=> XAssert.Contains("--require", Error("run", "--mod", "A", "--require", "lots"));
+
+	[Fact]
 	public void A_timeout_must_be_positive()
 		// Zero would mean "give up before starting", which is never what
 		// anyone means by it.

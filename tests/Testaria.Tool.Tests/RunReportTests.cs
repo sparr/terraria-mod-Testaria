@@ -99,6 +99,33 @@ public class RunReportTests
 		=> XAssert.DoesNotContain("blocked", RunReport.Parse(Green).Summarize());
 
 	[Fact]
+	public void A_run_knows_how_many_tests_actually_ran()
+	{
+		// Two ran and one skipped, which is the number a CI guard cares about:
+		// a suite whose subject went missing skips everything and reports a
+		// clean run.
+		XAssert.Equal(2, RunReport.Parse(Green).Ran);
+		XAssert.Equal(4, RunReport.Parse(Red).Ran);
+	}
+
+	[Fact]
+	public void A_run_where_everything_skipped_ran_nothing()
+	{
+		RunReport report = RunReport.Parse(
+			"<testsuites name=\"Run\" tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"3\" time=\"1.0\">"
+			+ "<testsuite name=\"Suite\" tests=\"3\" failures=\"0\" errors=\"0\" skipped=\"3\" time=\"1.0\">"
+			+ "<testcase name=\"a\" classname=\"Suite\"><skipped message=\"subject absent\" /></testcase>"
+			+ "<testcase name=\"b\" classname=\"Suite\"><skipped message=\"subject absent\" /></testcase>"
+			+ "<testcase name=\"c\" classname=\"Suite\"><skipped message=\"subject absent\" /></testcase>"
+			+ "</testsuite></testsuites>");
+
+		// The shape that started all this: every test politely skipped, the
+		// report clean, and nothing whatsoever established.
+		XAssert.Equal(0, report.Ran);
+		XAssert.True(report.IsSuccess);
+	}
+
+	[Fact]
 	public void An_empty_run_is_a_success()
 	{
 		RunReport report = RunReport.Parse("""

@@ -114,10 +114,10 @@ public static class Program
 			return Success;
 		}
 
-		return Report(RunReport.Read(resultsPath));
+		return Report(RunReport.Read(resultsPath), options.Require);
 	}
 
-	private static int Report(RunReport report)
+	private static int Report(RunReport report, int require)
 	{
 		Console.WriteLine(report.Summarize());
 
@@ -129,6 +129,18 @@ public static class Program
 			// reliably prints the least useful sentence in the report.
 			foreach (string line in problem.Message.Split('\n'))
 				Console.WriteLine("      " + line.TrimEnd());
+		}
+
+		if (require > 0 && report.Ran < require) {
+			// A failure rather than a warning. The whole point of the demand is
+			// that the run looked fine, and a warning in a log nobody reads
+			// would leave it looking fine.
+			Console.Error.WriteLine(
+				$"Only {report.Ran} test(s) ran, and --require asked for {require}. "
+				+ "A suite that skips everything reports success while proving nothing: check that the mod "
+				+ "under test actually loaded.");
+
+			return TestsFailed;
 		}
 
 		return report.IsSuccess ? Success : TestsFailed;

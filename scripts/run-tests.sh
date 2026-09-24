@@ -226,7 +226,7 @@ if [ "$MODE" = "list" ]; then
 fi
 
 python3 - "$RESULTS" <<'PY'
-import sys, xml.etree.ElementTree as ET
+import os, sys, xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
 tests, fails = int(root.get("tests", 0)), int(root.get("failures", 0))
 problems, skipped = int(root.get("errors", 0)), int(root.get("skipped", 0))
@@ -249,6 +249,18 @@ for case in root.iter("testcase"):
         print(f"  {bad.tag.upper()} {case.get('classname')}.{case.get('name')}:")
         for line in (bad.get("message", "") or "(no message)").splitlines():
             print(f"      {line}")
+# A suite that skipped everything is not a suite that passed. This happened
+# for real: tModLoader updated, ExampleMod's build stopped loading against it,
+# and all 924 calibration tests skipped themselves politely while the gate
+# reported success. MIN_TESTS is how a gate says it expected to prove something.
+minimum = int(os.environ.get("MIN_TESTS", "0") or 0)
+ran = tests - skipped
+
+if minimum and ran < minimum:
+    print(f"only {ran} test(s) ran, but MIN_TESTS={minimum} was expected; "
+          "check that the mod under test actually loaded")
+    sys.exit(1)
+
 # problems, not errors: a run that could not run part of itself has not
 # established what it was asked to, even if everything that did run passed.
 sys.exit(1 if fails or problems else 0)

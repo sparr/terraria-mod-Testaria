@@ -54,6 +54,16 @@ public sealed record RunOptions
 	/// </summary>
 	public int Clients { get; init; }
 
+	/// <summary>
+	/// Fewest tests that must actually run, as opposed to being skipped.
+	/// <para/>
+	/// Zero means no such demand. Worth setting in CI for a suite whose
+	/// subject is another mod: if that mod stops loading, every test skips and
+	/// the run reports success, which is indistinguishable from the suite
+	/// passing.
+	/// </summary>
+	public int Require { get; init; }
+
 	/// <summary>Keep the scratch save directory instead of deleting it.</summary>
 	public bool KeepScratch { get; init; }
 
@@ -120,6 +130,9 @@ public static class CommandLine
 		  --fresh-world          Promise this process has a world to itself, so
 		                         [FreshWorld] tests are honoured rather than skipped.
 		  --timeout <seconds>    Give up after this long. Default 600.
+		  --require <n>          Fail unless at least n tests actually ran. Guards
+		                         against a suite that silently skipped everything,
+		                         which otherwise reports success.
 
 		output:
 		  --results <path>       Copy the JUnit XML report here.
@@ -232,6 +245,15 @@ public static class CommandLine
 					if (!int.TryParse(timeoutText, out int timeout) || timeout <= 0)
 						return new ParseResult { Error = $"--timeout needs a positive number of seconds, got '{timeoutText}'." };
 					options = options with { TimeoutSeconds = timeout };
+					break;
+
+				case "--require":
+					string? requireText = Value();
+					if (requireText is null)
+						return Missing()!;
+					if (!int.TryParse(requireText, out int require) || require < 0)
+						return new ParseResult { Error = $"--require needs a count, got '{requireText}'." };
+					options = options with { Require = require };
 					break;
 
 				case "--results":
