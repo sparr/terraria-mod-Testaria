@@ -2,11 +2,71 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-**Status: early alpha.** All four tiers run end to end in a live headless game, driven by the `testaria` command line tool, and the framework has been calibrated against ExampleMod. Tier 3 covers netcode, with a real client process joining a real server, and reaches far enough into a client to read back pixels it drew; what is out of scope is rendering *tooling* and input. Nothing is published to nuget.org or the Workshop yet. The design lives in [`PLAN.md`](PLAN.md).
+**AI Disclosure** This mod is currently 99% authored by Claude Opus 5 and only 5% has been subject to human review. That is not the planned final state. The mod is published in this state for the purpose of demonstrating functionality and seeking implementation and compatibility feedback. A full release will involve full human review, refactoring and additional feature development, and likely architecture changes.
+
+**Status: early alpha.** All four tiers run end to end in a live headless game, driven by the `testaria` command line tool, and the framework has been calibrated against ExampleMod and four other community mods. Tier 3 covers netcode, with a real client process joining a real server, and reaches far enough into a client to read back pixels it drew. Nothing is published to nuget.org or Steam Workshop yet.
 
 ## What does it do?
 
 Some Terraria mods implement their own unit testing. A few load their mod into the game server to confirm it doesn't immediately crash. Almost none perform any significant integration testing. Testaria aims to fill a gap in the Terraria modding ecosystem by making it easy for any mod to implement one or more tiers of testing ranging from pure logic unit tests to "actually launch the game and perform some actions in a multiplayer world and measure the outcome over thousands of ticks".
+
+Project design lives in [`PLAN.md`](PLAN.md).
+
+## Getting started on your own mod
+
+Set up the templates:
+
+```sh
+dotnet new install Testaria.Templates
+dotnet new testaria-unit-tests -n MyUnitTests                  # tier 0, out-of-game tests
+dotnet new testaria-mod-tests  -n MyModTests --subject MyMod   # tiers 1 to 3, in-game tests
+```
+
+Tier 0 is an ordinary xUnit project, so it runs wherever `dotnet` does:
+
+```sh
+cd MyUnitTests && dotnet test
+```
+
+Tiers 1 to 3 need the game. Building writes `MyModTests.tmod` straight into your tModLoader `Mods` folder:
+
+```sh
+cd MyModTests && dotnet build
+```
+
+Then launch tModLoader, enable **Testaria**, your own mod, and **MyModTests**, load any world, and run the command in chat:
+
+```
+/testaria run MyModTests
+```
+
+It replies with the counts, and writes a JUnit report to `<tModLoader save path>/Testaria/MyModTests.xml`.
+
+The same command works on a server console without the leading slash, which is what the command line tool sends for you.
+
+Tier 3 needs a second game process, so those tests run through the command line tool instead:
+
+```
+dotnet tool install --global Testaria.Tool
+testaria run --mod MyMod --mod MyModTests --client --blank
+```
+
+On Linux a client also needs a framebuffer, which the harness starts for itself: install `Xvfb` or point `DISPLAY` at an existing fb. A run without `--client` needs neither.
+
+Nothing else about the suite changes. `[NetTest]` methods live in the same `MyModTests` project as the tier 1 and 2 ones, and the harness enables the same mods on the client that it enabled on the server, so your own code is already present on both sides.
+
+The generated project references only the `Testaria.Core` package, which is enough for the attributes, `Assert` and `Wait`, but not for `ClientLink`. That type touches Terraria's own types, so it lives in the Testaria mod assembly, as `TestContext` does. Reference the built `Testaria.dll` to reach either:
+
+```xml
+<Reference Include="Testaria">
+  <HintPath>/path/to/ModSources/Testaria/bin/Debug/net10.0/Testaria.dll</HintPath>
+  <Private>false</Private>
+</Reference>
+```
+
+`Private=false` matters: the assembly is already present at run time, because `build.txt` names Testaria in `modReferences`, and a copy in your own output is something ModCompile would try to pack into your `.tmod`.
+
+[Tier 3](#tier-3-a-server-with-a-client-attached) below covers both, with a worked test.
 
 ### Tiers
 
@@ -27,92 +87,43 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[FreshWorld]` | A test no box can isolate, which needs a freshly generated world instead |
 | `[Case]` | One set of arguments for a parameterised test, reported as a case of its own |
 | `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
-| `[RealTime]` | Exempts a test from the run's fast forward, running it at 60 ticks per second |
-| `[StartPaused]` | Freezes the world as the test begins, for a test that steps it by hand |
+| `[RealTime]` | Runs a test at the vanilla 60 ticks per second instead of fast fowarding |
+| `[StartPaused]` | Freezes the world as the test begins, for a test that steps ticks by hand |
 | `[Seed]` | Pins a test's randomness to a particular seed, rather than the one derived from its name |
 | `[RequiresLoadedGame]` | Declares that a member needs the game, so tier 0 code cannot reach it by accident |
 
 ## The tier 0 boundary
 
-The most dangerous thing a test framework for a game can do is go green while proving nothing, and Terraria offers an easy way to do exactly that. Loader state does not throw outside the game. It answers. Measured against tModLoader 1.4.5 with no game started:
+Tier 0 doesn't start the game and is reachable only for logic you have deliberately factored out into an ordinary class library that your mod references. Doing so will greatly improve your experience testing individual functions for behavior related to logic, arithmetic, data structure manipulation, etc. If you haven't done this abstraction, you will need to write tier 1 tests instead. All tier 1 tests can run on a single start of the game, so the overhead is persistent but minimal.
 
-| Touched | Result outside the game |
-| --- | --- |
-| `ItemID.CopperShortsword`, `ItemID.Count` | Works. Consts are inlined at compile time |
-| `new Item()` | Works, constructs fine |
-| `Main.maxTilesX` | **Throws** `TypeInitializationException` |
-| `ContentSamples.ItemsByType.Count` | **Returns 0** |
-| `ModLoader.Mods.Length` | **Returns 0** |
-| `new Item().Name` | **Returns `""`** |
-| `Lang.GetItemNameValue(3507)` | **Returns `""`** |
-| `ItemID.Sets.Deprecated.Length` | **Returns 6196**, the vanilla count, never resized for mods |
-
-`Main` is the safe one: it fails loudly, so the mistake corrects itself. Everything else answers anyway, so `Assert.Empty(ContentSamples.ItemsByType)` passes in a unit test host and means nothing at all.
-
-Three things keep tier 0 honest, in order of how much they ask of you.
-
-**The core carries no tModLoader reference.** `Testaria.Core` references nothing from the game, so a test project that references only the core cannot reach any of the surface above. This is the whole defence for most projects, and the templates are built this way.
-
-**An analyzer, for projects where a reference is unavoidable.** Referencing `Testaria.Core` also installs the tier 0 boundary analyzer. In an assembly with no load pass underneath it, reaching for the loader-dependent surface is an error rather than a silent lie:
-
-```
-error TSTA001: 'ContentSamples.ItemsByType' only means anything after a load pass,
-and this assembly runs without one
-```
+`Testaria.Core` includes a boundary analyzer that will surface the following violations:
 
 | Rule | What it catches |
 | --- | --- |
 | `TSTA001` | `ContentSamples`, `ModContent`, `Lang`, `Language`, `ModLoader.Mods` and friends, and any `*ID.Sets` member, used where no game has loaded |
 | `TSTA002` | A call to a `[RequiresLoadedGame]` member from a caller that has not declared the same |
 
-The analyzer stands down on its own in an assembly that declares a type implementing `ILoadable`, since a mod assembly cannot run without a load pass anyway. To turn it off deliberately, set `<TestariaLoaderStateAnalysis>false</TestariaLoaderStateAnalysis>`.
+The analyzer is disabled for any assembly that declares a type implementing `ILoadable` which guarantees a load. To turn it off deliberately, set `<TestariaLoaderStateAnalysis>false</TestariaLoaderStateAnalysis>`.
 
-**`[RequiresLoadedGame]`, for code that really does need the game.** Marking a member says so out loud. The analyzer then stops blaming that member and starts blaming undeclared callers, so the dependency travels up the call graph to the test that has to answer for it:
+### Keeping the suite out of your mod's own build
 
-```csharp
-[RequiresLoadedGame("reads the sample cache")]
-static int ModdedItemCount() => ContentSamples.ItemsByType.Count - ItemID.Count;
+Your tests belong in your mod repo, but not in your mod. The usual tModLoader layout puts your mod's `.csproj` at the root of its repository, where the SDK's default `**/*.cs` glob picks up everything underneath. You can exclude your tests in your mod's `.csproj`:
+
+```xml
+<ItemGroup>
+  <Compile Remove="MyModTests\**" />
+  <None Remove="MyModTests\**" />
+  <AdditionalFiles Remove="MyModTests\**" />
+</ItemGroup>
 ```
 
-For anything the analyzer cannot see, such as reflection or a cross-mod `Mod.Call`, `GameState` is the runtime half:
-
-```csharp
-GameState.Require("ContentSamples");   // throws LoaderStateException if no game has loaded
-```
-
-`GameState.IsLoaded` is false in every `dotnet test` host and true from the end of the Testaria mod's load pass until it unloads. `LoaderStateException` is its own type so a suite can tell "this test is in the wrong tier" apart from "the code under test is broken".
-
-## Getting started on your own mod
-
-Set up the templates:
+and in the mod's `build.txt`, or the suite's source ships inside your mod's `.tmod`:
 
 ```
-dotnet new install Testaria.Templates
-dotnet new testaria-unit-tests -n MyUnitTests                  # tier 0, out-of-game tests
-dotnet new testaria-mod-tests  -n MyModTests --subject MyMod   # tiers 1 and 2, in-game tests
+buildIgnore = MyModTests\*
 ```
 
-Tier 0 is an ordinary xUnit project, so it runs wherever `dotnet` does:
-
-```
-cd MyUnitTests && dotnet test
-```
-
-Tiers 1 and 2 need the game. Building writes `MyModTests.tmod` straight into your tModLoader `Mods` folder:
-
-```
-cd MyModTests && dotnet build
-```
-
-Then launch tModLoader, enable **Testaria**, your own mod, and **MyModTests**, load any world, and run the command in chat:
-
-```
-/testaria run MyModTests
-```
-
-It replies with the counts, and writes a JUnit report to `<tModLoader save path>/Testaria/MyModTests.xml`.
-
-The same command works on a server console without the leading slash, which is what the command line tool sends for you.
+If your mod repository is laid out with an extra layer of structure, you can put the test suite beside your mod's folder instead of inside it, avoiding these issues.
 
 ## Running a suite without the game in front of you
 
@@ -370,6 +381,42 @@ That note is usually the explanation for a neighbouring box behaving oddly a few
 
 Something that enters a test that shouldn't is instead considered **contamination**, which errors the test.
 
+## A box is a region, not a sandbox
+
+A box isolates a rectangle of world. It has nothing to say about a static field, and neither the escape watch nor the ground restore can help you there: a test that sets `Main.afterPartyOfDoom` triggers a vanilla routine that kills every town NPC in the world, not the ones inside the box.
+
+So state outside the box has to be put back, and putting it back on the last line stops happening the moment an assertion above it fails. Register it instead, and the runner does it at teardown however the test ended:
+
+```csharp
+[GameTest(Band = Band.Surface)]
+public IEnumerator A_marked_npc_is_spared(ITestContext ctx)
+{
+    var box = (TestContext)ctx;
+
+    // Read, register the undo, and write, in one step.
+    box.Change(() => SomeMod.Sets.Vulnerable[NPCID.Guide], v => SomeMod.Sets.Vulnerable[NPCID.Guide] = v, false);
+
+    // Or the long form, when the undo is not a simple assignment.
+    box.Restore(() => SomeCache.Clear());
+
+    ...
+}
+```
+
+Restorations run in reverse order, so nesting unwinds the way a stack does, and one throwing does not strand the rest.
+
+## Placing a tile the way a player does
+
+`ctx.PlaceTile` calls `WorldGen.PlaceTile`, which puts the tile there and tells nobody. In particular it does **not** fire `ModTile.PlaceInWorld` or `GlobalTile.PlaceInWorld`: tModLoader calls those from `Player` alone, when somebody places a tile from an item.
+
+A great deal of mod behaviour hangs off that hook. InnoVault creates its TileProcessor entities there, so the obvious test, place the tile and wait for the entity, waits out its timeout for something that never comes.
+
+```csharp
+box.PlaceTileAsPlayer(4, 4, ModContent.TileType<MyTile>());
+```
+
+places the tile and then announces it, returning false if the tile did not go down. It is the hook, not a simulated player: no item is consumed, nothing checks reach, and no animation plays.
+
 ## A suite that skips everything is not a suite that passed
 
 That honesty has a failure mode of its own. A suite whose subject is another mod skips itself when that mod is absent, and tModLoader drops a mod that fails to load against a build it was not compiled for, which it does whenever the game updates under you. Every skip is then correct and the sum of them is a run that reports success having tested nothing.
@@ -382,6 +429,29 @@ MIN_TESTS=100 scripts/run-tests.sh
 ```
 
 Fewer tests than that actually running is a failure, with a message saying so. Worth setting for any suite whose subject is another mod, which is every suite this framework is for.
+
+**The commonest cause of it is caught without being asked.** A mod that throws during its load pass is disabled by tModLoader, and the game carries on. `testaria` tells the run which mods it installed, and the run refuses to start if any of them is absent:
+
+```
+1 tests: 0 passed, 0 failed, 1 errored, 0 skipped
+  ERROR Testaria.Preflight.The run was refused before it started:
+      This run required mods Daybreak, DaybreakTests, which did not load. ...
+      Check the log for the load error. Loaded: ModLoader, Testaria.
+```
+
+That is a report rather than silence, because the harness waits for one and a run that produced none would time out, which says much less than a named error. Without the check, the same scenario prints `0 tests: 0 passed` and exits 0.
+
+A run that discovers **no** tests at all, or whose filter matches none of them, is an error for the same reason: reported on the console and then written to the report as an empty pass, it leaves the person watching and the harness reading with opposite verdicts.
+
+**And a test that asserts nothing says so.** Passing without a single assertion reaching the body is not an error, since "this does not throw" is a real thing to test, but it is worth reading:
+
+```xml
+<testcase name="Every_processor_maps_to_its_mod" classname="MyModTests.RegistrationTests">
+  <system-out>This test passed without making a single assertion, so it proved nothing.</system-out>
+</testcase>
+```
+
+A test looping over a registry that is always empty does exactly that.
 
 ## Test Outcomes
 
@@ -424,7 +494,7 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 
 | Variable | What it is | Default |
 | --- | --- | --- |
-| `TML_PATH` | A tModLoader install, the directory holding `tModLoader.dll` and `tMLMod.targets` | The `tModLoader` directory in the platform's default Steam library |
+| `TML_PATH` | A tModLoader install, the directory holding `tModLoader.dll` and `tMLMod.targets` | Found by asking Steam: every library folder in `steamapps/libraryfolders.vdf` is checked, not just the default one. Set this for a GOG install or anything else Steam does not know about |
 | `MODS_SRC` | Where a mod build leaves its `.tmod`, the `Mods` directory under tModLoader's save path | The save path of a **dev** build, since 1.4.5 is only available as one |
 | `EXAMPLEMOD_SRC` | `ExampleMod` inside a tModLoader source checkout | None. It is a checkout you made, not something an install provides |
 | `SPEED` | [Fast forward](#fast-forward) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
@@ -484,7 +554,7 @@ This functionality is in `Testaria.Core`, doesn't reference tModLoader, and is a
 
 | Piece | What it does |
 | --- | --- |
-| `Assert`, `AssertionException` | xUnit-shaped assertion vocabulary. Separate from xUnit because no stock runner can host inside a mod's `AssemblyLoadContext` |
+| `Assert`, `AssertionException` | xUnit-shaped assertion vocabulary, including xUnit's element-by-element equality for collections. Separate from xUnit because no stock runner can host inside a mod's `AssemblyLoadContext` |
 | `TestResult`, `TestRunResult`, `JUnitXmlWriter` | Results and JUnit XML reporting, the one format every CI system reads without a custom reporter |
 | `TileRect`, `Band`, `WorldGeometry` | Tile geometry and the depth band model, including band spans for tests that cross a boundary |
 | `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
