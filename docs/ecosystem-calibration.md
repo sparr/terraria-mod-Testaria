@@ -75,14 +75,16 @@ suites of their own:
   die, with two controls. Tier 2 also covers `TileData`, the five components
   the paint tools lift off each tile, whose failure mode is silent and
   permanent. Tier 1 covers the stamp chunking arithmetic.
-- **SilkyUI**, 25 tests. A UI framework on a headless server sounds like a
-  contradiction and mostly is, but two things are reachable: the value types
-  the engine is built out of, and the flexbox layout engine itself, which is
-  pure computation over a tree and the one thing in a UI framework really
-  worth testing.
+- **SilkyUI**, 28 tests. A UI framework on a headless server sounds like a
+  contradiction and mostly is, but the value types the engine is built out of
+  and the flexbox engine itself are both pure computation, and the engine is
+  the one thing in a UI framework really worth testing. Three more run inside a
+  real client and cover the pipeline the server cannot: the framework's own
+  entry point, producing real screen rectangles. Those need SilkyUI's blur
+  turned off, which a run does by seeding the mod's own config.
 
-174 tests across four mods nobody here wrote. Writing them is where the
-findings below came from.
+177 tests across four mods nobody here wrote. They are where the findings
+below come from.
 
 ## Findings
 

@@ -853,7 +853,7 @@ So the framework is pointed at **every published mod with active 1.4.5 work**, t
 
 The shape of those failures matters more than the count. Four of the six are renames or a single moved method. What makes them expensive is not their size but that the 1.4.5 line moves underneath the mods targeting it: `FocusHelper.AllowUIInputs` and `AllowGameplayInputs` stopped existing in the 1.4.5.8 update of 2026-09-16, and SilkyUI's branch carries commits from a week *after* that update that still reference them. This is risk 7 in the ecosystem rather than in this repository.
 
-**Every mod that works has a suite**: 112 tests for InnoVault, 16 for DAYBREAK, 21 for Cheat Sheet and 25 for SilkyUI, 174 in all, across four mods nobody here wrote. They establish both halves of what follows: the capabilities a foreign mod needs, and four limits that belong to the ecosystem or to the design rather than to anything a framework can answer. The full account, with the evidence for each, is in `docs/ecosystem-calibration.md`.
+**Every mod that works has a suite**: 112 tests for InnoVault, 16 for DAYBREAK, 21 for Cheat Sheet and 28 for SilkyUI, 177 in all, across four mods nobody here wrote. They establish both halves of what follows: the capabilities a foreign mod needs, and four limits that belong to the ecosystem or to the design rather than to anything a framework can answer. The full account, with the evidence for each, is in `docs/ecosystem-calibration.md`.
 
 The four worth recording here:
 
