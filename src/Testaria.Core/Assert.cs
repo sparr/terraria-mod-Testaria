@@ -15,9 +15,36 @@ namespace Testaria;
 /// </summary>
 public static class Assert
 {
+	private static int invocations;
+
+	/// <summary>
+	/// How many assertions have been made in this process, ever.
+	/// <para/>
+	/// Only the difference across a test is meaningful, and only the runner
+	/// looks at it: a test that finishes without a single assertion reaching
+	/// it has passed without checking anything, and says so on its result. It
+	/// is not an error, because "this does not throw" is a real thing to test
+	/// and needs no assertion to express, but it is worth saying out loud.
+	/// This framework's own suites produced two such tests in one afternoon,
+	/// both of them looping over a collection that was always empty.
+	/// <para/>
+	/// Interlocked because tier 0 suites run in parallel under xUnit. The
+	/// number is only read by the in-game runner, which is single threaded,
+	/// but a torn count would be a silly thing to ship.
+	/// </summary>
+	public static int Invocations => Volatile.Read(ref invocations);
+
+	/// <summary>Records that an assertion was reached, whatever it concludes.</summary>
+	private static void Counted() => Interlocked.Increment(ref invocations);
+
 	/// <summary>Fails unconditionally.</summary>
 	[DoesNotReturn]
-	public static void Fail(string message) => throw new AssertionException(message);
+	public static void Fail(string message)
+	{
+		Counted();
+
+		throw new AssertionException(message);
+	}
 
 	/// <summary>
 	/// Abandons the test as skipped, for a reason only discoverable at run
@@ -32,6 +59,8 @@ public static class Assert
 	/// <summary>Asserts that a condition holds.</summary>
 	public static void True([DoesNotReturnIf(false)] bool condition, string? message = null)
 	{
+		Counted();
+
 		if (!condition)
 			throw new AssertionException(message ?? "Assert.True() Failure\nExpected: True\nActual:   False");
 	}
@@ -39,6 +68,8 @@ public static class Assert
 	/// <summary>Asserts that a condition does not hold.</summary>
 	public static void False([DoesNotReturnIf(true)] bool condition, string? message = null)
 	{
+		Counted();
+
 		if (condition)
 			throw new AssertionException(message ?? "Assert.False() Failure\nExpected: False\nActual:   True");
 	}
@@ -59,6 +90,8 @@ public static class Assert
 	/// </summary>
 	public static void Equal<T>(T expected, T actual, string? message = null)
 	{
+		Counted();
+
 		if (AreEqual(expected, actual))
 			return;
 
@@ -68,6 +101,8 @@ public static class Assert
 	/// <summary>Asserts that two values are not equal.</summary>
 	public static void NotEqual<T>(T notExpected, T actual, string? message = null)
 	{
+		Counted();
+
 		if (!AreEqual(notExpected, actual))
 			return;
 
@@ -122,6 +157,8 @@ public static class Assert
 	/// <summary>Asserts that a reference is null.</summary>
 	public static void Null(object? value, string? message = null)
 	{
+		Counted();
+
 		if (value is not null)
 			throw new AssertionException(message ?? Describe("Assert.Null()", null, value));
 	}
@@ -129,6 +166,8 @@ public static class Assert
 	/// <summary>Asserts that a reference is not null.</summary>
 	public static void NotNull([NotNull] object? value, string? message = null)
 	{
+		Counted();
+
 		if (value is null)
 			throw new AssertionException(message ?? "Assert.NotNull() Failure\nExpected: not null\nActual:   null");
 	}
@@ -136,6 +175,8 @@ public static class Assert
 	/// <summary>Asserts that two references are the same instance.</summary>
 	public static void Same(object? expected, object? actual, string? message = null)
 	{
+		Counted();
+
 		if (!ReferenceEquals(expected, actual))
 			throw new AssertionException(message ?? Describe("Assert.Same()", expected, actual));
 	}
@@ -143,6 +184,8 @@ public static class Assert
 	/// <summary>Asserts that two references are not the same instance.</summary>
 	public static void NotSame(object? notExpected, object? actual, string? message = null)
 	{
+		Counted();
+
 		if (ReferenceEquals(notExpected, actual))
 			throw new AssertionException(message ?? $"Assert.NotSame() Failure\nExpected: not {Format(notExpected)}\nActual:   {Format(actual)}");
 	}
@@ -150,6 +193,8 @@ public static class Assert
 	/// <summary>Asserts that a value lies within an inclusive range.</summary>
 	public static void InRange<T>(T actual, T low, T high, string? message = null) where T : IComparable<T>
 	{
+		Counted();
+
 		if (actual.CompareTo(low) < 0 || actual.CompareTo(high) > 0)
 			throw new AssertionException(message ?? $"Assert.InRange() Failure\nRange:  [{Format(low)}, {Format(high)}]\nActual: {Format(actual)}");
 	}
@@ -157,6 +202,8 @@ public static class Assert
 	/// <summary>Asserts that a sequence contains a value.</summary>
 	public static void Contains<T>(T expected, IEnumerable<T> collection, string? message = null)
 	{
+		Counted();
+
 		if (collection is null)
 			throw new AssertionException("Assert.Contains() Failure\nCollection was null");
 
@@ -171,6 +218,8 @@ public static class Assert
 	/// <summary>Asserts that a sequence does not contain a value.</summary>
 	public static void DoesNotContain<T>(T notExpected, IEnumerable<T> collection, string? message = null)
 	{
+		Counted();
+
 		if (collection is null)
 			return;
 
@@ -191,6 +240,8 @@ public static class Assert
 	/// </summary>
 	public static void Contains(string expected, string? actual, string? message = null)
 	{
+		Counted();
+
 		if (actual is null || !actual.Contains(expected, StringComparison.Ordinal))
 			throw new AssertionException(message ?? $"Assert.Contains() Failure\nNot found: {Format(expected)}\nIn string: {Format(actual)}");
 	}
@@ -198,6 +249,8 @@ public static class Assert
 	/// <summary>Asserts that a string does not contain a substring.</summary>
 	public static void DoesNotContain(string notExpected, string? actual, string? message = null)
 	{
+		Counted();
+
 		if (actual is not null && actual.Contains(notExpected, StringComparison.Ordinal))
 			throw new AssertionException(message ?? $"Assert.DoesNotContain() Failure\nFound:     {Format(notExpected)}\nIn string: {Format(actual)}");
 	}
@@ -205,6 +258,8 @@ public static class Assert
 	/// <summary>Asserts that a sequence has no elements.</summary>
 	public static void Empty(IEnumerable collection, string? message = null)
 	{
+		Counted();
+
 		NotNull(collection, "Assert.Empty() Failure\nCollection was null");
 
 		IEnumerator enumerator = collection.GetEnumerator();
@@ -220,6 +275,8 @@ public static class Assert
 	/// <summary>Asserts that a sequence has at least one element.</summary>
 	public static void NotEmpty(IEnumerable collection, string? message = null)
 	{
+		Counted();
+
 		NotNull(collection, "Assert.NotEmpty() Failure\nCollection was null");
 
 		IEnumerator enumerator = collection.GetEnumerator();
@@ -239,6 +296,8 @@ public static class Assert
 	/// </summary>
 	public static T Throws<T>(Action action) where T : Exception
 	{
+		Counted();
+
 		NotNull(action);
 
 		try {

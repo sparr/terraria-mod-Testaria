@@ -38,6 +38,10 @@ public sealed class TestRunner
 	private BoxLease? lease;
 	private ITestContext? context;
 	private long startedAt;
+
+	// How many assertions had been made when this test began. A test that ends
+	// with the number unchanged has passed without checking anything.
+	private int assertionsAtStart;
 	private int? seed;
 
 	/// <summary>Creates a runner over a discovery result, folding in its errors.</summary>
@@ -167,6 +171,7 @@ public sealed class TestRunner
 	{
 		current = test;
 		startedAt = options.TimeProvider.GetTimestamp();
+		assertionsAtStart = Assert.Invocations;
 		seed = null;
 
 		// Before the body is invoked, because an immediate test's entire life
@@ -348,9 +353,19 @@ public sealed class TestRunner
 		TestCase test = current!;
 		TimeSpan duration = options.TimeProvider.GetElapsedTime(startedAt);
 
-		string? notes = context is ITestNotes noted && noted.Notes.Count > 0
-			? string.Join("\n", noted.Notes)
-			: null;
+		List<string> collected = context is ITestNotes noted ? [.. noted.Notes] : [];
+
+		// A test that passed without a single assertion reaching it has
+		// established nothing, and looks exactly like one that established
+		// everything. Not an error, because "this does not throw" is a real
+		// thing to test and needs no assertion to say so, but worth saying out
+		// loud: two tests written against this framework passed this way in
+		// one afternoon, both looping over a collection that was always empty.
+		if (outcome == TestOutcome.Passed && Assert.Invocations == assertionsAtStart)
+			collected.Add("This test passed without making a single assertion, so it proved nothing. "
+				+ "If that is deliberate, say so with an assertion that states what is being relied on.");
+
+		string? notes = collected.Count > 0 ? string.Join("\n", collected) : null;
 
 		results.Add(new TestResult {
 			ClassName = test.ClassName,

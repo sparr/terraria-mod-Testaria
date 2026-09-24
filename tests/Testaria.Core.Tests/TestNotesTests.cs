@@ -153,15 +153,60 @@ public class TestNotesTests
 		public int ElapsedTicks => 0;
 	}
 
+	[Fact]
+	public void A_test_that_asserts_nothing_says_so_without_failing()
+	{
+		TestResult result = Run(nameof(Fixtures.AssertsNothing), new Noted());
+
+		// Still a pass: "this does not throw" is a real thing to test and
+		// needs no assertion to express. But a passing test that checked
+		// nothing looks exactly like one that checked everything, so it says
+		// which it was.
+		XAssert.Equal(TestOutcome.Passed, result.Outcome);
+		XAssert.Contains("without making a single assertion", result.Output);
+	}
+
+	[Fact]
+	public void A_test_that_asserts_something_says_nothing_of_the_sort()
+		=> XAssert.Null(Run(nameof(Fixtures.Passes), new Noted()).Output);
+
+	[Fact]
+	public void The_note_joins_whatever_else_the_test_had_to_say()
+	{
+		TestResult result = Run(nameof(Fixtures.AssertsNothing), new Noted("NPC 3 left the box"));
+
+		XAssert.Contains("NPC 3 left the box", result.Output);
+		XAssert.Contains("without making a single assertion", result.Output);
+	}
+
+	[Fact]
+	public void A_failing_test_is_not_also_accused_of_asserting_nothing()
+	{
+		// It failed an assertion, so it plainly made one; and even if it had
+		// thrown before reaching any, the failure is the thing worth reading.
+		XAssert.DoesNotContain("single assertion", Run(nameof(Fixtures.Fails), new Noted()).Output ?? "");
+	}
+
 	public class Fixtures
 	{
 		public static ITestContext? Seen;
 
+		// Asserts something trivial on purpose: these fixtures exist to test
+		// note handling, and a test that makes no assertion now collects a
+		// note of its own, which would turn every one of them into a test of
+		// two things at once.
 		[GameTest(Band = Band.Cavern)]
-		public void Passes() { }
+		public void Passes() => Assert.True(true);
 
 		[GameTest(Band = Band.Cavern)]
-		public void Inspects(ITestContext ctx) => Seen = ctx;
+		public void Inspects(ITestContext ctx)
+		{
+			Seen = ctx;
+			Assert.NotNull(ctx);
+		}
+
+		[GameTest(Band = Band.Cavern)]
+		public void AssertsNothing() { }
 
 		[GameTest(Band = Band.Cavern)]
 		public void Fails() => Assert.Fail("deliberate");

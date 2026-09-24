@@ -103,7 +103,14 @@ public class TeardownTests
 	[GameTest(Band = Band.Cavern, Timeout = 300)]
 	public IEnumerator A_test_that_registers_nothing_tears_down_cleanly(ITestContext ctx)
 	{
-		((TestContext)ctx).Dispose();
+		var box = (TestContext)ctx;
+
+		box.Dispose();
+
+		// Asserting that the box is still describable is the smallest honest
+		// claim available here, and the alternative, asserting nothing, now
+		// earns a note saying the test proved nothing. Which it would have.
+		Assert.False(box.Interior.IsEmpty, "the box should still know where it was");
 
 		yield break;
 	}
