@@ -165,14 +165,16 @@ Common flags:
 | `--require <n>` | Fail unless at least n tests actually ran, which catches a suite that skipped everything. Defaults to 1, so a run in which nothing ran is already a failure; raise it for a suite whose subject is another mod, or pass 0 to allow it |
 | `--measure` | Write a table of what each boxed test cost and used, beside the report, for [calibrating the arena](#boxes-and-what-they-cost) |
 | `--client [n]` | Start client processes and join them to the server, so [tier 3](#tier-3-a-server-with-a-client-attached) can run |
+| `--config <path>` | Seed a mod config, named as tModLoader names it: `<ModName>_<ConfigClassName>.json`. Repeatable. Without it a suite can only test a mod's defaults |
 | `--keep-scratch` | Keep the save directory, and say where it is |
 | `--verbose` | Print the server's own log as it happens, for a run that will not start |
+| `--help` | List all of the command line flags |
 
-`testaria list` takes the same options and catalogues the tests without running any of them.
+`testaria list` takes the same options and catalogs the tests without running any of them.
 
 ### From a build, rather than by hand
 
-`Testaria.Sdk` is the same run wired into MSBuild, for a mod repository that wants `dotnet build` to be the only command anyone has to know. It carries the `testaria` tool inside itself, so there is no install step:
+`Testaria.Sdk` can perform tests as part of your `dotnet build`:
 
 ```xml
 <ItemGroup>

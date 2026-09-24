@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6e, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.7 and 8.8 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
+Status: implemented through section 8.6f, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 
 ## 0. The short version
 
@@ -20,7 +20,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | --- | --- |
 | Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 512 core, 76 tool, and 14 analyzer self-tests pass in under two seconds. Section 8.6e records the honest limit: a mod's own code lives in a mod assembly, so for most mods tier 1 is the practical floor |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, registered teardown, placing a tile as a player does, and restoring the ground all run inside a live headless server. The self-test mod reports 57 tests; the ExampleMod calibration suite reports 927; four foreign mods report 174 between them |
-| Tier 3 | Works, sections 8.6a, 8.6c and 8.6e. A client process joins a real server; twelve self-tests, three worked examples against ExampleMod, and five replication tests against InnoVault pass. A test mod can register questions the client answers, so a mod's own synced state is reachable. Rendering and input remain out of scope |
+| Tier 3 | Works, sections 8.6a, 8.6c and 8.6e. A client process joins a real server; fourteen self-tests, three worked examples against ExampleMod, five replication tests against InnoVault and three layout tests against SilkyUI pass. A test mod can register questions the client answers, so a mod's own synced state is reachable, and so is anything else that process can do: two self-tests read back pixels the GPU drew. Rendering **tooling** is section 8.9; input is still unexplored |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
 | Gates | Seven by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. An eighth, the arena load test, is deliberate (`RUN_LOAD=1`). The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
@@ -32,7 +32,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
-Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1).
+Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1), and section 8.9, rendering, which is deliberately after both.
 
 Section 8.6e is the one to read before trusting any of the above. Six mods nobody here wrote produce sixteen findings between them, three of which no existing gate catches and two of which exist *because* of how a gate is written.
 
@@ -843,7 +843,7 @@ The per-test answer is `ClientLink.AwaitSection`, which sends a section and the 
 
 **A control that does not depend on timing.** The client is asked about ground far from the arena that nothing has sent it, and answers "nothing" while the server sees stone. That establishes that the answers are the client's own view rather than an echo, which is the only thing such a control is needed for.
 
-### 8.6e Calibration against the ecosystem, and the thirteen things it found
+### 8.6e Calibration against the ecosystem, and what it found
 
 Every gate up to here aims the framework at ExampleMod and at itself. Both are unusual subjects: ExampleMod is maintained by the people who maintain the loader, and the self-test mod was written by the framework's author to exercise the framework. Neither can say what happens when a stranger's mod arrives.
 
@@ -875,6 +875,14 @@ The ratio is still poor: of Cheat Sheet's whole surface, one `GlobalNPC` runs on
 
 **What this adds to the plan.** Section 2.4 wants a real test corpus to adjudicate the isolation design, and there is one, partly: boxes hold across 128 tests on two foreign mods with no cross-contamination. But a box isolates a region and nothing else, and a test that flips a static field needs `ctx.Restore` rather than geometry. That is built, and is the fifth mechanism section 2.4 does not anticipate.
 
+### 8.6f Configuring the mod under test
+
+Configuration is a first-class tModLoader feature and section 0.1 lists it among what tier 1 can test, so a run has to be able to set it. Otherwise a suite can only ever test a mod's defaults.
+
+Worse, a default can make a mod untestable. SilkyUI enables a blur effect by default; on a machine whose build cannot compile the shader, the client dies at its first frame and every tier 3 test against it times out.
+
+`--config <path>` seeds a file, for the same reason `enabled.json` is written by hand rather than through a menu: it is what the game reads, and nothing about it needs Steam or a person. The file's own name is the contract, `<ModName>_<ConfigClassName>.json`, and a misnamed one is refused up front rather than ignored by the game and discovered as a run that quietly tested defaults. Each file is copied into both the client and the server config directories, because the game reads a `ClientSide` config from one and a `ServerSide` config from the other and ignores what it cannot match, so the caller is never asked which scope somebody else's mod used.
+
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
 One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run `scripts/run-all.sh` or its CLI equivalent.
@@ -884,3 +892,20 @@ The release half is artifact A as a GitHub Release with a full SemVer tag, plus 
 ### 8.8 nuget.org, once GitHub is working
 
 Artifacts B through E to nuget.org with the `Testaria.*` ID prefix reserved, after the GitHub channel has proved itself. Last because it is the least reversible step in the plan: an ID can be unlisted but never deleted, and by this point the names have been carried by a working release rather than by an intention.
+
+### 8.9 Rendering, once there is something to publish
+
+Deliberately after 8.7 and 8.8. Section 5.1 gates publication on tier 3 working with worked examples, and it does; adding a fifth thing to build before anyone can install the first four would be the same mistake section 8.1 avoided by starting at tier 1 rather than tier 0.
+
+**The reach already exists. The tooling does not.** Section 8.6e records what is reachable: a `[NetTest]` body runs on the server, but a `ClientQuery` runs arbitrary mod code inside a client process that has a graphics device, an 800x720 back buffer, working render targets, a sprite batch, loaded fonts and a live `LocalPlayer`. Two self-tests read back pixels a GPU drew. So this section is not about access. It is about the three things that turn "I can get pixels" into "I can test what my mod draws".
+
+**8.9a Capturing a frame rather than a target.** The self-tests draw into a `RenderTarget2D` they made themselves, which tests drawing code that was written to take a target. Most drawing code is not: it draws into whatever the game is drawing into, at a point in `Main`'s draw order. Capturing that means running a real frame and reading the back buffer, or redirecting the interface layer into a target for one frame. The second is likely, because it is what mods doing their own compositing already do, but it is the piece that needs designing rather than merely writing.
+
+**8.9b Comparing images, and what a failure looks like.** Pixel equality is the wrong default: a GPU driver, a screen size, and a font all move pixels without anything being wrong. The useful comparisons are a tolerance, a structural one such as "this region is not blank", and a golden image. Golden images bring their own problems, all of them well known: they have to be generated on some machine and trusted, they are binary in a repository, and a failure has to be inspectable or nobody will ever look. A failure that says "0.4% of pixels differ" and cannot show which is not worth having, which is a reason to hold this until there is somewhere for artifacts to go. That is section 8.7's CI job, which is another reason this comes after it.
+
+**8.9c Input, and whether it belongs at all.** Driving a mouse and keyboard on the client is a separate mechanism from either of the above, and a smaller one: `Main.mouseX`, `Main.mouseLeft` and the input state are ordinary fields, and a client query can set them. What is not obvious is whether a test that does so is testing anything durable, or is pinning the exact frame on which a click is noticed. Worth a prototype before it is worth a design.
+
+Section 2.5 scopes this out as tooling rather than as reach, and the README says the same: what the self-tests establish, and that what remains is tooling. That is the honest position and it costs nothing to hold while 8.7 and 8.8 happen.
+
+**One dependency worth recording.** A client is a whole game process and meets failures a server never does. A mod whose shader asset cannot be compiled on the build machine stops its client at the first frame that wants it, long after the harness has watched it join, and every tier 3 test then waits out its budget. That is why `--config` exists (section 8.6f): a run seeds the mod's configuration, turns the drawing off, and keeps the client alive. Anything in 8.9 that draws will meet this class of problem constantly, since drawing is where a client's dependencies actually get used.
+

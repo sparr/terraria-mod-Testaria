@@ -100,7 +100,7 @@ public sealed class ScratchSave : IDisposable
 	/// that wrote into the server's Worlds folder would be indistinguishable
 	/// from a test that did.
 	/// </summary>
-	public string PrepareClient(int index, IEnumerable<string> enabled, string tmlPath)
+	public string PrepareClient(int index, IEnumerable<string> enabled, string tmlPath, IEnumerable<string>? configs = null)
 	{
 		ArgumentNullException.ThrowIfNull(enabled);
 
@@ -121,6 +121,13 @@ public sealed class ScratchSave : IDisposable
 			$"[{string.Join(",", enabled.Select(name => $"\"{name}\""))}]\n");
 
 		ClientSave.WriteConfig(directory, tmlPath);
+
+		// A client has its own save directory, so a ClientSide config seeded
+		// for the server does not reach it. This is the copy that matters for
+		// anything a client does differently, which is most of what a config
+		// controls.
+		if (configs is not null)
+			ModConfigs.InstallInto(directory, configs);
 
 		return directory;
 	}

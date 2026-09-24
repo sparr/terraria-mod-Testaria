@@ -6,6 +6,15 @@ public sealed record RunOptions
 	/// <summary>Mods to install and enable, by bare name or by path to a <c>.tmod</c>.</summary>
 	public IReadOnlyList<string> Mods { get; init; } = [];
 
+	/// <summary>
+	/// Mod config files to seed the run with, named as tModLoader names them:
+	/// <c>&lt;ModName&gt;_&lt;ConfigClassName&gt;.json</c>.
+	/// <para/>
+	/// Without this a suite can only test a mod's defaults, and a mod whose
+	/// default makes it unusable in a headless run cannot be tested at all.
+	/// </summary>
+	public IReadOnlyList<string> Configs { get; init; } = [];
+
 	/// <summary>Mod projects to build before the run.</summary>
 	public IReadOnlyList<string> Projects { get; init; } = [];
 
@@ -154,6 +163,8 @@ public static class CommandLine
 		  --fresh-world          Promise this process has a world to itself, so
 		                         [FreshWorld] tests are honoured rather than skipped.
 		  --timeout <seconds>    Give up after this long. Default 600.
+		  --config <path>        Seed a mod config, named as tModLoader names it:
+		                         <ModName>_<ConfigClassName>.json. Repeatable.
 		  --require <n>          Fail unless at least n tests actually ran. Guards
 		                         against a suite that silently skipped everything,
 		                         which otherwise reports success. Default 1; use
@@ -199,6 +210,7 @@ public static class CommandLine
 		var mods = new List<string>();
 		var projects = new List<string>();
 		var extras = new List<string>();
+		var configs = new List<string>();
 		var options = new RunOptions { List = verb == "list" };
 
 		for (int i = 1; i < args.Count; i++) {
@@ -276,6 +288,15 @@ public static class CommandLine
 					if (!int.TryParse(timeoutText, out int timeout) || timeout <= 0)
 						return new ParseResult { Error = $"--timeout needs a positive number of seconds, got '{timeoutText}'." };
 					options = options with { TimeoutSeconds = timeout };
+					break;
+
+				case "--config":
+					string? configPath = Value();
+					if (configPath is null)
+						return Missing()!;
+					if (ModConfigs.Validate(configPath) is string configProblem)
+						return new ParseResult { Error = configProblem };
+					configs.Add(configPath);
 					break;
 
 				case "--require":
@@ -359,6 +380,6 @@ public static class CommandLine
 		if (mods.Count == 0)
 			return new ParseResult { Error = "Nothing to run: name at least one mod with --mod." };
 
-		return new ParseResult { Options = options with { Mods = mods, Projects = projects, ExtraArgs = extras } };
+		return new ParseResult { Options = options with { Mods = mods, Projects = projects, ExtraArgs = extras, Configs = configs } };
 	}
 }

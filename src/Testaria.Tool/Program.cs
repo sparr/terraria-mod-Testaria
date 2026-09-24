@@ -72,6 +72,10 @@ public static class Program
 
 		IReadOnlyList<string> enabled = scratch.Install(options.Mods, modsDirectory);
 
+		// Before anything starts, so the game reads them on its first load
+		// pass rather than being reconfigured halfway through a run.
+		ModConfigs.InstallInto(scratch.Root, options.Configs);
+
 		progress.WriteLine($"tml:      {tml}");
 		progress.WriteLine($"mods:     {string.Join(" ", enabled)}");
 		progress.WriteLine($"scratch:  {scratch.Root}");
@@ -86,7 +90,7 @@ public static class Program
 		List<string> clientSaves = [];
 
 		for (int i = 0; i < options.Clients; i++)
-			clientSaves.Add(scratch.PrepareClient(i, enabled, tml));
+			clientSaves.Add(scratch.PrepareClient(i, enabled, tml, options.Configs));
 
 		if (display is not null)
 			progress.WriteLine($"display:  {display.Name}");
