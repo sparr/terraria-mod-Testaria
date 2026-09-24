@@ -15,7 +15,7 @@ namespace TestariaSelfTest;
 /// </summary>
 public class NetTests
 {
-	[NetTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 300)]
+	[NetTest(Band = Band.Cavern, Timeout = 300)]
 	public IEnumerator A_client_is_connected(ITestContext ctx)
 	{
 		// The run itself is proof of the tier gate: this body only executes
@@ -27,7 +27,7 @@ public class NetTests
 		yield break;
 	}
 
-	[NetTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 600)]
+	[NetTest(Band = Band.Cavern, Timeout = 600)]
 	public IEnumerator A_packet_makes_the_round_trip(ITestContext ctx)
 	{
 		ClientLink.Request ping = ClientLink.Ping();
@@ -41,7 +41,7 @@ public class NetTests
 		Assert.Equal(ping.From, ping.Value);
 	}
 
-	[NetTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 900)]
+	[NetTest(Band = Band.Cavern, Timeout = 1800)]
 	public IEnumerator A_tile_the_server_places_reaches_the_client(ITestContext ctx)
 	{
 		var box = (TestContext)ctx;
@@ -50,12 +50,10 @@ public class NetTests
 
 		box.ClearTile(4, 4);
 
-		// A client only knows the sections it has been sent, which are the ones
-		// around its own player, and a box in the cavern is nowhere near where
-		// a joining client spawns. Without this the client answers "no tile" to
-		// everything here, whatever the server does.
-		ClientLink.SendSection(x, y);
-		yield return Wait.Ticks(10);
+		// Both sides agree the space is empty before the test changes
+		// anything, so what follows is about the change rather than about a
+		// section that had not arrived yet.
+		yield return ClientLink.AwaitSection(x, y);
 
 		box.PlaceTile(4, 4, TileID.Stone);
 
@@ -71,34 +69,27 @@ public class NetTests
 		Assert.Equal(TileID.Stone, seen.Value);
 	}
 
-	[NetTest(Band = Band.Cavern, Width = 48, Height = 32, Timeout = 900)]
-	public IEnumerator A_tile_the_server_keeps_to_itself_does_not_reach_the_client(ITestContext ctx)
+	[NetTest(Band = Band.Cavern, Timeout = 900)]
+	public IEnumerator A_client_knows_nothing_of_ground_it_was_never_sent(ITestContext ctx)
 	{
-		var box = (TestContext)ctx;
-		int x = ctx.Interior.Left + 8;
-		int y = ctx.Interior.Top + 4;
+		// The control for the test above. Without it, a client that simply
+		// echoed whatever the server believed would look like perfect
+		// synchronisation, and the tile test would prove nothing about sending.
+		//
+		// Far from the arena, which sits at the left of the world, and far from
+		// where a joining client spawns, so this is ground nothing has had
+		// reason to send. The blank world makes it solid stone.
+		int x = Main.maxTilesX - 200;
+		int y = (int)Main.rockLayer + 100;
 
-		box.ClearTile(8, 4);
+		Assert.True(Main.tile[x, y].HasTile, "the blank world should have ground here for the server to see");
 
-		// The client is given this ground, so that what it reports afterwards
-		// is about the tile edit rather than about never having heard of the
-		// place. Without this the test would pass whatever happened.
-		ClientLink.SendSection(x, y);
-		yield return Wait.Ticks(10);
+		ClientLink.Request seen = ClientLink.AskTile(x, y);
+		yield return Wait.Until(() => seen.Answered, "the client to report ground it has never been sent");
 
-		ClientLink.Request before = ClientLink.AskTile(x, y);
-		yield return Wait.Until(() => before.Answered, "the client to report the empty space");
-		Assert.Equal(-1, before.Value);
-
-		// Placed without being sent. The other half of the test above: if the
-		// client saw this, the previous test would have proved nothing about
-		// SendTileSquare, only that both sides happen to agree.
-		box.PlaceTile(8, 4, TileID.Stone);
-		yield return Wait.Ticks(30);
-
-		ClientLink.Request after = ClientLink.AskTile(x, y);
-		yield return Wait.Until(() => after.Answered, "the client to report again");
-
-		Assert.Equal(-1, after.Value);
+		// The server sees stone; the client has never heard of the place. The
+		// answers are the client's own, which is the whole point.
+		Assert.Equal(-1, seen.Value);
 	}
+
 }

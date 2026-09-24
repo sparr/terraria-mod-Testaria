@@ -789,6 +789,25 @@ The checkout has to match the install the mod will load into, which for ExampleM
 
 With a client attached, all three pass: a modded tile placed by the server arrives at the client as the same content, a modded NPC spawned by the server appears in the same slot with the same type, and an empty slot reads empty on both sides. The property they establish is the one that makes modded multiplayer work at all, and none of them hardcodes an id: each resolves one by name on the server and checks what the client reports back.
 
+### 8.6d What a client has received, and when
+
+Tier 3 rests on knowing what a client can be asked about, which is narrower than it looks: **a client answers "no tile" for everything in a section it has not been given yet**, and an unreceived section is indistinguishable from empty ground. Anything built on top of that has to establish agreement rather than assume it.
+
+**Who sends sections.** `NetTrace`, behind `-testariatracenet`, hooks `NetMessage.SendSection` and `NetMessage.SendTileSquare` on the server and logs each call with the stack that produced it. Over a full tier 3 run there are exactly two senders:
+
+- Testaria's own `ClientLink.SendSection`, which a test asks for.
+- `MessageBuffer.GetData` handling **message 8, the client's own request for the world around its spawn** (`MessageBuffer.cs:664` onwards). Measured: nine sections, a three by three block covering tiles 0 to 599 by 0 to 449, all sent at the tick the client joined.
+
+Nothing resends. `SendSection` returns immediately for a section the client already has, which the trace labels, and no other caller fires in a traced run.
+
+**When those sections arrive is the part that matters.** Measured with a probe, the client first sees a tile inside its own spawn block **five ticks after the suite starts** if the harness begins on the server's "has joined" line, which is the server accepting a connection rather than the client being in the world. A test that edits a tile in that block during the window sees the section turn up afterwards carrying the edit, which looks exactly like the server having sent something nobody asked for.
+
+So the client tells the server when it is in the world, and the harness waits for that rather than for "has joined". The honest limit is recorded rather than papered over: **being in the world does not mean the world has arrived.** Terraria streams sections continuously, so there is no moment at which a client is finished receiving; measured, the spawn block still completes nine ticks into the run.
+
+The per-test answer is `ClientLink.AwaitSection`, which sends a section and the tile square with it, then waits until both sides agree about the ground a test is about to touch. A fixed wait reads its own impatience; waiting for agreement reads the network. There is no harness-level substitute for it.
+
+**A control that does not depend on timing.** The client is asked about ground far from the arena that nothing has sent it, and answers "nothing" while the server sees stone. That establishes that the answers are the client's own view rather than an echo, which is the only thing such a control is needed for.
+
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
 One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run `scripts/run-all.sh` or its CLI equivalent.

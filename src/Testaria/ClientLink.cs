@@ -157,6 +157,40 @@ public static class ClientLink
 		NetMessage.SendSection(client, Netplay.GetSectionX(x), Netplay.GetSectionY(y));
 	}
 
+	/// <summary>
+	/// Sends a client the section holding a tile, and waits until the client
+	/// agrees with the server about what is there.
+	/// <para/>
+	/// Sending is not instant, and an unreceived section looks exactly like
+	/// empty ground: the client answers "no tile" for everything in it. A test
+	/// that reads that as an empty space is reading its own impatience.
+	/// Measured, a section arrived after the test had gone on to place a tile
+	/// and carried the new tile with it, so a test asserting the tile had not
+	/// arrived failed while everything was working correctly.
+	/// <para/>
+	/// Waiting until the two sides agree about this one tile is the cheapest
+	/// honest proof that the ground is really there. Set the tile up first,
+	/// then call this, then make the change the test is about.
+	/// </summary>
+	/// <param name="x">Tile x.</param>
+	/// <param name="y">Tile y.</param>
+	/// <param name="to">Client slot, or -1 for the first connected one.</param>
+	public static System.Collections.IEnumerator AwaitSection(int x, int y, int to = -1)
+	{
+		SendSection(x, y, to);
+
+		while (true) {
+			Request probe = AskTile(x, y, to);
+
+			yield return Wait.Until(() => probe.Answered, $"the client to say what it sees at {x},{y}");
+
+			if (probe.Value == SeenTile(x, y))
+				yield break;
+
+			yield return Wait.Ticks(10);
+		}
+	}
+
 	private static Request Ask(Message message, int to, Action<BinaryWriter>? payload)
 	{
 		if (Main.netMode != NetmodeID.Server)

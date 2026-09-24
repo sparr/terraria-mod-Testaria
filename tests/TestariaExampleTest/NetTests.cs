@@ -35,8 +35,10 @@ public class NetTests
 		int y = ctx.Interior.Top + 4;
 
 		box.ClearTile(4, 4);
-		ClientLink.SendSection(x, y);
-		yield return Wait.Ticks(10);
+		// Waiting until both sides agree about this tile, rather than waiting a
+		// fixed number of ticks: a section that has not arrived looks exactly
+		// like empty ground, so a fixed wait reads its own impatience.
+		yield return ClientLink.AwaitSection(x, y);
 
 		box.PlaceTile(4, 4, block.Type);
 		NetMessage.SendTileSquare(-1, x, y, 1);
@@ -63,8 +65,7 @@ public class NetTests
 
 		// The client is given the ground first: an NPC in a section the client
 		// has never heard of is not a test of NPC sync.
-		ClientLink.SendSection(ctx.Interior.Left, ctx.Interior.Top);
-		yield return Wait.Ticks(10);
+		yield return ClientLink.AwaitSection(ctx.Interior.Left, ctx.Interior.Top);
 
 		NPC spawned = box.SpawnNPC(critter.Type, 8, 8);
 

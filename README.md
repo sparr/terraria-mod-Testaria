@@ -227,7 +227,9 @@ public IEnumerator A_tile_the_server_places_reaches_the_client(ITestContext ctx)
 }
 ```
 
-Every question is a handle you wait on, never a value you read: the answer is a packet, and it arrives some ticks later. `ClientLink.Ping()` is the smallest round trip there is, `ClientLink.AskTile(x, y)` asks what the client believes about a tile, and `ClientLink.SendSection(x, y)` gives it the ground to have a belief about.
+Every question is a handle you wait on, never a value you read: the answer is a packet, and it arrives some ticks later. `ClientLink.Ping()` is the smallest round trip there is, `ClientLink.AskTile(x, y)` asks what the client believes about a tile, and `ClientLink.AwaitSection(x, y)` gives it the ground to have a belief about and waits until it really has it.
+
+That last one matters more than it sounds. Sending a section is not instant, and a section that has not arrived looks exactly like empty ground: the client answers "no tile" for everything in it. A test that waits a fixed number of ticks and then reads an empty space is reading its own impatience. `AwaitSection` waits until both sides agree about the tile, which is the cheapest honest proof that the ground is there.
 
 **Without a client, a `[NetTest]` is skipped, never run.** A netcode test that quietly runs single-player passes while proving nothing, so the session counts connected clients rather than trusting a flag that says one was launched. The report says so plainly: `Needs tier MultiProcess but this environment supports up to World.`
 

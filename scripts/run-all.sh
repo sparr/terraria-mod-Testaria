@@ -63,7 +63,9 @@ if [ "${SKIP_FRESH:-0}" = "1" ]; then
 	echo
 	echo "=== fresh worlds: skipped by request ==="
 else
-	step "fresh worlds" "$HERE/run-fresh.sh"
+	# MIN_TESTS deliberately cleared: each fresh-world process runs exactly one
+	# test, so a demand meant for a whole suite would fail every one of them.
+	step "fresh worlds" env MIN_TESTS= "$HERE/run-fresh.sh"
 fi
 
 if [ "${SKIP_CALIBRATION:-0}" = "1" ]; then
