@@ -563,6 +563,12 @@ public sealed class TestariaSystem : ModSystem
 		session = null;
 		frozenFrames = 0;
 		TestOwnership.Clear();
+
+		// Each registered client query is a delegate over a test mod's
+		// assembly. Keeping one across a reload would hold that assembly alive
+		// and answer the next run with the previous build's code.
+		ClientQuery.Clear();
+		ClientLink.Reset();
 	}
 
 	private void Report(TestSession finished)

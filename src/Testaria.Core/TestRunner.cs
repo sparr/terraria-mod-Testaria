@@ -140,14 +140,18 @@ public sealed class TestRunner
 		while (next < queue.Count) {
 			TestCase test = queue[next++];
 
+			// Tier on every one of these, not just on the results that ran.
+			// A tier 3 test skipped for want of a client is precisely the
+			// result somebody wants to find by tier, and leaving it off made
+			// the tier 3 gate unable to see the tests it exists to check.
 			if (test.SkipReason is string reason) {
-				results.Add(TestResult.Skip(test.ClassName, test.Name, reason));
+				results.Add(TestResult.Skip(test.ClassName, test.Name, reason) with { Tier = test.Tier });
 				continue;
 			}
 
 			if (test.Tier > options.MaxTier) {
 				results.Add(TestResult.Skip(test.ClassName, test.Name,
-					$"Needs tier {test.Tier} but this environment supports up to {options.MaxTier}."));
+					$"Needs tier {test.Tier} but this environment supports up to {options.MaxTier}.") with { Tier = test.Tier });
 				continue;
 			}
 
@@ -156,7 +160,7 @@ public sealed class TestRunner
 				// in whatever world happens to be loaded would pass while
 				// proving nothing.
 				results.Add(TestResult.Skip(test.ClassName, test.Name,
-					"Declares [FreshWorld], which this runner cannot provide. Running it in the current world would report a pass without testing what it asked for."));
+					"Declares [FreshWorld], which this runner cannot provide. Running it in the current world would report a pass without testing what it asked for.") with { Tier = test.Tier });
 				continue;
 			}
 
@@ -371,6 +375,7 @@ public sealed class TestRunner
 			ClassName = test.ClassName,
 			Name = test.Name,
 			Outcome = outcome,
+			Tier = test.Tier,
 			Message = message,
 			StackTrace = stackTrace,
 			Output = notes,

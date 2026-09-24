@@ -18,9 +18,21 @@ ROOT="$(dirname "$HERE")"
 . "$HERE/paths.sh"
 
 TOOL="$ROOT/src/Testaria.Tool"
-FILTER="${FILTER:-NetTests}"
+# The whole suite, not a class name. Filtering to "NetTests" stops covering
+# tier 3 the moment a tier 3 test is written in a class called something else,
+# and it hides a whole class of bug besides: a tier 2 test that counts every
+# active player, including the connected client's, can only fail when the whole
+# suite runs with a client.
+#
+# Tier is read back out of the report instead, which needs no naming
+# convention to be right.
+FILTER="${FILTER:-}"
 TIMEOUT="${TIMEOUT:-600}"
 WORK="$(mktemp -d -t testaria-net-XXXXXX)"
+# Only pass the flag when there is something to filter by; an empty regex
+# is not the same thing as no filter.
+FILTER_ARGS=()
+[ -n "$FILTER" ] && FILTER_ARGS=(--filter "$FILTER")
 failures=0
 
 cleanup() { rm -rf "$WORK"; }
@@ -36,7 +48,7 @@ echo
 echo "=== with a client ==="
 if nice -n 19 dotnet run --project "$TOOL" -- run \
 	--mod TestariaSelfTest --client --blank \
-	--filter "$FILTER" --name NetTests --timeout "$TIMEOUT" \
+	"${FILTER_ARGS[@]}" --name NetTests --timeout "$TIMEOUT" \
 	--results "$WORK/net.xml"; then
 	echo "--- tier 3 with a client: ok"
 else
@@ -50,23 +62,29 @@ echo "=== without a client ==="
 # single-player and reported a pass. They must be skipped instead.
 nice -n 19 dotnet run --project "$TOOL" -- run \
 	--mod TestariaSelfTest --blank --speed max \
-	--filter "$FILTER" --name NetTestsAlone --timeout "$TIMEOUT" \
+	"${FILTER_ARGS[@]}" --name NetTestsAlone --timeout "$TIMEOUT" \
 	--results "$WORK/alone.xml" --quiet
 
 python3 - "$WORK/alone.xml" <<'PY'
 import sys, xml.etree.ElementTree as ET
 
 root = ET.parse(sys.argv[1]).getroot()
-cases = list(root.iter("testcase"))
-skipped = [c for c in cases if c.find("skipped") is not None]
 
-print(f"{len(cases)} tier 3 test(s) without a client, {len(skipped)} skipped")
+# By tier, out of the report, rather than by matching class names. A gate that
+# finds tier 3 tests by naming convention stops covering them silently.
+tier3 = [c for c in root.iter("testcase") if c.get("testaria-tier") == "MultiProcess"]
+skipped = [c for c in tier3 if c.find("skipped") is not None]
 
-if not cases:
-    sys.exit("no tier 3 tests ran at all, so this proves nothing")
+print(f"{len(tier3)} tier 3 test(s) without a client, {len(skipped)} skipped")
 
-if len(skipped) != len(cases):
-    sys.exit("a tier 3 test did something other than skip with no client attached")
+if not tier3:
+    sys.exit("no tier 3 tests were found at all, so this proves nothing. "
+             "Is the report missing testaria-tier?")
+
+if len(skipped) != len(tier3):
+    bad = [f"{c.get('classname')}.{c.get('name')}" for c in tier3 if c.find("skipped") is None]
+    sys.exit("a tier 3 test did something other than skip with no client attached: "
+             + ", ".join(bad))
 PY
 
 if [ "$?" -eq 0 ]; then

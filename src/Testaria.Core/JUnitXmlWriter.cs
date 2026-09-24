@@ -95,6 +95,9 @@ public static class JUnitXmlWriter
 		if (result.Seed is int seed)
 			writer.WriteAttributeString("testaria-seed", Int(seed));
 
+		if (result.Tier is TestTier tier)
+			writer.WriteAttributeString("testaria-tier", tier.ToString());
+
 		switch (result.Outcome) {
 			case TestOutcome.Failed:
 				WriteProblem(writer, "failure", result);

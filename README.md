@@ -238,21 +238,55 @@ public IEnumerator A_tile_the_server_places_reaches_the_client(ITestContext ctx)
 }
 ```
 
-Every question is a handle you wait on, never a value you read: the answer is a packet, and it arrives some ticks later. `ClientLink.Ping()` is the smallest round trip there is, `ClientLink.AskTile(x, y)` asks what the client believes about a tile, and `ClientLink.AwaitSection(x, y)` gives it the ground to have a belief about and waits until it really has it.
+Every question is a handle you wait on, never a value you read: the answer is a packet, and it arrives some ticks later. `ClientLink.Ping()` is the smallest round trip there is, `ClientLink.AskTile(x, y)` asks what the client believes about a tile right now, and `ClientLink.AwaitSection(x, y)` waits for the client to have some information about that tile.
 
-That last one matters more than it sounds. Sending a section is not instant, and a section that has not arrived looks exactly like empty ground: the client answers "no tile" for everything in it. A test that waits a fixed number of ticks and then reads an empty space is reading its own impatience. `AwaitSection` waits until both sides agree about the tile, which is the cheapest honest proof that the ground is there.
-
-**A client being in the world does not mean the world has arrived.** When a client joins it asks the server for the block of sections around its spawn, and those keep arriving afterwards: measured, a client first sees a tile inside its own spawn block five ticks after the suite starts running. The harness waits for the client to report itself in the world rather than for the server's "has joined", which is earlier still, but neither is a promise that any particular ground is there. `AwaitSection` is, and it is the reason tier 3 tests are not flaky.
+**A client being in the world does not mean the world has arrived.** Benchmarks suggest it can take five or more ticks after joining before a client sees the tiles in its spawn block.
 
 If you ever need to know who sent a client a piece of the world, `--arg -testariatracenet` logs every section and tile square the server sends, with the call stack that produced it.
 
-**Without a client, a `[NetTest]` is skipped, never run.** A netcode test that quietly runs single-player passes while proving nothing, so the session counts connected clients rather than trusting a flag that says one was launched. The report says so plainly: `Needs tier MultiProcess but this environment supports up to World.`
+### What the harness provides
 
-What the harness does for you, each piece of it required to get a client into the world:
-
-- **Seeds the client's configuration.** A fresh save directory stops at "Select language", then at a welcome dialog, then at change notes, each waiting for a click. None can be suppressed by a mod, because they stand in front of mod loading.
+- **Seeds the client's configuration.** This avoids the startup dialogs for language selection, changelog, etc.
 - **Provides a framebuffer.** A server is happy with `SDL_VIDEODRIVER=dummy`; a client started that way exits within five seconds. On Linux the harness starts `Xvfb` on a spare display and stops it afterwards.
-- **Drives the join from inside the game.** Nothing on the command line reaches `Main.AutoJoin`, so the client half of Testaria fabricates a character and connects, and does so only when `-testariajoin` is present, so a person's own game is untouched.
+- **Drives the join from inside the game.** The client creates a test character then connects.
+
+### Asking the client about your own mod
+
+`AskTile` and `AskNpc` are about vanilla state, because that is all this framework understands on its own. Your mod's synced state, which is the entire reason your mod has netcode, needs your code to look at it. That code is already on the client, because a test mod is loaded on both sides; it only needed a way to be reached.
+
+Register a question during your load pass, which runs on both sides:
+
+```csharp
+public sealed class ClientQueries : ModSystem
+{
+    public override void Load()
+        => ClientQuery.Register("MyMod.SeesWidget", (arguments, answer) => {
+            int x = arguments.ReadInt32(), y = arguments.ReadInt32();
+            answer.Write(MyMod.WidgetAt(x, y) is not null);
+        });
+}
+```
+
+and ask it from a `[NetTest]`, which runs on the server:
+
+```csharp
+ClientLink.Request seen = ClientLink.Ask("MyMod.SeesWidget", w => { w.Write(x); w.Write(y); });
+
+yield return Wait.Until(() => seen.Answered, "the client to say whether it sees the widget");
+
+Assert.True(seen.Read().ReadBoolean());
+```
+
+If you need to wait for the information, do not poll with `Wait.Until` which will saturate the connection. Instead, use `AwaitAnswer`:
+
+```csharp
+yield return ClientLink.AwaitAnswer("MyMod.SeesWidget", w => { w.Write(x); w.Write(y); },
+    reader => reader.ReadBoolean(), "the client to see the widget");
+```
+
+Asking more than `ClientLink.MaxQuestionsInFlight` questions without waiting for any of them fails the test that did it, by name, rather than wedging the run.
+
+A question the client does not have registered, or a handler that throws, comes back as an error rather than not coming back at all. `Request.Failed` says so, `Request.Error` says why, and `Request.Read()` fails the test rather than handing back an empty reader that would read as a legitimate "no".
 
 Rendering, pixel diffing, and input replay remain out of scope: tier 3 here means netcode.
 

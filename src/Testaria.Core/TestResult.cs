@@ -18,6 +18,18 @@ public sealed record TestResult
 	/// <summary>How the test finished.</summary>
 	public required TestOutcome Outcome { get; init; }
 
+	/// <summary>
+	/// What the test needed to run, recorded so the report can be read by
+	/// tier without knowing anything about class names.
+	/// <para/>
+	/// In the report because selecting tests by tier from outside the game was
+	/// otherwise only possible by naming conventions, and a gate that finds
+	/// tier 3 tests by matching the string "NetTests" stops covering them the
+	/// moment somebody writes a tier 3 test in a class called something else.
+	/// Which happened.
+	/// </summary>
+	public TestTier? Tier { get; init; }
+
 	/// <summary>Wall clock duration.</summary>
 	public TimeSpan Duration { get; init; }
 

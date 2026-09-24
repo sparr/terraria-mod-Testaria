@@ -404,15 +404,22 @@ public class PlayerTests
 	public IEnumerator No_player_survives_the_test_that_made_it(ITestContext ctx)
 	{
 		// Every test tears its players down, so whichever test runs first sees
-		// none active, and so does every test after it.
-		int active = 0;
+		// no fabricated player, and so does every test after it.
+		//
+		// A genuinely connected client owns a player slot too, and that one is
+		// nobody's to tear down: it belongs to the other process and stays for
+		// as long as it is connected. Counting it made this test fail the
+		// first time the whole suite was run with a client attached, which
+		// took until tier 3 grew tests outside the one class check-net.sh
+		// filtered to.
+		int fabricated = 0;
 
 		for (int i = 0; i < Main.maxPlayers; i++) {
-			if (Main.player[i].active)
-				active++;
+			if (Main.player[i].active && !Netplay.Clients[i].IsActive)
+				fabricated++;
 		}
 
-		Assert.Equal(0, active);
+		Assert.Equal(0, fabricated);
 
 		yield break;
 	}

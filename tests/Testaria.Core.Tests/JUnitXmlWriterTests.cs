@@ -251,4 +251,26 @@ public class JUnitXmlWriterTests
 		XAssert.Equal("1", doc.Descendants("testsuite").Single().Attribute("errors")!.Value);
 		XAssert.False(run.IsSuccess);
 	}
+
+	[Fact]
+	public void The_tier_is_written_so_a_report_can_be_read_by_tier()
+	{
+		// Without this the only way to pick tier 3 tests out of a report is to
+		// match class names, and the tier 3 gate did exactly that until a tier
+		// 3 test appeared in a class called something else and stopped being
+		// covered without anybody noticing.
+		TestRunResult run = TestRunResult.FromResults("run", [
+			TestResult.Pass("Suite", "A") with { Tier = TestTier.MultiProcess },
+		]);
+
+		XDocument doc = XDocument.Parse(JUnitXmlWriter.ToXml(run, DateTimeOffset.UnixEpoch));
+
+		XAssert.Equal("MultiProcess", doc.Descendants("testcase").Single().Attribute("testaria-tier")!.Value);
+	}
+
+	[Fact]
+	public void A_result_with_no_tier_writes_no_tier_attribute()
+		=> XAssert.Null(XDocument.Parse(JUnitXmlWriter.ToXml(
+			TestRunResult.FromResults("run", [TestResult.Pass("Suite", "A")]), DateTimeOffset.UnixEpoch))
+			.Descendants("testcase").Single().Attribute("testaria-tier"));
 }

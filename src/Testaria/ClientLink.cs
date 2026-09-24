@@ -47,6 +47,12 @@ public static class ClientLink
 		/// asked for, which is later than the server's own "has joined".
 		/// </summary>
 		Ready = 7,
+
+		/// <summary>Server asks a client a question the test mod registered.</summary>
+		AskQuery = 8,
+
+		/// <summary>Client's answer to a registered question, or why there is none.</summary>
+		TellQuery = 9,
 	}
 
 	/// <summary>Clients that have told the server they are in the world.</summary>
@@ -54,6 +60,21 @@ public static class ClientLink
 
 	private static readonly Dictionary<int, Request> Pending = [];
 	private static int nextId;
+
+	/// <summary>
+	/// How many questions one test may have waiting at once.
+	/// <para/>
+	/// A limit rather than no limit because the failure it prevents is awful:
+	/// a question asked from inside a <c>Wait.Until</c> predicate is asked
+	/// again every tick, which fills the server's send buffer and wedges its
+	/// main thread. Measured, that took the whole process down, the watchdog
+	/// reported "Server hung for more than 10 seconds", and four neighbouring
+	/// tests failed with timeouts that pointed nowhere near the cause.
+	/// <para/>
+	/// Far above any sane test: a body asking sixty-four questions before
+	/// waiting for any of them has almost certainly made this mistake.
+	/// </summary>
+	public const int MaxQuestionsInFlight = 64;
 
 	/// <summary>One question, and the answer when it arrives.</summary>
 	public sealed class Request
@@ -71,6 +92,44 @@ public static class ClientLink
 
 		/// <summary>Which client answered.</summary>
 		public int From { get; internal set; } = -1;
+
+		/// <summary>
+		/// The bytes a registered question answered with. Empty for the
+		/// built-in questions, which answer with <see cref="Value"/>.
+		/// </summary>
+		public byte[] Payload { get; internal set; } = [];
+
+		/// <summary>
+		/// Why the client could not answer, or null when it did.
+		/// <para/>
+		/// A question the client does not have registered, or a handler that
+		/// threw, arrives here rather than never arriving at all. A test
+		/// waiting on a reply that is never coming reports a timeout, which
+		/// says nothing about what went wrong; this says it.
+		/// </summary>
+		public string? Error { get; internal set; }
+
+		/// <summary>True when the client answered with a reason rather than an answer.</summary>
+		public bool Failed => Error is not null;
+
+		/// <summary>
+		/// Reads the answer a registered question sent back.
+		/// <para/>
+		/// Fails the test if the client could not answer, rather than handing
+		/// back an empty reader that would be misread as a legitimate "no".
+		/// </summary>
+		public BinaryReader Read()
+		{
+			if (Error is not null)
+				throw new AssertionException("The client could not answer: " + Error);
+
+			if (!Answered)
+				throw new AssertionException(
+					"The client has not answered yet. Wait for Answered before reading, with "
+					+ "Wait.Until(() => request.Answered, \"...\").");
+
+			return new BinaryReader(new MemoryStream(Payload, writable: false));
+		}
 	}
 
 	/// <summary>Forgets anything still in flight, between runs.</summary>
@@ -149,6 +208,103 @@ public static class ClientLink
 		=> Ask(Message.AskNpc, to, writer => writer.Write(index));
 
 	/// <summary>
+	/// Asks a client a question the test mod registered with
+	/// <see cref="ClientQuery"/>.
+	/// <para/>
+	/// The extension point tier 3 was missing. Everything else here asks about
+	/// vanilla state, because that is all the framework itself understands; a
+	/// mod's own synced state, which is the entire reason a mod has netcode,
+	/// needs the mod's own code to look at it. That code is present on the
+	/// client, because a test mod is loaded on both sides, so it only needed a
+	/// way to be reached.
+	/// <para/>
+	/// The answer is bytes, and <see cref="Request.Read"/> is how a test reads
+	/// them back in the order the handler wrote them.
+	/// </summary>
+	/// <param name="name">The name the handler was registered under.</param>
+	/// <param name="arguments">What to send it, or null for a question with none.</param>
+	/// <param name="to">Client slot, or -1 for the first connected one.</param>
+	/// <example>
+	/// <code>
+	/// ClientLink.Request seen = ClientLink.Ask("MyMod.SeesWidget", w => { w.Write(x); w.Write(y); });
+	/// yield return Wait.Until(() => seen.Answered, "the client to answer");
+	/// Assert.True(seen.Read().ReadBoolean());
+	/// </code>
+	/// </example>
+	public static Request Ask(string name, Action<BinaryWriter>? arguments = null, int to = -1)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+		byte[] payload;
+
+		using (var buffer = new MemoryStream())
+		using (var writer = new BinaryWriter(buffer)) {
+			arguments?.Invoke(writer);
+			writer.Flush();
+			payload = buffer.ToArray();
+		}
+
+		return Ask(Message.AskQuery, to, packet => {
+			packet.Write(name);
+			packet.Write(payload.Length);
+			packet.Write(payload);
+		});
+	}
+
+	/// <summary>
+	/// Asks a registered question over and over, with a gap, until the answer
+	/// satisfies you.
+	/// <para/>
+	/// The shape almost every netcode test needs, and the one that is easy to
+	/// get dangerously wrong by hand. Waiting for a change on the other side
+	/// means asking more than once, and the obvious way to write that,
+	/// <c>Wait.Until(() =&gt; Ask(...).Answered &amp;&amp; ...)</c>, asks again on every
+	/// tick, because that is what a <c>Wait.Until</c> predicate does. Measured,
+	/// that filled the send buffer, hung the server's main thread for the rest
+	/// of the run, and failed four neighbouring tests with timeouts pointing
+	/// nowhere near the cause.
+	/// <para/>
+	/// This asks once, waits for that answer, tests it, and only then waits a
+	/// gap before asking again.
+	/// </summary>
+	/// <param name="name">The registered question to ask.</param>
+	/// <param name="arguments">What to send it, or null.</param>
+	/// <param name="satisfied">
+	/// Reads the answer and says whether it is what the test was waiting for.
+	/// </param>
+	/// <param name="what">What is being waited for, for the timeout message.</param>
+	/// <param name="gapTicks">Ticks to wait between asking again.</param>
+	/// <param name="to">Client slot, or -1 for the first connected one.</param>
+	public static System.Collections.IEnumerator AwaitAnswer(
+		string name,
+		Action<BinaryWriter>? arguments,
+		Func<BinaryReader, bool> satisfied,
+		string what,
+		int gapTicks = 10,
+		int to = -1)
+	{
+		ArgumentNullException.ThrowIfNull(satisfied);
+		ArgumentOutOfRangeException.ThrowIfNegativeOrZero(gapTicks);
+
+		while (true) {
+			Request answer = Ask(name, arguments, to);
+
+			yield return Wait.Until(() => answer.Answered, what);
+
+			// A question the client cannot answer fails here rather than
+			// spinning until the tick budget runs out, because the reason is
+			// known now and a timeout would throw it away.
+			if (answer.Failed)
+				throw new AssertionException($"Waiting for {what}, but the client could not answer: {answer.Error}");
+
+			if (satisfied(answer.Read()))
+				yield break;
+
+			yield return Wait.Ticks(gapTicks);
+		}
+	}
+
+	/// <summary>
 	/// Sends a client the world section holding a tile position.
 	/// <para/>
 	/// A client is only told about the sections it has been sent, which are the
@@ -195,6 +351,18 @@ public static class ClientLink
 	{
 		SendSection(x, y, to);
 
+		// And the tile itself, because sending the section is not enough on
+		// its own. Terraria remembers which sections a client has been given
+		// and SendSection quietly does nothing for one it has already sent, so
+		// a tile the server changed locally afterwards, which is every tile a
+		// test touches, is never corrected on the client. The two sides then
+		// disagree forever and the wait below spends the whole tick budget.
+		//
+		// Found the hard way: the first test in a section passed and every
+		// later test in the same section timed out, which looks exactly like a
+		// broken connection and is not.
+		NetMessage.SendTileSquare(to >= 0 ? to : FirstClient, x, y, 1);
+
 		while (true) {
 			Request probe = AskTile(x, y, to);
 
@@ -219,8 +387,16 @@ public static class ClientLink
 
 		var request = new Request(++nextId);
 
-		lock (Pending)
+		lock (Pending) {
+			if (Pending.Count >= MaxQuestionsInFlight)
+				throw new AssertionException(
+					$"{Pending.Count} questions are already waiting for an answer, which is over the limit of "
+					+ $"{MaxQuestionsInFlight}. The usual cause is asking from inside a Wait.Until predicate, "
+					+ "which runs every tick and so asks again every tick. Ask once, wait for that answer, and "
+					+ "ask again after a gap; ClientLink.AwaitAnswer does exactly that.");
+
 			Pending[request.Id] = request;
+		}
 
 		ModPacket packet = ModContent.GetInstance<TestariaMod>().GetPacket();
 		packet.Write((byte)message);
@@ -251,6 +427,42 @@ public static class ClientLink
 				int index = reader.ReadInt32();
 				Reply(mod, Message.TellNpc, id, writer => writer.Write(SeenNpc(index)));
 				break;
+
+			case Message.AskQuery: {
+				string name = reader.ReadString();
+				int length = reader.ReadInt32();
+				byte[] arguments = reader.ReadBytes(length);
+
+				QueryAnswer answer = ClientQuery.Invoke(name, arguments);
+
+				Reply(mod, Message.TellQuery, id, writer => {
+					writer.Write(answer.Failed);
+
+					if (answer.Failed) {
+						writer.Write(answer.Error!);
+					}
+					else {
+						writer.Write(answer.Payload.Length);
+						writer.Write(answer.Payload);
+					}
+				});
+
+				break;
+			}
+
+			case Message.TellQuery: {
+				bool failed = reader.ReadBoolean();
+
+				if (failed) {
+					AnswerWithError(id, reader.ReadString(), whoAmI);
+				}
+				else {
+					int length = reader.ReadInt32();
+					AnswerWithPayload(id, reader.ReadBytes(length), whoAmI);
+				}
+
+				break;
+			}
 
 			case Message.Ready:
 				ReadyClients++;
@@ -318,12 +530,28 @@ public static class ClientLink
 	}
 
 	private static void Answer(int id, int value, int from)
+		=> Settle(id, from, request => request.Value = value);
+
+	private static void AnswerWithPayload(int id, byte[] payload, int from)
+		=> Settle(id, from, request => request.Payload = payload);
+
+	private static void AnswerWithError(int id, string error, int from)
+		=> Settle(id, from, request => request.Error = error);
+
+	/// <summary>
+	/// Marks a question answered, however it was answered.
+	/// <para/>
+	/// <c>Answered</c> is set last and the request removed with it, so a test
+	/// that sees <c>Answered</c> is guaranteed to see the answer alongside it
+	/// rather than racing the fields that carry it.
+	/// </summary>
+	private static void Settle(int id, int from, Action<Request> fill)
 	{
 		lock (Pending) {
 			if (!Pending.TryGetValue(id, out Request? request))
 				return;
 
-			request.Value = value;
+			fill(request);
 			request.From = from;
 			request.Answered = true;
 			Pending.Remove(id);

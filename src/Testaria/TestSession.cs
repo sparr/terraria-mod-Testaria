@@ -159,7 +159,18 @@ public sealed class TestSession
 			// its own. Claiming otherwise would let a [FreshWorld] test run in
 			// a world shared with everything else and report a pass.
 			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
-			CreateContext = lease => new TestContext(lease, pacing, started?.CurrentTestName),
+			CreateContext = lease => {
+				// A question belongs to the test that asked it. The runner
+				// makes a context as each test begins and before its body
+				// runs, which is the one moment that is unambiguously "a new
+				// test, which has asked nothing yet". Clearing here stops a
+				// test that gave up waiting from spending the next test's
+				// allowance of questions in flight, and stops a late answer
+				// settling a request nobody is watching any more.
+				ClientLink.Clear();
+
+				return new TestContext(lease, pacing, started?.CurrentTestName);
+			},
 			Pacing = pacing,
 			// Pinned for every tier, not just the ones with a world. A Tier 1
 			// test reading a drop table or a recipe can roll too.
