@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6d, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.4, 8.7 and 8.8 are what remains. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
+Status: implemented through section 8.6e, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and sections 8.7 and 8.8 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 
 ## 0. The short version
 
@@ -14,16 +14,16 @@ Status: implemented through section 8.6d, with section 8.4 done as well. All fou
 
 ## 0.1 Where this stands
 
-Measured on 2026-09-24 against the checkout this document lives in, by running the gates rather than by reading the code.
+Measured on 2026-09-24 against the checkout this document lives in, by running the gates rather than by reading the code, and by section 8.6e against six foreign mods.
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 65 tool, and 14 analyzer self-tests pass in under two seconds |
-| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, and restoring the ground at teardown all run inside a live headless server. The self-test mod reports 40 tests; the ExampleMod calibration suite reports 927 |
-| Tier 3 | Works, sections 8.6a and 8.6c. A client process joins a real server, four self-tests and three worked examples against ExampleMod pass. Rendering and input remain out of scope |
+| Tier 0 | Works, and is defended. `Testaria.Core` plus a stock `dotnet test` project; 512 core, 75 tool, and 14 analyzer self-tests pass in under two seconds. Section 8.6e records the honest limit: a mod's own code lives in a mod assembly, so for most mods tier 1 is the practical floor |
+| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, stepping, per-test seeds, registered teardown, placing a tile as a player does, and restoring the ground all run inside a live headless server. The self-test mod reports 56 tests; the ExampleMod calibration suite reports 927; two foreign mods report 112 and 16 |
+| Tier 3 | Works, sections 8.6a, 8.6c and 8.6e. A client process joins a real server; twelve self-tests, three worked examples against ExampleMod, and five replication tests against InnoVault pass. A test mod can register questions the client answers, so a mod's own synced state is reachable. Rendering and input remain out of scope |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
-| Gates | Seven by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. An eighth, the arena load test, is deliberate (`RUN_LOAD=1`) |
+| Gates | Seven by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. An eighth, the arena load test, is deliberate (`RUN_LOAD=1`). The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Core tiers only, on three operating systems. The game tiers have no job, and by section 5.1 that job ships with the first GitHub release (sections 8.3a and 8.7) |
@@ -32,7 +32,9 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
-Sections 8.4 and 8.5 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1).
+Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1).
+
+Section 8.6e is the one to read before trusting any of the above. Six mods nobody here wrote produce thirteen findings between them, three of which no existing gate catches and two of which exist *because* of how a gate is written.
 
 ## 1. Constraints this plan rests on
 
@@ -417,7 +419,7 @@ Three clocks, kept deliberately separate:
 4. **Reload safety.** Every hook, event subscription, and static registration the framework makes must be undone in `Unload()`, or it pins dead `AssemblyLoadContext` instances (`AssemblyManager.cs:177`, `196`). A test framework that leaks across reloads will be blamed for the leaks of the mods it tests.
 5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature. **Built** (section 8.5b). There is one generator rather than two: on the 1.4.5 line `WorldGen.genRand` is a property returning `Main.rand`.
 6. **The 1.4.5 toolchain, settled by opting into the beta branch.** Everything above tier 0 builds and runs against a `1.4.5-dev` Steam install. The reasoning is worth keeping because CI has to solve the same problem without Steam (section 8.3a), and because the naming trap at the end of this item still catches people. The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
-7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once. **This is not theoretical**: a tModLoader update renamed `ProjectileID.Sets.PlayerHurtDamageIgnoresDifficultyScaling` to `SelfHurtPlayers`, which stops an already built ExampleMod from loading at all (section 8.6b).
+7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once. **This is not theoretical**: a tModLoader update renamed `ProjectileID.Sets.PlayerHurtDamageIgnoresDifficultyScaling` to `SelfHurtPlayers`, which stops an already built ExampleMod from loading at all (section 8.6b). Section 8.6e measures the same churn across the ecosystem: of six published mods with active 1.4.5 branches, four did not compile against the current dev build, and two of those referenced `FocusHelper` members removed in the 1.4.5.8 update, one of them on a branch committed to a week after that update landed.
 8. **Upstreaming.** The TML team currently has only hand-driven failure-case mods in `test/Test Local/`. If this framework works, they may want it in-tree. Keeping it MIT and structurally separable from any one mod preserves that option at no cost.
 9. **Test mods under `ModSources`.** `ModSources` lives under the shared stable save path, so all build purposes (Stable, Preview, Dev) share it. A test mod placed there is visible to every tModLoader install on the machine, which is convenient for iteration and surprising if unexpected.
 
@@ -840,6 +842,30 @@ So the client tells the server when it is in the world, and the harness waits fo
 The per-test answer is `ClientLink.AwaitSection`, which sends a section and the tile square with it, then waits until both sides agree about the ground a test is about to touch. A fixed wait reads its own impatience; waiting for agreement reads the network. There is no harness-level substitute for it.
 
 **A control that does not depend on timing.** The client is asked about ground far from the arena that nothing has sent it, and answers "nothing" while the server sees stone. That establishes that the answers are the client's own view rather than an echo, which is the only thing such a control is needed for.
+
+### 8.6e Calibration against the ecosystem, and the thirteen things it found
+
+Every gate up to here aims the framework at ExampleMod and at itself. Both are unusual subjects: ExampleMod is maintained by the people who maintain the loader, and the self-test mod was written by the framework's author to exercise the framework. Neither can say what happens when a stranger's mod arrives.
+
+So the framework is pointed at **every published mod with active 1.4.5 work**, taken from a survey of the fifty most-subscribed mods on the Workshop. There are six. Ranks 1 to 10 have none at all.
+
+**Two of the six build and load as found.** InnoVault needs nothing; DAYBREAK compiles and then throws during its load pass. The other four do not compile. After a deliberately small amount of porting, four of six build and load; one is blocked by a version skew between two of its own dependencies, and one needs the `WorldItem` port throughout, which is real work rather than renames.
+
+The shape of those failures matters more than the count. Four of the six are renames or a single moved method. What makes them expensive is not their size but that the 1.4.5 line moves underneath the mods targeting it: `FocusHelper.AllowUIInputs` and `AllowGameplayInputs` stopped existing in the 1.4.5.8 update of 2026-09-16, and SilkyUI's branch carries commits from a week *after* that update that still reference them. This is risk 7 in the ecosystem rather than in this repository.
+
+**Suites were then written against the two that worked**, 112 tests for InnoVault and 16 for DAYBREAK, and writing them is what produced the findings. Ten came from writing the suites, one from fixing those ten, and three more from fixing that one. Twelve are closed; the thirteenth is not fixable in general and is written down instead. The full account, with the evidence for each, is in `docs/ecosystem-calibration.md`.
+
+The four worth recording here:
+
+**A run insists on its subject.** tModLoader disables a mod that throws during its load pass and carries on without it, so a suite aimed at that mod goes down with it: the run discovers nothing, prints `0 tests: 0 passed` and exits 0, which is indistinguishable from a suite that passed. The harness tells the run which mods it installed, with `-testariarequiremods`, and the run refuses to start if any is absent, naming it. A run that discovers no tests at all is an error for the same reason.
+
+**A client keeps the sections it has been given.** Terraria remembers which ones a client has, and `SendSection` returns immediately for one already sent, so a tile the server changes locally afterwards, which is every tile a test touches, is never corrected on the client: the two sides then disagree for as long as the test is willing to wait. `AwaitSection` therefore sends the tile square alongside the section, which is what makes it work for every test in a section rather than the first.
+
+**A client can be asked about a mod's own state, not only vanilla's.** A mod's synced state is the entire reason a mod has netcode, and the missing piece is the extension point rather than the transport. A test mod is loaded on both sides, so the code that knows how to inspect a mod's own objects already sits on the client. `ClientQuery.Register` names a handler during a load pass and `ClientLink.Ask` calls it by name. InnoVault's suite now tests TileProcessor replication end to end: a processor the server creates reaching the client, its own `SendData` payload arriving with it, repeated syncing not multiplying it, and a client knowing nothing of one it was never told about.
+
+**A gate has to find its subject by something the subject declares.** The report carries `testaria-tier` on each `testcase` and the tier 3 gate reads it, so a tier 3 test written in a class called anything at all is still covered. Selecting by naming convention is the version of this that stops working without saying so, and it takes the whole suite's coverage with it: running everything with a client attached is also what catches a tier 2 test that counts the connected client's player among the ones it fabricated.
+
+**What this adds to the plan.** Section 2.4 wants a real test corpus to adjudicate the isolation design, and there is one, partly: boxes hold across 128 tests on two foreign mods with no cross-contamination. But a box isolates a region and nothing else, and a test that flips a static field needs `ctx.Restore` rather than geometry. That is built, and is the fifth mechanism section 2.4 does not anticipate.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
