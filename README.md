@@ -159,10 +159,10 @@ Common flags:
 | `--project <dir>` | Build a mod project first, so a run cannot quietly test the last build |
 | `--filter <regex>` | Narrow the run to matching tests |
 | `--blank` | Generate Testaria's blank world, a deterministic stone-and-air substrate, rather than a real one |
-| `--speed max` | [Fast forward](#fast-forward) the whole run |
+| `--speed max` | [Fast forward](#realtime-testing) the whole run |
 | `--seed <n>` | Shift every test's [seed](#seeds-and-reproducibility) |
 | `--results <path>` | Copy the JUnit XML report somewhere CI will look |
-| `--require <n>` | Fail unless at least n tests actually ran, which catches a suite that skipped everything |
+| `--require <n>` | Fail unless at least n tests actually ran, which catches a suite that skipped everything. Defaults to 1, so a run in which nothing ran is already a failure; raise it for a suite whose subject is another mod, or pass 0 to allow it |
 | `--measure` | Write a table of what each boxed test cost and used, beside the report, for [calibrating the arena](#boxes-and-what-they-cost) |
 | `--client [n]` | Start client processes and join them to the server, so [tier 3](#tier-3-a-server-with-a-client-attached) can run |
 | `--keep-scratch` | Keep the save directory, and say where it is |

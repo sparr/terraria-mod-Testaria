@@ -150,8 +150,16 @@ public class CommandLineTests
 		=> XAssert.Equal(12, Parse("run", "--mod", "A", "--require", "12").Require);
 
 	[Fact]
-	public void Nothing_is_demanded_by_default()
-		=> XAssert.Equal(0, Parse("run", "--mod", "A").Require);
+	public void At_least_one_test_is_demanded_by_default()
+	{
+		// A run in which nothing ran has established nothing, and there is no
+		// reason anybody would want that reported as success.
+		XAssert.Equal(1, Parse("run", "--mod", "A").Require);
+	}
+
+	[Fact]
+	public void The_demand_can_be_switched_off()
+		=> XAssert.Equal(0, Parse("run", "--mod", "A", "--require", "0").Require);
 
 	[Fact]
 	public void A_nonsensical_demand_is_refused()

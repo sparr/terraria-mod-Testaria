@@ -57,12 +57,16 @@ public sealed record RunOptions
 	/// <summary>
 	/// Fewest tests that must actually run, as opposed to being skipped.
 	/// <para/>
-	/// Zero means no such demand. Worth setting in CI for a suite whose
-	/// subject is another mod: if that mod stops loading, every test skips and
-	/// the run reports success, which is indistinguishable from the suite
-	/// passing.
+	/// One by default, because a run in which nothing ran has established
+	/// nothing, and there is no reason anybody would want that reported as
+	/// success. Zero switches the demand off for the rare case that wants it.
+	/// <para/>
+	/// Raise it in CI for a suite whose subject is another mod. The default
+	/// catches "every test skipped"; a number catches "most tests skipped",
+	/// which looks even more like a passing run. Both happen when the subject
+	/// stops loading.
 	/// </summary>
-	public int Require { get; init; }
+	public int Require { get; init; } = 1;
 
 	/// <summary>
 	/// Measure what every boxed test costs and uses, writing a table beside the
@@ -152,7 +156,8 @@ public static class CommandLine
 		  --timeout <seconds>    Give up after this long. Default 600.
 		  --require <n>          Fail unless at least n tests actually ran. Guards
 		                         against a suite that silently skipped everything,
-		                         which otherwise reports success.
+		                         which otherwise reports success. Default 1; use
+		                         0 to allow a run in which nothing ran.
 
 		output:
 		  --results <path>       Copy the JUnit XML report here.

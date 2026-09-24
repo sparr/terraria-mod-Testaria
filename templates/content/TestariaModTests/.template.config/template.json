@@ -1,12 +1,19 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Clarence \"Sparr\" Risher",
-  "classifications": [ "Terraria", "tModLoader", "Test" ],
+  "classifications": [
+    "Terraria",
+    "tModLoader",
+    "Test"
+  ],
   "identity": "Testaria.ModTests",
   "name": "Testaria in-game test mod",
   "shortName": "testaria-mod-tests",
   "description": "A tModLoader mod holding tier 1 and tier 2 tests, run inside a live game.",
-  "tags": { "language": "C#", "type": "project" },
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
   "sourceName": "TestariaModTests",
   "preferNameDirectory": true,
   "symbols": {
@@ -17,5 +24,17 @@
       "replaces": "SUBJECT_MOD",
       "description": "Internal name of the mod being tested."
     }
-  }
+  },
+  "postActions": [
+    {
+      "description": "Keep this suite out of your mod's own build",
+      "manualInstructions": [
+        {
+          "text": "If this folder sits inside your mod's project directory, exclude it there or your MOD will stop compiling: the SDK's default **/*.cs glob pulls these files into it, and every error names your mod rather than this folder.\n\nUsing this suite's folder name, in your mod's .csproj:\n\n  <ItemGroup>\n    <Compile Remove=\"<FOLDER>\\**\" />\n    <None Remove=\"<FOLDER>\\**\" />\n    <AdditionalFiles Remove=\"<FOLDER>\\**\" />\n  </ItemGroup>\n\nand in your mod's build.txt, so the suite's source stays out of your .tmod:\n\n  buildIgnore = <FOLDER>\\*\n\nNeither is needed if this folder is beside your mod's project rather than inside it."
+        }
+      ],
+      "continueOnError": true,
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C"
+    }
+  ]
 }
