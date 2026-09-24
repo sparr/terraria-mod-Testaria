@@ -15,10 +15,11 @@ namespace Testaria;
 /// </summary>
 public static class Assert
 {
+	[ThreadStatic]
 	private static int invocations;
 
 	/// <summary>
-	/// How many assertions have been made in this process, ever.
+	/// How many assertions have been made on this thread.
 	/// <para/>
 	/// Only the difference across a test is meaningful, and only the runner
 	/// looks at it: a test that finishes without a single assertion reaching
@@ -28,14 +29,20 @@ public static class Assert
 	/// This framework's own suites produced two such tests in one afternoon,
 	/// both of them looping over a collection that was always empty.
 	/// <para/>
-	/// Interlocked because tier 0 suites run in parallel under xUnit. The
-	/// number is only read by the in-game runner, which is single threaded,
-	/// but a torn count would be a silly thing to ship.
+	/// Per thread rather than per process, which is both simpler and more
+	/// truthful. In the game everything happens on the update thread: the
+	/// runner drives bodies from <c>PostUpdateEverything</c>, so a test's
+	/// assertions and the runner's reading of this number are the same thread
+	/// and the count is exact. A process-wide counter would also be wrong
+	/// wherever suites run in parallel, and this framework's own tier 0 suite
+	/// is such a place: a global count made the note tests flaky, because
+	/// another test asserting on another thread looked, from here, like the
+	/// test under examination having asserted.
 	/// </summary>
-	public static int Invocations => Volatile.Read(ref invocations);
+	public static int Invocations => invocations;
 
 	/// <summary>Records that an assertion was reached, whatever it concludes.</summary>
-	private static void Counted() => Interlocked.Increment(ref invocations);
+	private static void Counted() => invocations++;
 
 	/// <summary>Fails unconditionally.</summary>
 	[DoesNotReturn]
