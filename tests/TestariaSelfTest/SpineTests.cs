@@ -27,6 +27,19 @@ public class SpineTests
 	}
 
 	[LoadedTest]
+	public void The_core_can_tell_that_a_game_is_underneath_it()
+	{
+		// The runtime half of the Tier 0 boundary. GameState.IsLoaded is false
+		// in every dotnet test host, asserted there; this is the other
+		// direction, and the only place it can be asserted, since it is the
+		// Testaria mod's own PostSetupContent that raises the flag.
+		Assert.True(GameState.IsLoaded, "the load pass has finished, so the core should know it");
+
+		// And the guard it exists to power says nothing when the game is real.
+		GameState.Require("ContentSamples");
+	}
+
+	[LoadedTest]
 	public void Vanilla_content_is_registered()
 	{
 		Assert.True(ItemID.Count > 0, "vanilla item IDs should be registered");

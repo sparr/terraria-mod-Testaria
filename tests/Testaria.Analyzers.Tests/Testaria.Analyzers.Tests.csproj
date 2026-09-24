@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Testaria.Analyzers.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!--
+      The compiler API, used directly rather than through the
+      Microsoft.CodeAnalysis.Testing harness. The harness is worth its weight
+      for a large rule set; for two rules it is a dependency and a DSL to
+      learn, and driving CompilationWithAnalyzers by hand is a dozen lines
+      that say exactly what they do.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      A plain reference, not OutputItemType="Analyzer": these tests
+      instantiate the analyzer and run it against source they construct, so
+      they must not also have it running over themselves.
+    -->
+    <ProjectReference Include="..\..\src\Testaria.Analyzers\Testaria.Analyzers.csproj" />
+    <ProjectReference Include="..\..\src\Testaria.Core\Testaria.Core.csproj" />
+  </ItemGroup>
+
+</Project>

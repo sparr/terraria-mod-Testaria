@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      netstandard2.0 because an analyzer runs inside the compiler, which is
+      whatever host the consumer happens to use (dotnet build, VS, Rider), not
+      the framework the consumer targets.
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Testaria.Analyzers</RootNamespace>
+    <AssemblyName>Testaria.Analyzers</AssemblyName>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Shipped inside the Testaria.Core package, not as a package of its own. -->
+    <IsPackable>false</IsPackable>
+    <Description>Roslyn analyzer enforcing Testaria's Tier 0 boundary: loader-dependent Terraria surface is an error in an assembly that has no loaded game underneath it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Deliberately not Microsoft.CodeAnalysis.CSharp.Workspaces: RS1038 is
+      right that a compiler extension referencing workspaces fails in hosts
+      that do not have them. Nothing here needs more than the compilation.
+
+      4.8.0 rather than the newest: it sets the oldest compiler this analyzer
+      loads in, and nothing here uses API newer than that.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
+</Project>

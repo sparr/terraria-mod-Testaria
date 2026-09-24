@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    Imported into any project that references the Testaria.Core package.
+
+    The only job here is to let the Tier 0 boundary analyzer read one MSBuild
+    property. Set TestariaLoaderStateAnalysis to false in a project that
+    genuinely runs with a loaded game underneath it and still wants the
+    helpers; leave it alone everywhere else, which is every ordinary unit test
+    project.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="TestariaLoaderStateAnalysis" />
+  </ItemGroup>
+
+</Project>

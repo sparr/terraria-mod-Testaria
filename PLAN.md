@@ -18,15 +18,15 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 
 | Piece | State |
 | --- | --- |
-| Tier 0 | Works. `Testaria.Core` plus a stock `dotnet test` project; 432 core self-tests pass in under a second |
+| Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 439 core self-tests and 14 analyzer self-tests pass in under two seconds |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
 | Tier 3 | Not started. No second process, no client, no netcode fixtures |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
-| Artifacts B, C, D | Not built. `scripts/*.sh` stands in for D and only works from a checkout |
+| Artifacts B, C, D | Not built. `scripts/*.sh` stands in for D and only works from a checkout. The analyzer rides in the `Testaria.Core` package rather than waiting for B |
 | CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
-| Section 2.2 mitigations | Mitigation 1 only: the core carries no tModLoader reference. No boundary analyzer, no `[RequiresLoadedGame]` marker |
+| Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | World seed only, passed to the harness. Nothing pins `Main.rand` or `WorldGen.genRand` per test |
 | The five unmeasured numbers (risk 3) | Still unmeasured. `ArenaOptions.Gutter` remains a guess at 8 |
 
@@ -118,6 +118,8 @@ Mitigations, in order of preference:
 1. Ship Tier 0 helpers in a package that does **not** transitively reference `tModLoader.dll`, so the dangerous types are simply not in scope. This is the clean answer where it is achievable.
 2. Where a reference is unavoidable, ship a Roslyn analyzer that errors on use of the loader-dependent surface from a Tier 0 assembly. tModLoader already ships analyzers this way (`tMLMod.targets:86-87`), so the pattern is familiar to users. The measurements above give it a concrete target list: `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`. `Main` need not be on it, since it already throws.
 3. At minimum, document the boundary loudly and provide a `[RequiresLoadedGame]` marker that fails fast rather than silently.
+
+**All three are built** (section 8.5a). The analyzer is `TSTA001`, the propagation rule that keeps the marker from being a mere silencer is `TSTA002`, and the runtime guard is `GameState.Require`.
 
 ### 2.3 The tick problem, and what Tier 2 must look like
 
@@ -594,10 +596,32 @@ Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaus
 
 Everything in section 0.1's table that is not a tier. These come first because each one is a correctness problem in what already exists, and shipping over them would make them permanent:
 
-1. **The section 2.2 boundary mitigations.** The Tier 0 analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, and a `[RequiresLoadedGame]` marker that fails fast. The measurement in 2.2 says a tier 0 test touching any of those goes green while proving nothing, which is the highest-severity risk in this plan and the only one whose symptom is silence.
+1. ~~**The section 2.2 boundary mitigations.**~~ Done, section 8.5a. The analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, the `[RequiresLoadedGame]` marker, and the runtime guard behind it.
 2. **Seed control (risk 5).** `Main.rand` and `WorldGen.genRand` pinned per test and recorded in the report. The harness pins the world seed today and nothing else, so gameplay tests are one unlucky roll away from flaking, and retrofitting determinism after a suite exists is much harder than having it.
 3. **Artifacts B, C, and D (section 4.2).** D, the `testaria` CLI, matters most: the scripts under `scripts/` do its job but only from a checkout of this repository, so nobody else can currently run the framework at all. D is also what section 8.3a's CI job would invoke, so it unblocks that too.
 4. **The five unmeasured numbers (risk 3).** Chiefly the `Main.SceneMetrics` scan radius, since `ArenaOptions.Gutter` is a guess at 8 and any biome-sensitive test is only as isolated as that number is right.
+
+### 8.5a The Tier 0 boundary, enforced rather than documented
+
+Section 2.2's three mitigations, all of them, since the first one alone only protects projects that never need a tModLoader reference.
+
+**Mitigation 1 is `Testaria.Core` itself**: it references nothing from the game, so the dangerous surface is not in scope for a project that references only the core. The templates are built that way.
+
+**Mitigation 2 is `TSTA001`**, a Roslyn analyzer over exactly the list the measurements name: `ContentSamples`, `ModContent`, `Lang`, `Terraria.Localization.Language`, the load-reporting members of `ModLoader`, and any member of a `*ID.Sets` type. `Main` is deliberately absent, because it throws a `TypeInitializationException` and is therefore already self-correcting. Consts on the `*ID` types are equally deliberately absent: they are inlined at compile time and stay true without a game, and a rule that fires on `ItemID.Count` would be a rule people switch off.
+
+Three decisions worth keeping.
+
+**It ships inside the `Testaria.Core` package rather than waiting for artifact B.** A tier 0 project already references the core, so pairing them means nobody can take the helpers without the guard.
+
+**A mod assembly is exempt automatically**, detected by the compilation declaring a type that implements `ILoadable`. This matters less than it appears, since an analyzer arrives through NuGet and a mod build cannot consume NuGet (section 1.1.1), but a hand-imported analyzer in a test mod would otherwise flag code that is provably loaded.
+
+**`TSTA002` makes a declared dependency travel.** Marking a member `[RequiresLoadedGame]` silences `TSTA001` inside it, and would be a pure silencer if that were all it did; instead the requirement propagates to undeclared callers, so it walks up the call graph to the test that has to answer for it rather than stopping at whoever wrote the helper.
+
+**Mitigation 3 is the runtime half**, `GameState.Require`, for what an analyzer cannot see: reflection, a cross-mod `Mod.Call`, or a type the list has never heard of. It throws a `LoaderStateException`, its own type so that "this test is in the wrong tier" stays distinguishable from "the code under test is broken". The flag it reads is raised in the Testaria mod's `PostSetupContent`, which is the first moment the claim is actually true, and lowered in `Unload`, because a flag left raised across a reload would vouch for a load context being torn down (risk 4).
+
+**Measured rather than assumed, twice.** The analyzer's own suite runs it against a stub of the Terraria surface, 14 cases split between what must be flagged and what must not. The packaged analyzer is then built into a scratch project referencing the *real* `tModLoader.dll`: four errors on the four loader-dependent lines, nothing on `ItemID.Count` or `new Item().damage`. The second check is the one that proves the package rather than the code, and it has to clear the global NuGet cache to run at all, since a cached `Testaria.Core` shadows a local feed and a project can restore an older package while every unit test passes.
+
+In the game, one self-test asserts `GameState.IsLoaded` is true, which is the only place that direction can be asserted, since it is the mod's own load pass that raises it.
 
 ### 8.6 Tier 3, and worked examples on a real mod
 

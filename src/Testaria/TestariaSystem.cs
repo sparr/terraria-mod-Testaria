@@ -449,9 +449,26 @@ public sealed class TestariaSystem : ModSystem
 			Report(session);
 	}
 
+	/// <summary>
+	/// Raises the flag that says a load pass has finished.
+	/// <para/>
+	/// Here rather than in <see cref="Load"/> because this is the first point
+	/// at which the claim is true: content is registered, modded ids are
+	/// assigned, <c>ContentSamples</c> is populated, and localization is in.
+	/// Raising it earlier would make <see cref="GameState.Require"/> vouch for
+	/// a game that is still assembling itself, which is the same silent lie
+	/// the boundary exists to prevent.
+	/// </summary>
+	public override void PostSetupContent() => GameState.MarkLoaded();
+
 	/// <inheritdoc />
 	public override void Unload()
 	{
+		// Before anything else: from here on there is no game to speak of, and
+		// a flag left raised across a reload would have the guard vouching for
+		// a load context that is being torn down.
+		GameState.MarkUnloaded();
+
 		// Static state that outlives a reload keeps the old assembly alive.
 		// The detour holds a delegate into this assembly, so it has to go too.
 		Terraria.On_Main.DoUpdateInWorld -= HoldTheWorldStill;

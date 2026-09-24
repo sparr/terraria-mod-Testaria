@@ -14,6 +14,10 @@ namespace TestariaUnitTests;
 /// <c>ContentSamples.ItemsByType</c> is simply empty and <c>ItemID.Count</c>
 /// is the vanilla total, so a test asserting on them passes while proving
 /// nothing.
+/// <para/>
+/// If you do add a tModLoader reference to this project, the tier 0 boundary
+/// analyzer that ships with <c>Testaria.Core</c> turns that mistake into
+/// error TSTA001 at build time rather than a green test that proves nothing.
 /// </summary>
 public class ExampleUnitTests
 {

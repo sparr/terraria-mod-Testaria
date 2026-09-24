@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Testaria.Analyzers/Testaria.Analyzers.csproj" />
     <Project Path="src/Testaria.Core/Testaria.Core.csproj" />
     <Project Path="src/Testaria/Testaria.csproj" />
   </Folder>
@@ -7,6 +8,7 @@
     <Project Path="templates/Testaria.Templates.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Testaria.Analyzers.Tests/Testaria.Analyzers.Tests.csproj" />
     <Project Path="tests/Testaria.Core.Tests/Testaria.Core.Tests.csproj" />
   </Folder>
 </Solution>

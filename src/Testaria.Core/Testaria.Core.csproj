@@ -22,4 +22,25 @@
     <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
+  <!--
+    The Tier 0 boundary analyzer rides along in this package rather than in one
+    of its own. A tier 0 test project already references Testaria.Core, and
+    the boundary is exactly what that project needs protecting from, so pairing
+    them means nobody can take the helpers without the guard. ReferenceOutput-
+    Assembly is false because the core must not depend on Roslyn at run time;
+    the project reference is here only to order the build.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../Testaria.Analyzers/Testaria.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../Testaria.Analyzers/bin/$(Configuration)/netstandard2.0/Testaria.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <!-- Makes TestariaLoaderStateAnalysis readable by the analyzer. -->
+    <None Include="build/Testaria.Core.props" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+
 </Project>

@@ -28,6 +28,57 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
 | `[RealTime]` | Exempts a test from the run's fast forward, running it at 60 ticks per second |
 | `[StartPaused]` | Freezes the world as the test begins, for a test that steps it by hand |
+| `[RequiresLoadedGame]` | Declares that a member needs the game, so tier 0 code cannot reach it by accident |
+
+## The tier 0 boundary
+
+The most dangerous thing a test framework for a game can do is go green while proving nothing, and Terraria offers an easy way to do exactly that. Loader state does not throw outside the game. It answers. Measured against tModLoader 1.4.5 with no game started:
+
+| Touched | Result outside the game |
+| --- | --- |
+| `ItemID.CopperShortsword`, `ItemID.Count` | Works. Consts are inlined at compile time |
+| `new Item()` | Works, constructs fine |
+| `Main.maxTilesX` | **Throws** `TypeInitializationException` |
+| `ContentSamples.ItemsByType.Count` | **Returns 0** |
+| `ModLoader.Mods.Length` | **Returns 0** |
+| `new Item().Name` | **Returns `""`** |
+| `Lang.GetItemNameValue(3507)` | **Returns `""`** |
+| `ItemID.Sets.Deprecated.Length` | **Returns 6196**, the vanilla count, never resized for mods |
+
+`Main` is the safe one: it fails loudly, so the mistake corrects itself. Everything else answers anyway, so `Assert.Empty(ContentSamples.ItemsByType)` passes in a unit test host and means nothing at all.
+
+Three things keep tier 0 honest, in order of how much they ask of you.
+
+**The core carries no tModLoader reference.** `Testaria.Core` references nothing from the game, so a test project that references only the core cannot reach any of the surface above. This is the whole defence for most projects, and the templates are built this way.
+
+**An analyzer, for projects where a reference is unavoidable.** Referencing `Testaria.Core` also installs the tier 0 boundary analyzer. In an assembly with no load pass underneath it, reaching for the loader-dependent surface is an error rather than a silent lie:
+
+```
+error TSTA001: 'ContentSamples.ItemsByType' only means anything after a load pass,
+and this assembly runs without one
+```
+
+| Rule | What it catches |
+| --- | --- |
+| `TSTA001` | `ContentSamples`, `ModContent`, `Lang`, `Language`, `ModLoader.Mods` and friends, and any `*ID.Sets` member, used where no game has loaded |
+| `TSTA002` | A call to a `[RequiresLoadedGame]` member from a caller that has not declared the same |
+
+The analyzer stands down on its own in an assembly that declares a type implementing `ILoadable`, since a mod assembly cannot run without a load pass anyway. To turn it off deliberately, set `<TestariaLoaderStateAnalysis>false</TestariaLoaderStateAnalysis>`.
+
+**`[RequiresLoadedGame]`, for code that really does need the game.** Marking a member says so out loud. The analyzer then stops blaming that member and starts blaming undeclared callers, so the dependency travels up the call graph to the test that has to answer for it:
+
+```csharp
+[RequiresLoadedGame("reads the sample cache")]
+static int ModdedItemCount() => ContentSamples.ItemsByType.Count - ItemID.Count;
+```
+
+For anything the analyzer cannot see, such as reflection or a cross-mod `Mod.Call`, `GameState` is the runtime half:
+
+```csharp
+GameState.Require("ContentSamples");   // throws LoaderStateException if no game has loaded
+```
+
+`GameState.IsLoaded` is false in every `dotnet test` host and true from the end of the Testaria mod's load pass until it unloads. `LoaderStateException` is its own type so a suite can tell "this test is in the wrong tier" apart from "the code under test is broken".
 
 ## Getting started on your own mod
 
@@ -251,7 +302,9 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | --- | --- |
 | [`src/Testaria.Core/`](src/Testaria.Core) | Game-independent core. No tModLoader reference, by design. |
 | [`src/Testaria/`](src/Testaria) | The tModLoader-facing half. Needs a 1.4.5 install to build. |
+| [`src/Testaria.Analyzers/`](src/Testaria.Analyzers) | The tier 0 boundary analyzer, shipped inside the `Testaria.Core` package. |
 | [`tests/Testaria.Core.Tests/`](tests/Testaria.Core.Tests) | Self-tests for the core. Plain `dotnet test`, no game required. |
+| [`tests/Testaria.Analyzers.Tests/`](tests/Testaria.Analyzers.Tests) | Self-tests for the analyzer, run against a stub of the Terraria surface. |
 | [`tests/TestariaSelfTest/`](tests/TestariaSelfTest) | The in-game self-test mod, which is the green path. |
 | [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
 | [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
@@ -274,6 +327,7 @@ This functionality is in `Testaria.Core`, doesn't reference tModLoader, and is a
 | `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
 | `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
+| `GameState`, `[RequiresLoadedGame]` | The runtime half of the tier 0 boundary: a flag the game raises, and a guard that fails loudly without it |
 | `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all: realtime, a bounded rate, or as fast as the machine manages |
 | `ISteppableContext` | Stopping the world and stepping it a tick at a time |
 
