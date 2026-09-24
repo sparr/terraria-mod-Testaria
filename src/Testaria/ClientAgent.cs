@@ -35,6 +35,7 @@ public sealed class ClientAgent : ModSystem
 
 	private static int frames;
 	private static bool started;
+	private static bool announced;
 
 	/// <summary>True when this process was asked to join a server.</summary>
 	public static bool Requested => Program.LaunchParameters.ContainsKey(JoinFlag);
@@ -83,6 +84,8 @@ public sealed class ClientAgent : ModSystem
 	{
 		orig(self, gameTime);
 
+		AnnounceWhenInWorld();
+
 		if (started)
 			return;
 
@@ -109,7 +112,42 @@ public sealed class ClientAgent : ModSystem
 		// also make a reloaded client think it had already joined.
 		frames = 0;
 		started = false;
+		announced = false;
 		State = "idle";
+	}
+
+	/// <summary>
+	/// Tells the server, once, that this client is in the world.
+	/// <para/>
+	/// The server's own "has joined" line means a connection was accepted, and
+	/// the world the client asked for is still arriving for some time after
+	/// it: measured, a client first saw its spawn block five ticks after a
+	/// suite had already started running against it. A tier 3 test that edits
+	/// a tile in that window sees the section turn up afterwards carrying the
+	/// edit, which looks exactly like the server sending something nobody
+	/// asked it to send. Being in the world is the honest readiness signal,
+	/// because the client only gets there once its requested sections have
+	/// arrived.
+	/// </summary>
+	private void AnnounceWhenInWorld()
+	{
+		if (announced || !Requested || Main.dedServ)
+			return;
+
+		if (Main.gameMenu || Main.netMode != Terraria.ID.NetmodeID.MultiplayerClient)
+			return;
+
+		announced = true;
+		State = "in the world";
+
+		ModPacket packet = Mod.GetPacket();
+		packet.Write((byte)ClientLink.Message.Ready);
+		// Every packet carries a request id, so that one reader can serve them
+		// all; this message answers nothing, so it carries a nought.
+		packet.Write(0);
+		packet.Send();
+
+		Mod.Logger.Info("Testaria client agent: in the world, telling the server");
 	}
 
 	private void Join(string address)

@@ -41,6 +41,8 @@ public static class ServerArguments
 		if (options.Measure)
 			arguments.Add("-testariameasure");
 
+		arguments.AddRange(options.ExtraArgs);
+
 		if (options.FreshWorld)
 			arguments.Add("-testariafreshworld");
 

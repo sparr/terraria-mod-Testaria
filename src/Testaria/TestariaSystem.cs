@@ -114,6 +114,8 @@ public sealed class TestariaSystem : ModSystem
 		if (!Main.dedServ)
 			return;
 
+		NetTrace.Install(Mod);
+
 		try {
 			// Hook the sole writer of the flag, not the reader's neighbour.
 			//

@@ -231,6 +231,10 @@ Every question is a handle you wait on, never a value you read: the answer is a 
 
 That last one matters more than it sounds. Sending a section is not instant, and a section that has not arrived looks exactly like empty ground: the client answers "no tile" for everything in it. A test that waits a fixed number of ticks and then reads an empty space is reading its own impatience. `AwaitSection` waits until both sides agree about the tile, which is the cheapest honest proof that the ground is there.
 
+**A client being in the world does not mean the world has arrived.** When a client joins it asks the server for the block of sections around its spawn, and those keep arriving afterwards: measured, a client first sees a tile inside its own spawn block five ticks after the suite starts running. The harness waits for the client to report itself in the world rather than for the server's "has joined", which is earlier still, but neither is a promise that any particular ground is there. `AwaitSection` is, and it is the reason tier 3 tests are not flaky.
+
+If you ever need to know who sent a client a piece of the world, `--arg -testariatracenet` logs every section and tile square the server sends, with the call stack that produced it.
+
 **Without a client, a `[NetTest]` is skipped, never run.** A netcode test that quietly runs single-player passes while proving nothing, so the session counts connected clients rather than trusting a flag that says one was launched. The report says so plainly: `Needs tier MultiProcess but this environment supports up to World.`
 
 What the harness does for you, each piece of it required to get a client into the world:

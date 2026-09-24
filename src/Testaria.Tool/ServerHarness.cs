@@ -18,8 +18,16 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	/// <summary>What the server prints once it is ready for commands.</summary>
 	private static readonly string[] ReadyMarkers = ["Server started", "Listening on port"];
 
-	/// <summary>What the server prints when a client finishes joining.</summary>
-	private const string JoinedMarker = "has joined";
+	/// <summary>
+	/// What the server prints when a client is genuinely ready.
+	/// <para/>
+	/// Not "has joined", which is the server accepting a connection: the world
+	/// the client asked for keeps arriving for some time after that, and
+	/// measured, a client first saw its spawn block five ticks after a suite
+	/// had started running against it. Testaria's own client says when it is
+	/// in the world, which is the point at which its ground has arrived.
+	/// </summary>
+	private const string JoinedMarker = "is in the world and ready";
 
 	private readonly StringBuilder log = new();
 	private readonly List<Process> clients = [];

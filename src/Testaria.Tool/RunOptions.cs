@@ -75,6 +75,15 @@ public sealed record RunOptions
 	/// </summary>
 	public bool Measure { get; init; }
 
+	/// <summary>
+	/// Extra launch parameters for the server, passed through untouched.
+	/// <para/>
+	/// An escape hatch for the game's own flags and for Testaria's
+	/// diagnostics, so investigating something odd does not need a new option
+	/// on this tool every time.
+	/// </summary>
+	public IReadOnlyList<string> ExtraArgs { get; init; } = [];
+
 	/// <summary>Keep the scratch save directory instead of deleting it.</summary>
 	public bool KeepScratch { get; init; }
 
@@ -147,6 +156,9 @@ public static class CommandLine
 
 		output:
 		  --results <path>       Copy the JUnit XML report here.
+		  --arg <flag>           Pass a launch parameter straight to the server.
+		                         Repeatable; for the game's own flags and for
+		                         Testaria's diagnostics.
 		  --measure              Write a table of what each boxed test cost and used,
 		                         beside the report, for calibrating the arena.
 		  --keep-scratch         Keep the scratch save directory and say where it is.
@@ -181,6 +193,7 @@ public static class CommandLine
 
 		var mods = new List<string>();
 		var projects = new List<string>();
+		var extras = new List<string>();
 		var options = new RunOptions { List = verb == "list" };
 
 		for (int i = 1; i < args.Count; i++) {
@@ -303,6 +316,12 @@ public static class CommandLine
 					options = options with { Clients = clients };
 					break;
 
+				case "--arg":
+					if (Value() is not string extra)
+						return Missing()!;
+					extras.Add(extra);
+					break;
+
 				case "--measure":
 					options = options with { Measure = true };
 					break;
@@ -335,6 +354,6 @@ public static class CommandLine
 		if (mods.Count == 0)
 			return new ParseResult { Error = "Nothing to run: name at least one mod with --mod." };
 
-		return new ParseResult { Options = options with { Mods = mods, Projects = projects } };
+		return new ParseResult { Options = options with { Mods = mods, Projects = projects, ExtraArgs = extras } };
 	}
 }

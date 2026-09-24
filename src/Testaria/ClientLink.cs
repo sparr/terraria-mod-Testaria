@@ -41,7 +41,16 @@ public static class ClientLink
 
 		/// <summary>Client's answer about an NPC slot.</summary>
 		TellNpc = 6,
+
+		/// <summary>
+		/// Client telling the server it is in the world with the ground it
+		/// asked for, which is later than the server's own "has joined".
+		/// </summary>
+		Ready = 7,
 	}
+
+	/// <summary>Clients that have told the server they are in the world.</summary>
+	public static int ReadyClients { get; private set; }
 
 	private static readonly Dictionary<int, Request> Pending = [];
 	private static int nextId;
@@ -69,6 +78,13 @@ public static class ClientLink
 	{
 		lock (Pending)
 			Pending.Clear();
+	}
+
+	/// <summary>Forgets which clients have reported in, on unload.</summary>
+	public static void Reset()
+	{
+		Clear();
+		ReadyClients = 0;
 	}
 
 	/// <summary>How many clients are connected and playing.</summary>
@@ -234,6 +250,21 @@ public static class ClientLink
 			case Message.AskNpc:
 				int index = reader.ReadInt32();
 				Reply(mod, Message.TellNpc, id, writer => writer.Write(SeenNpc(index)));
+				break;
+
+			case Message.Ready:
+				ReadyClients++;
+				// The line the harness waits for. "Has joined" is the server
+				// accepting a connection, which happens well before the world
+				// the client asked for has finished arriving: measured, a
+				// client was still receiving its spawn block five ticks after
+				// a suite had started running against it.
+				mod.Logger.Info($"Testaria: client {whoAmI} is in the world and ready");
+
+				// To the console as well as the log, because the harness reads
+				// the server's standard output and the logger does not go
+				// there.
+				Console.WriteLine($"Testaria: client {whoAmI} is in the world and ready");
 				break;
 
 			case Message.Pong:
