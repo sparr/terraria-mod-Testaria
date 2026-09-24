@@ -2,11 +2,13 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-> **Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started. The design lives in [`PLAN.md`](PLAN.md).
+**Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started. The design lives in [`PLAN.md`](PLAN.md).
 
-## What this is
+## What does it do?
 
-tModLoader has no test-authoring API. The closest thing in the tModLoader repository is a set of hand-built failure-case mods that a human runs by hand. Testaria aims to fill that gap with a framework that spans four tiers:
+Some Terraria mods implement their own unit testing. A few load their mod into the game server to confirm it doesn't immediately crash. Almost none perform any significant integration testing. Testaria aims to fill a gap in the Terraria modding ecosystem by making it easy for any mod to implement one or more tiers of testing ranging from pure logic unit tests to "actually launch the game and perform some actions in a multiplayer world and measure the outcome over thousands of ticks".
+
+### Tiers
 
 | Tier | Name | Runs in | Can test |
 | --- | --- | --- | --- |
@@ -27,76 +29,73 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[RealTime]` | Exempts a test from the run's fast forward, running it at 60 ticks per second |
 | `[StartPaused]` | Freezes the world as the test begins, for a test that steps it by hand |
 
-The single most important rule the framework enforces is the **Tier 0 boundary**: the moment a test touches `Main`, `ModContent`, or `ContentSamples`, it depends on state that only a completed load pass establishes. In a bare test host those statics are default-initialized rather than absent, so such a test will often pass silently against garbage. `Testaria.Core` therefore carries no reference to tModLoader at all, which makes that boundary structural rather than advisory.
-
-## Repository layout
-
-```
-src/
-  Testaria.Core/        Game-independent core. No tModLoader reference, by design.
-  Testaria/             The tModLoader-facing half. Needs a 1.4.5 install to build.
-tests/
-  Testaria.Core.Tests/  Self-tests for the core. Plain `dotnet test`, no game required.
-```
-
-More projects arrive as the tiers land. See `PLAN.md` section 4.2 for the full artifact matrix.
-
-## What is built
-
-All of it in `Testaria.Core`, all of it free of any tModLoader reference, and all of it self-tested.
-
-| Piece | What it does |
-| --- | --- |
-| `Assert`, `AssertionException` | xUnit-shaped assertion vocabulary. Separate from xUnit because no stock runner can host inside a mod's `AssemblyLoadContext` |
-| `TestResult`, `TestRunResult`, `JUnitXmlWriter` | Results and JUnit XML reporting, the one format every CI system reads without a custom reporter |
-| `TileRect`, `Band`, `WorldGeometry` | Tile geometry and the depth band model, including band spans for tests that cross a boundary |
-| `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
-| `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
-| `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
-| `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
-| `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
-| `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
-| `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all. The game-side wiring follows separately |
-| `ISteppableContext` | Stopping the world and stepping it a tick at a time |
-
 ## Getting started on your own mod
 
-Two templates, because tier 0 and the tiers above it run in different places:
+Set up the templates:
 
 ```
 dotnet new install Testaria.Templates
-dotnet new testaria-mod-tests  -n MyModTests --subject MyMod   # tiers 1 and 2, in-game
-dotnet new testaria-unit-tests -n MyUnitTests                  # tier 0, no game
+dotnet new testaria-unit-tests -n MyUnitTests                  # tier 0, out-of-game tests
+dotnet new testaria-mod-tests  -n MyModTests --subject MyMod   # tiers 1 and 2, in-game tests
 ```
 
-Both build as generated. The in-game one finds your tModLoader install itself, which is the fiddly part to get right by hand and most of why the templates exist; set `TML_PATH` if it guesses wrong. Their placeholder tests are meant to go green once and then be replaced: a scaffold that passes end to end proves your install path, scratch directory and world provisioning all work before you have written a line.
+Tier 0 is an ordinary xUnit project, so it runs wherever `dotnet` does:
 
-The attributes, `Assert`, `Wait`, `ITestContext` and `Band` live in `Testaria.Core`, an ordinary NuGet package, so a test mod compiles against that alone. A `.tmod` cannot ship NuGet output, but it does not need to: the package is a compile-time reference, and at run time the same assembly is already present because the Testaria mod carries it and `modReferences` names it.
+```
+cd MyUnitTests && dotnet test
+```
 
-`TestContext`, which places tiles and spawns entities, lives in the mod assembly rather than the package, because it touches Terraria types. The generated project shows how to reference it.
+Tiers 1 and 2 need the game. Building writes `MyModTests.tmod` straight into your tModLoader `Mods` folder:
+
+```
+cd MyModTests && dotnet build
+```
+
+Then launch tModLoader, enable **Testaria**, your own mod, and **MyModTests**, load any world, and run the command in chat:
+
+```
+/testaria run MyModTests
+```
+
+It replies with the counts, and writes a JUnit report to `<tModLoader save path>/Testaria/MyModTests.xml`.
+
+The same command works on a server console without the leading slash, which is how [the headless harness](#run-the-self-tests) drives a run:
+
+```
+ENABLED="Testaria MyMod MyModTests" RUN_NAME=MyModTests scripts/run-tests.sh
+```
+
+Set `TML_PATH` if the script fails to find your tModLoader installation.
+
+Once the placeholder tests run successfully to confirm your installation, then you can replace them with tests of your mod.
 
 ## Parameterised tests
 
-A test with parameters and a source of values runs once per case, each reported and filterable by name. There is no separate `[Theory]` marker: the tier attribute already marks a method as a test, so having data parameters is what makes it parameterised. A leading `ITestContext` is the context, not data.
+A test with parameters can run once per case, each reported and filterable by name.
 
 ```csharp
 [LoadedTest]
 [Case(1)]
 [Case(2)]
 public void Small_numbers_are_positive(int value) => Assert.True(value > 0);
+```
+Cases can be created from a collection of objects:
 
+```csharp
 public static IEnumerable<string> Items => Subject.NamesOf<ModItem>();
 
 [LoadedTest]
 [CaseSource(nameof(Items))]
-public void Every_item_has_a_display_name(string name) { ... }
+public void Every_item_has_a_display_name(string name)
+{
+    Assert.True(ModContent.TryFind(Subject.Name, name, out ModItem item));
+    Assert.False(string.IsNullOrWhiteSpace(item.DisplayName.Value), $"item '{name}' has no display name");
+}
 ```
 
-`[CaseSource]` is the reason this exists. Cases that only appear once the game has loaded, every item a mod registers, every recipe it adds, cannot be written out by hand, and discovery runs in the game for every tier above zero. The ExampleMod suite goes from 39 tests to **924** that way.
+That is where the feature earns its place. The cases only exist once the game has loaded, so they cannot be written out by hand, and discovery runs in the game for every tier above zero. Against ExampleMod the second example alone expands to 178 tests, one per registered item, each named and filterable.
 
-They are `Case` and `CaseSource` rather than xUnit's `InlineData` and `MemberData` because tier 0 projects use xUnit and `Testaria.Core` together by design, and same-named types in both would make `using Xunit; using Testaria;` ambiguous.
-
-## Waiting, and what it costs
+## Realtime testing
 
 A tier 2 test body is a coroutine, driven one step per game tick. It yields a `Wait` to say where it may be suspended:
 
@@ -113,26 +112,57 @@ public IEnumerator A_slime_falls(ITestContext ctx)
 }
 ```
 
-A tick is not free. The dedicated server paces itself to real time at 60 Hz, so a tick is **16.7 ms of wall clock** and a thousand-tick test takes **16.7 seconds** no matter how fast the machine is. That makes the choice between `Wait.Until` and `Wait.Seconds` a performance decision rather than a matter of taste:
-
-- `Wait.Until(predicate, "what you are waiting for")` finishes on the first tick the thing has happened. If it happens at tick 10, it costs ten ticks.
-- `Wait.Seconds(3)` costs 180 ticks, three seconds, every run, whether the thing happened at tick 10 or not at all.
-
-A suite of a hundred tests that each sleep a gratuitous extra second is an extra minute and a half on every run. Prefer the predicate, and reach for a fixed delay only when the elapsed time is itself the thing under test.
-
-The description is worth supplying. It is what a timeout message names, and
+Vanilla locks the game to 60 ticks per second, which can slow down tests that take hundreds or thousands of ticks (e.g. a boss battle simulation). By hooking Thread.Sleep(), Testaria can accelerate this:
 
 ```
-Test exceeded its budget of 600 ticks while blocked on Wait.Until(the slime lands).
+SPEED=max scripts/run-tests.sh   # as fast as the CPU manages
+SPEED=300 scripts/run-tests.sh   # 300 ticks per second
 ```
 
-is a diagnosis, where `Wait.Until(...)` is a shrug.
+or from the console, mid-run: `testaria speed max`, `testaria speed 300`, `testaria speed realtime`.
 
-`Timeout` is a ceiling, not a cost: a test that finishes at tick 10 with `Timeout = 600` costs ten ticks. Set it high enough that a slow machine does not fail spuriously.
+What fast forward cannot preserve is anything keyed to the wall clock rather than to ticks: real elapsed time, a background `Task`, a timer. A test whose subject is any of those should opt out with `[RealTime]`, and it then runs at 60 tps while the rest of the run does not.
+
+```csharp
+[GameTest(Band = Band.Cavern)]
+[RealTime]
+public IEnumerator A_cooldown_measured_in_real_seconds(ITestContext ctx) { ... }
+```
+
+`[RealTime]` works on a class as well as a method, and the run's own speed is restored as soon as the test finishes.
+
+## Pausing and single stepping
+
+A test can stop the world and walk it forward a tick at a time, which is how you pin down the exact tick something goes wrong on:
+
+```csharp
+[GameTest(Band = Band.Cavern)]
+public IEnumerator A_slime_lands_on_the_third_tick(ITestContext ctx)
+{
+    var box = (TestContext)ctx;
+    NPC slime = box.SpawnNPC(NPCID.BlueSlime, 8, 2);
+
+    ctx.Pause();                       // the world stops after this tick
+
+    yield return ctx.Step(2);          // exactly two ticks pass
+    Assert.True(slime.velocity.Y > 0, "it should still be falling");
+
+    yield return ctx.Step();           // one more
+    Assert.Equal(0f, slime.velocity.Y);
+
+    ctx.Resume();
+}
+```
+
+`ctx.Step(n)` grants the world exactly `n` ticks and returns a wait covering them, so the body resumes on the last one and can ask for more. `[StartPaused]` freezes the world before the body's first yield, for a test that wants to set up and inspect before anything moves.
+
+This is the same gate Terraria's own debug stepper uses: `DoUpdate` keeps running and only `DoUpdateInWorld` is skipped, so a frozen tick is a shape the game already produces. A test that pauses and then neither steps nor resumes is thawed by the harness after 1800 frames, with a note on its result, rather than hanging the run.
+
+From the console, the same controls work on whatever is running: `testaria pause`, `testaria step 5`, `testaria resume`. `testaria status` reports the speed and whether the world is frozen, so a paused run never looks like a hung one.
 
 ## Escapes
 
-An entity of a test's own that leaves its box is recorded, not punished. Leaving may be exactly what the test is watching, and dragging it back would change the behaviour under test, so an escape never fails anything. It does appear in the report, as `<system-out>` on that test's `<testcase>`:
+An entity of a test's own that leaves its box is recorded for review, and never fails anything. Leaving may be exactly what the test is watching, and dragging it back would change the behaviour under test. It appears in the report, as `<system-out>` on that test's `<testcase>`:
 
 ```xml
 <testcase name="A_slime_falls" classname="MyModTests.SlimeTests">
@@ -140,54 +170,46 @@ An entity of a test's own that leaves its box is recorded, not punished. Leaving
 </testcase>
 ```
 
-That note is usually the explanation for a neighbouring box behaving oddly a few tests later, which is otherwise a very hard thing to work out. Something that was never the test's to begin with is a different matter: that is contamination, and it errors the test, because a box someone else was in cannot honestly be said to have tested anything.
+That note is usually the explanation for a neighbouring box behaving oddly a few tests later, which is otherwise very hard to work out.
+
+Something that enters a test that shouldn't is instead considered **contamination**, which errors the test.
+
+## Test Outcomes
+
+| Outcome | Means |
+|---|---|
+| Failed | An assertion did not hold. The mod (or game) is broken. |
+| Errored | The test threw an exception, could not run properly, or had its box contaminated. The test is broken. |
+| Skipped | Intentionally omitted, or the runner could not honour what it asked for (e.g. FreshWorld). |
+| Blocked | Didn't run because it couldn't. |
 
 ## Retained boxes, and tests that never ran
 
-A test that fails keeps its box. The tiles it placed, the entities it spawned and whatever state it left behind all stay exactly as they were, so you can load the world and go and look. That is what `KeepFailedBoxes` is for, and it is on by default.
+Every test gets its own region of the game world to run, a "box". With `KeepFailedBoxes`, on by default, a test that fails keeps its box. The tiles it placed, the entities it spawned and whatever state it left behind all stay exactly as they were, so you can load the world and go and look.
 
-Retained boxes are never recycled. Nothing reuses that ground to keep the run moving, because doing so would destroy the evidence the retention existed for.
-
-The consequence is that a run with many failures can run out of room. When that happens the tests that could not be given a box are reported as **blocked**:
+A run with many failures can run out of room. When that happens the tests that could not be given a box are reported as **blocked**:
 
 ```
 1324 tests: 1290 passed, 9 failed, 0 errored, 25 blocked, 0 skipped
 ```
 
-Blocked is its own outcome, distinct from the other three:
-
-| Outcome | Means |
-|---|---|
-| Failed | An assertion did not hold. The subject is wrong. |
-| Errored | The test threw, or could not run properly. The test is wrong. |
-| Skipped | Somebody decided not to run it. |
-| **Blocked** | It never got its turn. Says nothing about the subject either way. |
-
 A blocked test's message names what is holding the space and what to do about it:
 
 > This test never ran: the arena had no box for it. 49 of 49 slots are retained from earlier failures and are never reused, so that the state a failing test left behind survives for you to go and look at. Inspect them, then rerun. Set `KeepFailedBoxes` to false to give that ground up instead.
 
-How much room there is depends on how the arena packs. Boxes are shelf packed within a band: the cursor steps along a row, and when the row runs out it returns to the start and drops by the height of the **shortest** box in that row, not the tallest. Taller neighbours therefore hang down into the next row and are stepped over. That fragments the ground and packs it considerably more densely, measured in a small world's cavern band:
+**A run containing blocked tests fails**, even when everything that actually ran passed. In the JUnit report a blocked test is written as an `<error type="Testaria.Blocked">` rather than as `<skipped>`.
 
-| Mix of box heights | Boxes placed | If rows dropped by the tallest |
-|---|---|---|
-| All one size | 588 | 588 |
-| Nine short to one tall | 499 | 384 |
-| Strict alternation, half tall | 371 | 384 |
-
-So it is a large win when most boxes are a similar height and a few are not, which is the normal case, and a few per cent worse in the pathological one. Either way a band holds several hundred boxes rather than the forty-nine it managed when every box was anchored to the top of the band in a single line.
-
-**A run containing blocked tests fails**, even when everything that actually ran passed. A suite that quietly stopped running part of itself has not established what it was asked to establish, and reporting success would be a lie of omission. In the JUnit report a blocked test is written as an `<error type="Testaria.Blocked">` rather than as `<skipped>`, so that CI reaches the same verdict the runner does; every CI system treats skipped as harmless.
-
-## Running it
+## Run the self tests
 
 ```
 scripts/run-all.sh
 ```
 
-Five gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), fresh worlds (tests asking for an untouched world get one), and calibration against ExampleMod. Green alone proves little, since a framework that cannot report failure looks exactly like one that works.
+Five gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), fresh worlds (tests asking for an untouched world get one), and calibration against ExampleMod.
 
 Calibration needs `scripts/build-examplemod.sh` to have been run once, with `EXAMPLEMOD_SRC` pointing at the `ExampleMod` directory inside a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
+
+### Environment variables
 
 Nothing here knows where anything sits on your machine. Every path outside the repository is an environment variable, resolved in `scripts/paths.sh`, and the defaults cover only the conventional locations:
 
@@ -196,23 +218,20 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `TML_PATH` | A tModLoader install, the directory holding `tModLoader.dll` and `tMLMod.targets` | The `tModLoader` directory in the platform's default Steam library |
 | `MODS_SRC` | Where a mod build leaves its `.tmod`, the `Mods` directory under tModLoader's save path | The save path of a **dev** build, since 1.4.5 is only available as one |
 | `EXAMPLEMOD_SRC` | `ExampleMod` inside a tModLoader source checkout | None. It is a checkout you made, not something an install provides |
+| `SPEED` | [Fast forward](#fast-forward) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
 
 The build itself reads `TML_PATH` too, so an install anywhere unusual needs setting once and no more.
 
-Individual gates:
+### Partial tests
 
 ```
-dotnet test                             # core only, no game needed
-BLANK=1 scripts/run-tests.sh            # the self-test mod in a live server
+dotnet test                                            # core only, no game needed
+BLANK=1 scripts/run-tests.sh                           # the self-test mod in a live server
 FILTER='Zombie|Skeleton' BLANK=1 scripts/run-tests.sh  # regex; just the matching tests
-MODE=list BLANK=1 scripts/run-tests.sh  # list tests without running them
-scripts/check-red.sh                    # prove failures are reported as failures
-scripts/run-fresh.sh                    # a dedicated server per [FreshWorld] test
+MODE=list BLANK=1 scripts/run-tests.sh                 # list tests without running them
+scripts/check-red.sh                                   # prove failures are reported as failures
+scripts/run-fresh.sh                                   # a dedicated server per [FreshWorld] test, very slow
 ```
-
-`FILTER` is a regular expression, matched case-insensitively against both a test's name and its `Class.Name`. A bare fragment works as you would expect, since an unanchored regex search is a substring match, and alternation (`Zombie|Skeleton`) and exclusion (`^(?!.*Slow)`) are available when you want them. One trap: a name is not a pattern, so escape one before using it as an exact filter, because nested types contain `+`.
-
-`[FreshWorld]` is worth a word. A runner sharing its world with other tests cannot honestly claim to have given one a fresh world, so an ordinary run reports such tests as **skipped**. `run-fresh.sh` gives each a process and a world of its own, and then they run. It is slow by construction, one server start per test, which is the price of the isolation they asked for.
 
 `run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
 
@@ -225,6 +244,38 @@ Still to come: Tier 3 (multi-process netcode and UI) and parallel box execution.
 The build looks for one in the platform's default Steam library; an install on another drive, in a second library folder, or from GOG needs `TML_PATH` set to the directory holding `tMLMod.targets`. Without an install, the mod project skips building the `.tmod` and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
 
 To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the password `iamacontributor` to unlock the branch, then select **`1.4.5-dev`**. Note that the `preview-*` branches are **not** 1.4.5, they are the monthly CI channel on the 1.4.4 line and install `net8.0` with `LangVersion 12.0`. See [tModLoader issue #5070](https://github.com/tModLoader/tModLoader/issues/5070).
+
+## Repository layout
+
+| Directory | What it is |
+| --- | --- |
+| [`src/Testaria.Core/`](src/Testaria.Core) | Game-independent core. No tModLoader reference, by design. |
+| [`src/Testaria/`](src/Testaria) | The tModLoader-facing half. Needs a 1.4.5 install to build. |
+| [`tests/Testaria.Core.Tests/`](tests/Testaria.Core.Tests) | Self-tests for the core. Plain `dotnet test`, no game required. |
+| [`tests/TestariaSelfTest/`](tests/TestariaSelfTest) | The in-game self-test mod, which is the green path. |
+| [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
+| [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
+| [`templates/`](templates) | The two `dotnet new` templates. |
+| [`scripts/`](scripts) | The headless harness and its gates. |
+| [`build/`](build) | `Testaria.props`, for suites that live outside this repository. |
+
+## What is built
+
+This functionality is in `Testaria.Core`, doesn't reference tModLoader, and is all self-tested:
+
+| Piece | What it does |
+| --- | --- |
+| `Assert`, `AssertionException` | xUnit-shaped assertion vocabulary. Separate from xUnit because no stock runner can host inside a mod's `AssemblyLoadContext` |
+| `TestResult`, `TestRunResult`, `JUnitXmlWriter` | Results and JUnit XML reporting, the one format every CI system reads without a custom reporter |
+| `TileRect`, `Band`, `WorldGeometry` | Tile geometry and the depth band model, including band spans for tests that cross a boundary |
+| `Arena`, `BoxLease`, `BoxRequest`, `ArenaOptions` | Leasing, recycling, and quarantine of test boxes, banded and spanning |
+| `TestTier`, attributes, `TestDiscovery` | The tier model and reflection-based discovery, with malformed tests reported rather than dropped |
+| `Wait`, `TestCoroutine` | The tick scheduler: coroutine test bodies driven one step per tick, with tick budgets and nested enumerators |
+| `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
+| `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
+| `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
+| `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all: realtime, a bounded rate, or as fast as the machine manages |
+| `ISteppableContext` | Stopping the world and stepping it a tick at a time |
 
 ## License
 

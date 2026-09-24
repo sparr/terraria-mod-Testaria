@@ -31,6 +31,12 @@ FRESH_ARG=""
 # BLANK=1 replaces world generation with Testaria's blank substrate.
 BLANK_ARG=""
 [ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
+# SPEED fast-forwards the whole run: "max" for as fast as the CPU allows, or a
+# number of ticks per second for a rate that does not vary by machine. Tests
+# marked [RealTime] still run at 60. Simulated behaviour is unchanged either
+# way; only the wall clock differs.
+SPEED_ARG=""
+[ -n "${SPEED:-}" ] && SPEED_ARG="-testariaspeed $SPEED"
 MEM_MAX="${MEM_MAX:-4G}"
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
@@ -138,6 +144,7 @@ fi
 export SDL_AUDIODRIVER=dummy
 
 echo "seed:     $SEED${BLANK_ARG:+  (blank world)}"
+[ -n "$SPEED_ARG" ] && echo "speed:    ${SPEED}"
 echo "scratch:  $SCRATCH"
 echo "mods:     $ENABLED"
 [ -n "$FILTER" ] && echo "filter:   $FILTER"
@@ -162,6 +169,7 @@ nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
     -seed "$SEED" \
     $BLANK_ARG \
     $FRESH_ARG \
+    $SPEED_ARG \
     -players 1 \
     -port 7777 \
     -password "" \

@@ -16,12 +16,29 @@ public sealed class TestSession
 {
 	private readonly TestRunner runner;
 
-	private TestSession(TestRunner runner, string runName, int discovered)
+	private TestSession(TestRunner runner, RunPacing pacing, string runName, int discovered)
 	{
 		this.runner = runner;
+		Pacing = pacing;
 		RunName = runName;
 		Discovered = discovered;
 	}
+
+	/// <summary>
+	/// How fast this run may simulate, and whether the world is frozen right
+	/// now. Owned by the session so it dies with the run.
+	/// </summary>
+	public RunPacing Pacing { get; }
+
+	/// <summary>Keeps a bounded run to the rate it was asked for.</summary>
+	public TickRateGovernor Governor { get; } = new();
+
+	/// <summary>
+	/// Launch parameter choosing the run's pacing without a console command,
+	/// which is how a CI harness asks for it. Takes <c>max</c> for unbounded
+	/// or a number of ticks per second for bounded.
+	/// </summary>
+	public const string SpeedFlag = "-testariaspeed";
 
 	/// <summary>How many discovered tests the filter held back.</summary>
 	public int FilteredOut => runner.FilteredOut;
@@ -79,6 +96,8 @@ public sealed class TestSession
 
 		DiscoveryResult discovery = TestDiscovery.Discover(types);
 
+		var pacing = new RunPacing();
+
 		// The arena needs a loaded world to know where its bands are, so it is
 		// only built when one exists. Without it, box-needing tests report an
 		// error rather than running somewhere undefined.
@@ -104,10 +123,66 @@ public sealed class TestSession
 			// its own. Claiming otherwise would let a [FreshWorld] test run in
 			// a world shared with everything else and report a pass.
 			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
-			CreateContext = lease => new TestContext(lease),
+			CreateContext = lease => new TestContext(lease, pacing),
+			Pacing = pacing,
 		});
 
-		return new TestSession(runner, runName, discovery.Tests.Count);
+		var session = new TestSession(runner, pacing, runName, discovery.Tests.Count);
+		session.ApplyLaunchPacing();
+
+		return session;
+	}
+
+	/// <summary>
+	/// Sets the run's pacing, retargeting the governor with it so a bounded
+	/// rate starts measuring from now rather than inheriting a stale schedule.
+	/// </summary>
+	public void SetSpeed(PacingMode mode, double targetTicksPerSecond = 60)
+	{
+		Pacing.SetMode(mode, targetTicksPerSecond);
+
+		if (mode == PacingMode.Bounded)
+			Governor.Retarget(targetTicksPerSecond);
+		else
+			Governor.Reset();
+	}
+
+	/// <summary>
+	/// Reads <c>-testariaspeed</c> so a harness can fast forward without a
+	/// console command. Unparseable values are ignored rather than fatal: a
+	/// mistyped speed should not stop the suite running at all.
+	/// </summary>
+	private void ApplyLaunchPacing()
+	{
+		if (!Program.LaunchParameters.TryGetValue(SpeedFlag, out string? value))
+			return;
+
+		if (ParseSpeed(value) is (PacingMode mode, double rate))
+			SetSpeed(mode, rate);
+	}
+
+	/// <summary>
+	/// Parses a speed: <c>max</c> or <c>unbounded</c> for flat out,
+	/// <c>realtime</c> or <c>60</c> for the game's own rate, any other
+	/// positive number for that many ticks per second.
+	/// </summary>
+	public static (PacingMode Mode, double Rate)? ParseSpeed(string? value)
+	{
+		string text = (value ?? string.Empty).Trim();
+
+		if (text.Length == 0)
+			return null;
+
+		if (text.Equals("max", StringComparison.OrdinalIgnoreCase) || text.Equals("unbounded", StringComparison.OrdinalIgnoreCase))
+			return (PacingMode.Unbounded, 0);
+
+		if (text.Equals("realtime", StringComparison.OrdinalIgnoreCase) || text.Equals("normal", StringComparison.OrdinalIgnoreCase))
+			return (PacingMode.Realtime, 60);
+
+		if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rate) && rate > 0)
+			return (PacingMode.Bounded, rate);
+
+		return null;
 	}
 
 	/// <summary>Advances the run by one tick.</summary>

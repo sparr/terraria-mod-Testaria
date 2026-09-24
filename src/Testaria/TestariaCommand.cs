@@ -28,7 +28,9 @@ public sealed class TestariaCommand : ModCommand
 	public override bool IsCaseSensitive => true;
 
 	/// <inheritdoc />
-	public override string Usage => "/testaria run [name] [filter] | /testaria list [filter] | /testaria status";
+	public override string Usage =>
+		"/testaria run [name] [filter] | /testaria list [filter] | /testaria status | " +
+		"/testaria speed realtime|max|<ticks per second> | /testaria pause | /testaria step [n] | /testaria resume";
 
 	/// <inheritdoc />
 	public override string Description => "Runs the discovered Testaria tests and writes a JUnit report.";
@@ -66,6 +68,16 @@ public sealed class TestariaCommand : ModCommand
 			if (path is not null)
 				caller.Reply($"Catalogue written to {path}.", Color.White);
 
+			return;
+		}
+
+		if (args.Length > 0 && args[0].Equals("speed", StringComparison.OrdinalIgnoreCase)) {
+			Speed(caller, args.Length > 1 ? args[1] : null);
+			return;
+		}
+
+		if (args.Length > 0 && IsPacingVerb(args[0])) {
+			Pacing(caller, args[0], args.Length > 1 ? args[1] : null);
 			return;
 		}
 
@@ -115,5 +127,66 @@ public sealed class TestariaCommand : ModCommand
 			: $"{session.Discovered} test(s)";
 
 		caller.Reply($"Testaria running {scope} as '{runName}'. Results land under {ResultsLocation.Directory(Main.SavePath)}.", Color.White);
+	}
+
+	private static bool IsPacingVerb(string verb)
+		=> verb.Equals("pause", StringComparison.OrdinalIgnoreCase)
+		|| verb.Equals("resume", StringComparison.OrdinalIgnoreCase)
+		|| verb.Equals("step", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Sets how fast the run may simulate. Applies to the run as a whole;
+	/// individual tests marked <c>[RealTime]</c> still run at 60 tps.
+	/// </summary>
+	private static void Speed(CommandCaller caller, string? value)
+	{
+		if (TestariaSystem.Current is not { IsFinished: false } run) {
+			caller.Reply("No run is in progress, so there is no pacing to change.", Color.Yellow);
+			return;
+		}
+
+		if (value is null) {
+			caller.Reply(TestariaSystem.DescribePacing(), Color.White);
+			return;
+		}
+
+		if (TestSession.ParseSpeed(value) is not (PacingMode mode, double rate)) {
+			caller.Reply($"'{value}' is not a speed. Use realtime, max, or a positive number of ticks per second.", Color.Yellow);
+			return;
+		}
+
+		run.SetSpeed(mode, rate);
+		caller.Reply(TestariaSystem.DescribePacing(), Color.White);
+	}
+
+	/// <summary>
+	/// Stops, steps, and restarts the world by hand, which is how a run is
+	/// inspected while it is stuck on something.
+	/// </summary>
+	private static void Pacing(CommandCaller caller, string verb, string? argument)
+	{
+		if (TestariaSystem.Current is not { IsFinished: false } run) {
+			caller.Reply("No run is in progress, so there is no world to hold still.", Color.Yellow);
+			return;
+		}
+
+		if (verb.Equals("pause", StringComparison.OrdinalIgnoreCase)) {
+			run.Pacing.Pause();
+		}
+		else if (verb.Equals("resume", StringComparison.OrdinalIgnoreCase)) {
+			run.Pacing.Resume();
+		}
+		else {
+			int ticks = 1;
+
+			if (argument is not null && (!int.TryParse(argument, out ticks) || ticks < 1)) {
+				caller.Reply($"'{argument}' is not a tick count. Step takes a positive number, or nothing for one tick.", Color.Yellow);
+				return;
+			}
+
+			run.Pacing.GrantSteps(ticks);
+		}
+
+		caller.Reply(TestariaSystem.DescribePacing(), Color.White);
 	}
 }

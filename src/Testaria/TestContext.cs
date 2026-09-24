@@ -11,7 +11,7 @@ namespace Testaria;
 /// where in the world the arena actually placed it, and cannot accidentally
 /// reach outside by naming an absolute coordinate.
 /// </summary>
-public sealed class TestContext : ITickingContext, IContaminationAware, ITestNotes, IDisposable
+public sealed class TestContext : ITickingContext, ISteppableContext, IContaminationAware, ITestNotes, IDisposable
 {
 	private readonly List<SpawnedNpc> spawned = [];
 	private readonly HashSet<int> ownedNpcs = [];
@@ -22,13 +22,40 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 	private readonly List<SpawnedProjectile> spawnedProjectiles = [];
 	private readonly List<SpawnedItem> spawnedItems = [];
 
-	internal TestContext(BoxLease? lease)
+	private readonly RunPacing? pacing;
+
+	internal TestContext(BoxLease? lease, RunPacing? pacing = null)
 	{
 		Lease = lease;
+		this.pacing = pacing;
 		Interior = lease?.Interior ?? default;
 		Bounds = lease?.Bounds ?? default;
 		Bands = lease?.Bands ?? Band.None;
 	}
+
+	/// <inheritdoc />
+	public bool IsPaused => pacing?.IsFrozen ?? false;
+
+	/// <inheritdoc />
+	public void Pause() => Pacing().Pause();
+
+	/// <inheritdoc />
+	public void Resume() => Pacing().Resume();
+
+	/// <inheritdoc />
+	public Wait Step(int ticks = 1)
+	{
+		Pacing().GrantSteps(ticks);
+
+		// The wait counts the same ticks the grant bought, so the body resumes
+		// on the last of them and can ask for more before the world refreezes.
+		return Wait.Ticks(ticks);
+	}
+
+	private RunPacing Pacing()
+		=> pacing ?? throw new InvalidOperationException(
+			"This run has no pacing control, so the world cannot be paused or stepped. " +
+			"That is the case in a bare test host; stepping needs the game's own loop.");
 
 	/// <summary>The lease backing this context, if the test asked for a box.</summary>
 	public BoxLease? Lease { get; }
@@ -316,7 +343,16 @@ public sealed class TestContext : ITickingContext, IContaminationAware, ITestNot
 	/// neighbouring box afterwards, so it has to be written down somewhere a
 	/// person will see.
 	/// </summary>
-	IReadOnlyList<string> ITestNotes.Notes => escapes;
+	IReadOnlyList<string> ITestNotes.Notes => escapes.Count == 0 ? notes : [.. escapes, .. notes];
+
+	private readonly List<string> notes = [];
+
+	/// <summary>
+	/// Records something the harness noticed about this test, to be reported
+	/// alongside its result. For the runner's own observations, not the
+	/// subject's behaviour.
+	/// </summary>
+	internal void AddNote(string note) => notes.Add(note);
 
 	/// <inheritdoc />
 	public void Tick() => ElapsedTicks++;

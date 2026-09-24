@@ -96,6 +96,11 @@ public sealed class TestariaSystem : ModSystem
 	/// </summary>
 	public override void Load()
 	{
+		// The freeze gate is what pause and single stepping are built on, and
+		// it works wherever a world ticks, so it goes in before the
+		// server-only pacing work below.
+		Terraria.On_Main.DoUpdateInWorld += HoldTheWorldStill;
+
 		if (!Main.dedServ)
 			return;
 
@@ -116,6 +121,15 @@ public sealed class TestariaSystem : ModSystem
 
 			MonoModHooks.Add(update, ForceTickWhileRunning);
 			Mod.Logger.Info("Testaria: server tick hook installed.");
+
+			// Unpacing only makes sense where DedServ owns the loop.
+			MonoModHooks.Add(
+				typeof(System.Threading.Thread).GetMethod("Sleep", [typeof(int)])
+					?? throw new InvalidOperationException("Thread.Sleep(int) not found; fast forward needs updating for this runtime."),
+				SkipPacingSleep);
+
+			mainThreadId = Environment.CurrentManagedThreadId;
+			Mod.Logger.Info("Testaria: fast forward hook installed.");
 		}
 		catch (Exception ex) {
 			// Reported rather than swallowed: without this hook a dedicated
@@ -128,6 +142,99 @@ public sealed class TestariaSystem : ModSystem
 	private static long hookCalls;
 	private static bool loggedFirstHook;
 	private static bool loggedFirstForce;
+	private static int mainThreadId;
+	private static int frozenFrames;
+
+	/// <summary>
+	/// Real frames a test may leave the world frozen before the harness steps
+	/// in. Thirty seconds at 60 frames a second: long enough for a human to
+	/// single step through a problem from the console, short enough that a
+	/// test which pauses and forgets to resume does not hang the suite.
+	/// </summary>
+	private const int FrozenFrameLimit = 1800;
+
+	private delegate void OrigSleep(int milliseconds);
+
+	/// <summary>
+	/// Swallows the dedicated server's own pacing sleep so a run can simulate
+	/// faster than 60 ticks per second.
+	/// <para/>
+	/// The server paces itself with a local in <c>Main.DedServ</c>, which no
+	/// mod can reach: mods are loaded from inside that very method, so the
+	/// frame running the loop is already on the stack before any hook exists.
+	/// What is reachable is the <c>Thread.Sleep</c> it calls, and skipping
+	/// that leaves the loop doing exactly one <c>Update</c> per iteration, so
+	/// every hook keeps its normal order and ratio. Only the wall clock
+	/// changes.
+	/// <para/>
+	/// Scoped hard, because this hook sees every sleep in the process. The
+	/// pacing sleep is 15 to 16ms on the main thread; the far more numerous
+	/// spin-wait sleeps inside <c>FastParallel</c> are 0 to 1ms, and must not
+	/// pay for a stack walk. Measured over a run: with these gates, every
+	/// walk was a hit and none were wasted.
+	/// </summary>
+	private static void SkipPacingSleep(OrigSleep orig, int milliseconds)
+	{
+		if (milliseconds >= 2 && Environment.CurrentManagedThreadId == mainThreadId) {
+			try {
+				bool fromPacingLoop = new System.Diagnostics.StackTrace(1, false)
+					.GetFrames()
+					.Take(8)
+					.Any(frame => frame.GetMethod()?.Name == "DedServ");
+
+				if (fromPacingLoop && PacingSleepFor(milliseconds) is int shortened) {
+					if (shortened <= 0)
+						return;
+
+					orig(shortened);
+					return;
+				}
+			}
+			catch {
+				// A stack walk that fails must never stop the server sleeping,
+				// which would spin a core for the rest of the process.
+			}
+		}
+
+		orig(milliseconds);
+	}
+
+	/// <summary>
+	/// How long the pacing loop should actually sleep, or null to leave it
+	/// alone.
+	/// <para/>
+	/// Shortening the sleep rather than skipping it is what makes a bounded
+	/// rate work. The loop's own sleep is all or nothing at about 16ms, so
+	/// skipping it hands the rate to the CPU and keeping it pins the rate at
+	/// 60. Sleeping until the next tick is due gives any rate in between,
+	/// while still doing exactly one update per iteration, which is what keeps
+	/// every hook at its normal cadence.
+	/// </summary>
+	private static int? PacingSleepFor(int requested)
+	{
+		if (session is not { IsFinished: false } running)
+			return null;
+
+		// A frozen world should not burn a core spinning; there is nothing to
+		// simulate until the test asks for a tick.
+		if (running.Pacing.IsFrozen)
+			return null;
+
+		switch (running.Pacing.EffectiveMode) {
+			case PacingMode.Unbounded:
+				return 0;
+
+			case PacingMode.Bounded:
+				double due = running.Governor.TimeUntilDue().TotalMilliseconds;
+
+				// Never longer than the loop already meant to sleep: this is a
+				// speed-up, and must not be able to slow a run down.
+				return (int)Math.Min(Math.Floor(due), requested);
+
+			default:
+				return null;
+		}
+	}
 
 	private static void ForceTickWhileRunning(Action orig)
 	{
@@ -153,6 +260,38 @@ public sealed class TestariaSystem : ModSystem
 		}
 	}
 
+	/// <summary>
+	/// Skips the world update while a test has the world frozen, and counts
+	/// the ticks it does let through.
+	/// <para/>
+	/// This is the same gate vanilla's own debug stepper uses: <c>DoUpdate</c>
+	/// keeps running, only <c>DoUpdateInWorld</c> is skipped. So a frozen tick
+	/// is a shape the game already produces, not a new one. In particular
+	/// <c>PreUpdateEntities</c> still fires, which is what lets the watchdog
+	/// below notice a test that froze the world and never thawed it.
+	/// <para/>
+	/// The test's own coroutine is stepped from <c>PostUpdateEverything</c>,
+	/// inside the skipped call, so a frozen test does not advance either. That
+	/// is deliberate: a test asked for the world to stop, and a test that kept
+	/// running while the world did not would see a world that cannot change.
+	/// </summary>
+	private static void HoldTheWorldStill(Terraria.On_Main.orig_DoUpdateInWorld orig, Main self)
+	{
+		if (session is { IsFinished: false } running && running.Pacing.IsFrozen) {
+			frozenFrames++;
+			return;
+		}
+
+		frozenFrames = 0;
+
+		if (session is { IsFinished: false } active) {
+			active.Pacing.OnWorldTick();
+			active.Governor.OnTick();
+		}
+
+		orig(self);
+	}
+
 	/// <summary>How many times the idle-loop hook has run. Diagnostic only.</summary>
 	public static long HookCalls => hookCalls;
 
@@ -174,7 +313,36 @@ public sealed class TestariaSystem : ModSystem
 			$"blankWorld={(BlankWorldSystem.Layout is null ? "no" : $"yes, {BlankWorldSystem.Layout.Reserved.Count} reserved area(s)")}",
 			$"idle-hook calls={hookCalls}  PostUpdateEverything ticks={Ticks}",
 			$"session={(session is null ? "none" : session.IsFinished ? "finished" : "running")}",
+			$"pacing={DescribePacing()}",
 		]);
+	}
+
+	/// <summary>
+	/// The run's speed and freeze state in one phrase, so a paused run never
+	/// looks like a hung one.
+	/// </summary>
+	public static string DescribePacing()
+	{
+		if (session is not { IsFinished: false } running)
+			return "no run in progress";
+
+		RunPacing pacing = running.Pacing;
+
+		string speed = pacing.EffectiveMode switch {
+			PacingMode.Unbounded => $"unbounded ({running.Governor.ActualTicksPerSecond:0} tps measured)",
+			PacingMode.Bounded => $"bounded to {pacing.TargetTicksPerSecond:0} tps ({running.Governor.ActualTicksPerSecond:0} measured)",
+			_ => "realtime, 60 tps",
+		};
+
+		if (pacing.CurrentTestWantsRealtime && pacing.Mode != PacingMode.Realtime)
+			speed += " (this test opted out with [RealTime])";
+
+		if (!pacing.IsFrozen)
+			return speed;
+
+		return pacing.PendingSteps is int owed && owed > 0
+			? $"{speed}, stepping {owed} more tick(s)"
+			: $"{speed}, world FROZEN for {frozenFrames} frame(s)";
 	}
 
 	/// <summary>
@@ -234,7 +402,27 @@ public sealed class TestariaSystem : ModSystem
 	/// </summary>
 	public override void PreUpdateEntities()
 	{
-		if (session is { IsFinished: false } && session.CurrentContext is TestContext context)
+		if (session is not { IsFinished: false } running)
+			return;
+
+		// Runs even while frozen, because the freeze gate is downstream of
+		// this hook. That makes it the only place a forgotten pause can be
+		// caught, since nothing else in the run is being stepped.
+		if (running.Pacing.IsFrozen && frozenFrames > FrozenFrameLimit) {
+			frozenFrames = 0;
+			running.Pacing.Resume();
+
+			if (running.CurrentContext is TestContext frozen) {
+				frozen.AddNote(
+					$"The world was left frozen for {FrozenFrameLimit} frames and has been thawed by the harness. " +
+					"A test that pauses must step or resume; this one did neither.");
+			}
+
+			Mod.Logger.Warn("Testaria: a test left the world frozen and was thawed after " +
+				$"{FrozenFrameLimit} frames. Its tick budget applies again from here.");
+		}
+
+		if (running.CurrentContext is TestContext context)
 			context.Watch();
 	}
 
@@ -265,7 +453,10 @@ public sealed class TestariaSystem : ModSystem
 	public override void Unload()
 	{
 		// Static state that outlives a reload keeps the old assembly alive.
+		// The detour holds a delegate into this assembly, so it has to go too.
+		Terraria.On_Main.DoUpdateInWorld -= HoldTheWorldStill;
 		session = null;
+		frozenFrames = 0;
 		TestOwnership.Clear();
 	}
 
