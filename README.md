@@ -2,7 +2,7 @@
 
 Unit, integration, and gameplay testing for Terraria mods built on tModLoader.
 
-**Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started. The design lives in [`PLAN.md`](PLAN.md).
+**Status: early alpha.** Tiers 0 through 2 run end to end in a live headless game, driven by the `testaria` command line tool, and the framework has been calibrated against ExampleMod. Tier 3 (multi-process) is not started, and nothing is published to nuget.org or the Workshop yet. The design lives in [`PLAN.md`](PLAN.md).
 
 ## What does it do?
 
