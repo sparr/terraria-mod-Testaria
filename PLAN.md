@@ -20,7 +20,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | --- | --- |
 | Tier 0 | Works, and is now defended. `Testaria.Core` plus a stock `dotnet test` project; 465 core, 45 tool, and 14 analyzer self-tests pass in under two seconds |
 | Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
-| Tier 3 | Netcode works, section 8.6a. A client process joins a real server, `[NetTest]` runs on the server with the client as a puppet, and four self-tests pass. Rendering and input remain out of scope; worked examples on somebody else's mod are still to come |
+| Tier 3 | Works, sections 8.6a and 8.6c. A client process joins a real server, four self-tests and three worked examples against ExampleMod pass. Rendering and input remain out of scope |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
@@ -29,7 +29,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
-| The five unmeasured numbers (risk 3) | One measured, four to go (section 8.5d). The `SceneMetrics` scan is 169 by 124 tiles; `ArenaOptions.Gutter` is still 8, now knowingly a floor rather than a guess |
+| The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
 The holes in that table are the subject of section 8.5, and they come before any distribution work.
 
@@ -412,7 +412,7 @@ Three clocks, kept deliberately separate:
 
 1. **Naming is the only irreversible decision here.** Mod internal names are globally first come, and renaming a published mod orphans its subscribers. NuGet IDs can be unlisted but never deleted. Settle the brand before publishing anything to any channel.
 2. **False confidence at the Tier 0 boundary** (section 2.2). This is the highest-severity design risk, because the failure mode is a green test suite that proves nothing.
-3. **World state isolation between Tier 2 tests** is the hardest engineering problem, and section 2.4 sets out a four-mechanism working design that is explicitly provisional pending real test surface. Five numbers in it are unverified and must be measured rather than hardcoded on a guess: the `Main.SceneMetrics` scan radius, which sets the gutter for any biome-sensitive test; the default banded box size; the quarantine duration before a released box is safe to re-lease, which is longer for columns than for banded boxes; the split between the banded and column arena regions; and the width at which a spanning column stops being cheaper than `[FreshWorld]`.
+3. **World state isolation between Tier 2 tests** is the hardest engineering problem, and section 2.4 sets out a four-mechanism working design that was explicitly provisional pending real test surface. Five numbers in it were unverified: the `Main.SceneMetrics` scan radius, the default banded box size, the quarantine duration, the split between the banded and column arena regions, and the width at which a spanning column stops being cheaper than `[FreshWorld]`. **All five are measured** (sections 8.5d and 8.5f), two of them setting the defaults the arena ships with and one of them producing the answer "this question does not arise".
 4. **Reload safety.** Every hook, event subscription, and static registration the framework makes must be undone in `Unload()`, or it pins dead `AssemblyLoadContext` instances (`AssemblyManager.cs:177`, `196`). A test framework that leaks across reloads will be blamed for the leaks of the mods it tests.
 5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature. **Built** (section 8.5b). There is one generator rather than two: on the 1.4.5 line `WorldGen.genRand` is a property returning `Main.rand`.
 6. **The 1.4.5 toolchain, settled by opting into the beta branch.** Everything above tier 0 builds and runs against a `1.4.5-dev` Steam install. The reasoning is worth keeping because CI has to solve the same problem without Steam (section 8.3a), and because the naming trap at the end of this item still catches people. The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
@@ -706,9 +706,42 @@ Three things it checks that no unit test can see, each of them a way a well-form
 
 The pattern behind all three is worth keeping: **the packages are the product, and the only way to test a product is to consume it.** The gate clears the NuGet cache itself, so it cannot answer from yesterday's build.
 
+### 8.5f The arena's remaining four numbers
+
+Risk 3's other four numbers are properties of a test suite rather than of Terraria, so they could not be read out of a decompile the way the biome scan was. They needed a corpus, and there is now one: 967 tests, 33 of which lease a box.
+
+`ArenaMetrics`, behind `--measure`, writes a row per boxed test: the size granted, the patch of ground actually changed, how far the test's own entities ranged, what snapshot and restore cost, and how many ticks the box took to go quiet after teardown.
+
+#### What it found
+
+| Number | Was | Measured | Now |
+| --- | --- | --- | --- |
+| Default banded box | 80 by 48 | Furthest any test's entities ranged: 25 by 21. Largest patch of ground changed: 5 by 3, by 7 tests of 33 | 48 by 32 |
+| Quarantine | 60 ticks | 31 of 33 boxes quiet the tick after teardown; the slowest took 2 | 12 ticks |
+| `[FreshWorld]` crossover width | Unknown | Snapshot plus restore costs 0.35 microseconds per tile, so a full-height column spanning an entire small world costs 1.8s against 5.5s to generate a blank one | No crossover exists |
+| Banded and column region split | 0.25 | Not one test of 967 asked for a column | Unchanged, and recorded as uncalibrated |
+
+#### Three of those deserve more than a row
+
+**Ground changes are the wrong measure of box size.** Recording only tiles that differ from the snapshot reports that most tests change nothing at all. True, and useless: an NPC left to its own devices covers ground without touching any of it, and it is the roaming that decides how big a box has to be. Measuring where a test's own entities actually go gives 25 by 21 as the worst case, which is what 48 by 32 is chosen to cover.
+
+**The crossover question dissolves rather than resolving.** A column costs about 0.35 microseconds per tile to snapshot and restore. For the crossover to exist, a column would have to be roughly 13,000 tiles wide, three times the width of the entire small world it would sit in. So `[FreshWorld]` is never the cheaper option, at any width, and choosing it is a statement about semantics rather than cost: a test wants a fresh world because it asserts on something world-global, not because scrubbing a column is expensive.
+
+**The column split cannot be calibrated, and saying so is the result.** A quarter of the world is reserved for spanning boxes that nothing in the corpus requests. It costs nothing while runs are sequential, and it stays until a suite exists that tests band boundaries. The measurement's finding is the absence, not a number.
+
+#### What the measuring settled
+
+**Teardown restores the ground.** Section 2.4 lists the tile rectangle first among the things release has to undo, alongside deactivating entities, replacing players, and releasing ownership. Measured at well under a millisecond for an ordinary box.
+
+Two properties of the measuring itself decide whether the numbers mean anything.
+
+**A watcher must not outlast the quarantine.** Observing a box for longer than it is held back shows the next occupant's work as though the previous one had never gone quiet, and reports boxes that never settle. A measured run holds boxes back for longer than it watches them.
+
+**Restoring must not reframe.** A blank world writes its ground without framing it, so calling `WorldGen.RangeFrame` after writing recorded tiles back produces frames the snapshot never held, and every restored box then differs from the snapshot it was restored from. The recorded frames are the truth; nothing needs recomputing.
+
 ### 8.6 Tier 3, and worked examples on a real mod
 
-The last tier and the publication gate in one milestone (section 5.1). Two processes, a virtual framebuffer for anything with a client, and fixtures for `ModPacket` round trips, `netMode` branching, and server-versus-client ownership. **The two-process half is done (section 8.6a); the worked examples are not.**
+The last tier and the publication gate in one milestone (section 5.1). Two processes, a virtual framebuffer for anything with a client, and fixtures for `ModPacket` round trips, `netMode` branching, and server-versus-client ownership. **Both halves are done: the two-process machinery in section 8.6a, the worked examples in section 8.6c.**
 
 Worked examples are half the milestone rather than a garnish. Tiers 1 and 2 are trustworthy because section 8.3b's real suite against ExampleMod found three framework gaps that smoke tests miss; there is no reason to expect tier 3 to be different, and a netcode fixture nobody has pointed at real cross-process behaviour is a guess. ExampleMod is again the obvious subject: it has `ModPacket` traffic of its own, and it is maintained by the people who wrote the netcode.
 
@@ -734,7 +767,7 @@ The four self-tests are: a client is connected; a packet makes the round trip an
 
 Those four rest on one more piece of Terraria: **a client only knows the world sections it has been sent**, which are the ones near its own player. A box in the cavern is nowhere near where a client spawns, so a tile edit there means nothing to the client until it has been given the ground. `ClientLink.SendSection` gives it.
 
-### 8.6b Blocked: tier 3 worked examples, by a tModLoader update
+### 8.6b What ecosystem churn costs a suite
 
 The tier 3 suite for ExampleMod is written (`tests/TestariaExampleTest/NetTests.cs`) and asserts the property that makes modded multiplayer work at all: modded content ids are assigned per load and synced, so an id meaning ExampleBlock on the server must mean ExampleBlock on the client. Nothing in it hardcodes an id; each test resolves one by name on the server and checks what the client reports back.
 
@@ -749,6 +782,12 @@ So the fix is outside this repository: update the tModLoader checkout to at leas
 So a run can be told the fewest tests that must actually run rather than skip, with `--require <n>` on the CLI and `MIN_TESTS` in the shell harness, and falling short is a failure whose message names the likely cause. The calibration gate asks for 100. Section 8.6e carries the stronger form of the same guard, which names the mods themselves rather than counting.
 
 This is the section 2.2 problem in a different costume. There, a test could pass while proving nothing; here, a whole suite could. Honest skipping is still right, and it needs a backstop that counts.
+
+### 8.6c The tier 3 worked examples
+
+The checkout has to match the install the mod will load into, which for ExampleMod means the commit the installed build came from (`39e7995f`), and `scripts/build-examplemod.sh` rebuilds it from there. The calibration suite reports **927 tests, 924 passed, 3 skipped**, the three being the tier 3 tests when no client is attached.
+
+With a client attached, all three pass: a modded tile placed by the server arrives at the client as the same content, a modded NPC spawned by the server appears in the same slot with the same type, and an empty slot reads empty on both sides. The property they establish is the one that makes modded multiplayer work at all, and none of them hardcodes an id: each resolves one by name on the server and checks what the client reports back.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 

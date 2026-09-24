@@ -491,6 +491,9 @@ public sealed class TestariaSystem : ModSystem
 	{
 		Mod.Logger.Info($"Testaria run '{finished.RunName}': {finished.Summarize()}");
 
+		if (finished.MetricsPath is string metrics)
+			Mod.Logger.Info($"Testaria arena measurements written to {metrics}");
+
 		if (finished.ResultsPath is string path)
 			Mod.Logger.Info($"Testaria results written to {path}");
 

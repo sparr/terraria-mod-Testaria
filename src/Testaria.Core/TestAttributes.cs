@@ -72,14 +72,27 @@ public sealed class GameTestAttribute : TestariaTestAttribute, IBoxedTest
 	/// </summary>
 	public Band Spans { get; set; } = Band.None;
 
-	/// <summary>Requested interior width in tiles, before size class rounding.</summary>
-	public int Width { get; set; } = 80;
+	/// <summary>
+	/// Requested interior width in tiles, before size class rounding.
+	/// <para/>
+	/// Measured rather than guessed (PLAN.md section 8.5f): across 33 boxed
+	/// tests, the furthest any test's own entities ranged was 25 tiles wide by
+	/// 21 tall, and the largest patch of ground any of them changed was 5 by 3.
+	/// So 48 by 32, the smallest size class, covers everything observed with
+	/// room to spare, where the previous 80 by 48 rounded up to a box four
+	/// times the area of anything anyone used.
+	/// <para/>
+	/// The corpus has no boss fights and nothing that teleports, which are
+	/// exactly the tests that would want more. Ask for more when you need it;
+	/// that is what the property is for.
+	/// </summary>
+	public int Width { get; set; } = 48;
 
 	/// <summary>
 	/// Requested interior height in tiles, before size class rounding. Ignored
 	/// for a spanning box.
 	/// </summary>
-	public int Height { get; set; } = 48;
+	public int Height { get; set; } = 32;
 
 	/// <summary>Builds the arena request this attribute describes.</summary>
 	public BoxRequest ToRequest()
@@ -110,10 +123,10 @@ public sealed class NetTestAttribute : TestariaTestAttribute, IBoxedTest
 	public Band Spans { get; set; } = Band.None;
 
 	/// <summary>Requested interior width in tiles, before size class rounding.</summary>
-	public int Width { get; set; } = 80;
+	public int Width { get; set; } = 48;
 
 	/// <summary>Requested interior height in tiles, before size class rounding.</summary>
-	public int Height { get; set; } = 48;
+	public int Height { get; set; } = 32;
 
 	/// <summary>Builds the arena request this attribute describes.</summary>
 	public BoxRequest ToRequest()

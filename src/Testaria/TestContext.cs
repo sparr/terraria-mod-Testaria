@@ -24,12 +24,21 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 
 	private readonly RunPacing? pacing;
 
-	internal TestContext(BoxLease? lease, RunPacing? pacing = null)
+	// The ground as it was before this test touched it. Taken at lease and
+	// written back at teardown, because a box handed on with the last test's
+	// walls still standing is not a box anyone can trust.
+	private readonly BoxSnapshot? ground;
+	private readonly object? metrics;
+
+	internal TestContext(BoxLease? lease, RunPacing? pacing = null, string? test = null)
 	{
 		Lease = lease;
 		this.pacing = pacing;
 		Interior = lease?.Interior ?? default;
 		Bounds = lease?.Bounds ?? default;
+
+		if (lease is not null)
+			(ground, metrics) = ArenaMetrics.Begin(lease.Interior, test);
 		Bands = lease?.Bands ?? Band.None;
 	}
 
@@ -391,6 +400,52 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 			if (alreadyReported.Add(-index - 1))
 				escapes.Add($"NPC {index} left the box at tick {ElapsedTicks}");
 		}
+
+		MeasureRoaming();
+	}
+
+	/// <summary>
+	/// Notes how far this test's own entities have ranged from the box's top
+	/// left, in tiles, so that box size can be calibrated on the thing that
+	/// actually drives it.
+	/// </summary>
+	private void MeasureRoaming()
+	{
+		if (!ArenaMetrics.Enabled || metrics is null)
+			return;
+
+		int width = 0;
+		int height = 0;
+
+		void Consider(Microsoft.Xna.Framework.Vector2 centre)
+		{
+			int x = (int)(centre.X / TileCoordinates.TileSize) - Interior.Left;
+			int y = (int)(centre.Y / TileCoordinates.TileSize) - Interior.Top;
+
+			width = Math.Max(width, Math.Abs(x) + 1);
+			height = Math.Max(height, Math.Abs(y) + 1);
+		}
+
+		foreach (SpawnedNpc record in spawned) {
+			NPC npc = Main.npc[record.Index];
+
+			if (npc.active && npc.type == record.Type)
+				Consider(npc.Center);
+		}
+
+		foreach (SpawnedProjectile record in spawnedProjectiles) {
+			Projectile projectile = Main.projectile[record.Index];
+
+			if (projectile.active && projectile.type == record.Type)
+				Consider(projectile.Center);
+		}
+
+		foreach (int slot in spawnedPlayers) {
+			if (Main.player[slot].active)
+				Consider(Main.player[slot].Center);
+		}
+
+		ArenaMetrics.Roamed(metrics, width, height);
 	}
 
 	/// <summary>
@@ -462,6 +517,29 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 		}
 
 		spawnedItems.Clear();
+
+		RestoreGround();
+	}
+
+	/// <summary>
+	/// Puts the ground back as it was, and records what that cost.
+	/// <para/>
+	/// After the entities, deliberately: a projectile deactivated afterwards
+	/// could have edited a tile in between, and the restore has to be the last
+	/// word on what the box looks like.
+	/// </summary>
+	private void RestoreGround()
+	{
+		if (ground is null)
+			return;
+
+		TileRect? used = ArenaMetrics.Enabled ? ground.ChangedBounds() : null;
+
+		var timer = System.Diagnostics.Stopwatch.StartNew();
+		int restored = ground.Restore();
+		timer.Stop();
+
+		ArenaMetrics.Restored(metrics, ground, used, timer.Elapsed.TotalMilliseconds, restored);
 	}
 
 	private (int X, int Y) Absolute(int offsetX, int offsetY)

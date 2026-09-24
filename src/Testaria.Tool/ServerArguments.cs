@@ -38,6 +38,9 @@ public static class ServerArguments
 		if (options.BlankWorld)
 			arguments.Add("-testariablank");
 
+		if (options.Measure)
+			arguments.Add("-testariameasure");
+
 		if (options.FreshWorld)
 			arguments.Add("-testariafreshworld");
 
@@ -65,5 +68,14 @@ public static class ServerArguments
 		return options.List
 			? ($"testaria list{filter}", ResultsLocation.ForRun(scratch.Root, "tests", ".tsv"))
 			: ($"testaria run {options.Name}{filter}", ResultsLocation.ForRun(scratch.Root, options.Name));
+	}
+
+	/// <summary>Where a measured run leaves its table of box costs.</summary>
+	public static string MetricsPath(RunOptions options, ScratchSave scratch)
+	{
+		ArgumentNullException.ThrowIfNull(options);
+		ArgumentNullException.ThrowIfNull(scratch);
+
+		return ResultsLocation.ForRun(scratch.Root, options.Name + "-arena", ".tsv");
 	}
 }

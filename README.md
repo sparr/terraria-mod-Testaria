@@ -152,6 +152,7 @@ Common flags:
 | `--seed <n>` | Shift every test's [seed](#seeds-and-reproducibility) |
 | `--results <path>` | Copy the JUnit XML report somewhere CI will look |
 | `--require <n>` | Fail unless at least n tests actually ran, which catches a suite that skipped everything |
+| `--measure` | Write a table of what each boxed test cost and used, beside the report, for [calibrating the arena](#boxes-and-what-they-cost) |
 | `--client [n]` | Start client processes and join them to the server, so [tier 3](#tier-3-a-server-with-a-client-attached) can run |
 | `--keep-scratch` | Keep the save directory, and say where it is |
 | `--verbose` | Print the server's own log as it happens, for a run that will not start |
@@ -328,6 +329,29 @@ public IEnumerator A_slime_lands_on_the_third_tick(ITestContext ctx)
 This is the same gate Terraria's own debug stepper uses: `DoUpdate` keeps running and only `DoUpdateInWorld` is skipped, so a frozen tick is a shape the game already produces. A test that pauses and then neither steps nor resumes is thawed by the harness after 1800 frames, with a note on its result, rather than hanging the run.
 
 From the console, the same controls work on whatever is running: `testaria pause`, `testaria step 5`, `testaria resume`. `testaria status` reports the speed and whether the world is frozen, so a paused run never looks like a hung one.
+
+## Boxes and what they cost
+
+A tier 2 or tier 3 test runs inside a box the arena leases it: a rectangle of world, in a band the test names, with a gutter of dead space around it. Teardown deactivates everything the test spawned and puts the ground back exactly as it was, so the next tenant of that slot inherits nothing.
+
+The numbers behind that are measured rather than chosen, over a corpus of 967 tests:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Default box | 48 by 32 tiles | The furthest any test's own entities ranged was 25 by 21, and the largest patch of ground any of them changed was 5 by 3 |
+| Quarantine | 12 ticks | 31 boxes of 33 were quiet the tick after teardown; the slowest took 2 |
+| Gutter | 8 tiles | Covers tile framing and liquid. It does **not** cover biome scanning, which reaches 84 tiles, and cannot until boxes run concurrently |
+| Snapshot and restore | 0.35 microseconds per tile | An ordinary box costs well under a millisecond to save and put back |
+
+Ask for more room when a test needs it, with `[GameTest(Width = 160, Height = 96)]`. A test that needs a whole world rather than a box says `[FreshWorld]`, and that is a statement about semantics rather than cost: a column spanning an entire small world costs under two seconds to scrub, against five and a half to generate a blank world, so there is no width at which a fresh world is the cheaper option.
+
+To collect the same measurements from your own suite:
+
+```
+testaria run --mod MyModTests --measure --results out.xml
+```
+
+which writes `out-arena.tsv` beside the report: a row per boxed test with the size it was granted, the ground it changed, how far its entities roamed, what snapshot and restore cost, and how many ticks the box took to go quiet.
 
 ## Escapes
 

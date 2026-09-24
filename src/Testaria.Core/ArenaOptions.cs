@@ -40,8 +40,17 @@ public sealed record ArenaOptions
 	/// updates, lighting propagation, and despawn timers all outlive teardown,
 	/// so re-leasing immediately would hand the next tenant someone else's
 	/// leftovers.
+	/// <para/>
+	/// Twelve, measured rather than guessed (PLAN.md section 8.5f). Across 33
+	/// boxed tests, 31 were quiet the tick after teardown and the slowest took
+	/// two, so the old sixty was thirty times what anything needed. Twelve
+	/// keeps six times the observed worst case.
+	/// <para/>
+	/// The honest limit on that measurement: no test in the corpus used liquid,
+	/// which is the slowest of the effects this number exists to outlast. Raise
+	/// it if a suite full of water starts handing boxes on wet.
 	/// </summary>
-	public int QuarantineTicks { get; init; } = 60;
+	public int QuarantineTicks { get; init; } = 12;
 
 	/// <summary>
 	/// Ground the arena must never lease, holding whatever vanilla requires to
@@ -55,6 +64,12 @@ public sealed record ArenaOptions
 	/// world is what avoids the alternative, where a column must acquire an
 	/// aligned slot in every row it crosses at once, which is hold-and-wait
 	/// and deadlocks as soon as two columns allocate concurrently.
+	/// <para/>
+	/// Still uncalibrated, and honestly so: not one test in the measured corpus
+	/// of 967 asked for a column (PLAN.md section 8.5f), so a quarter of the
+	/// world is reserved for a case nothing exercises. It costs nothing today,
+	/// since the arena is sized by concurrency and runs are sequential, and it
+	/// cannot be calibrated until a suite exists that tests band boundaries.
 	/// </summary>
 	public double ColumnRegionFraction { get; init; } = 0.25;
 }

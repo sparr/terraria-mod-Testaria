@@ -185,6 +185,27 @@ public class ProvisioningTests : IDisposable
 	}
 
 	[Fact]
+	public void Measuring_is_asked_for_only_when_wanted()
+	{
+		using ScratchSave scratch = ScratchSave.Create();
+
+		XAssert.DoesNotContain("-testariameasure", ServerArguments.For(new RunOptions(), scratch));
+		XAssert.Contains("-testariameasure", ServerArguments.For(new RunOptions { Measure = true }, scratch));
+	}
+
+	[Fact]
+	public void The_measurements_land_beside_the_report()
+	{
+		using ScratchSave scratch = ScratchSave.Create();
+
+		// Same directory, same name, different extension, so a CI job
+		// collecting one collects the other.
+		XAssert.Equal(
+			Path.Combine(scratch.Root, "Testaria", "Suite-arena.tsv"),
+			ServerArguments.MetricsPath(new RunOptions { Name = "Suite" }, scratch));
+	}
+
+	[Fact]
 	public void The_console_command_carries_the_run_name_and_filter()
 	{
 		using ScratchSave scratch = ScratchSave.Create();

@@ -100,8 +100,18 @@ public static class Program
 				clientSaves,
 				display?.Name);
 
-		if (options.ResultsOut is string destination)
+		if (options.ResultsOut is string destination) {
 			Copy(resultsPath, destination, progress);
+
+			// Beside the report, under the same name, so a CI job collecting
+			// one collects the other.
+			if (options.Measure && File.Exists(ServerArguments.MetricsPath(options, scratch))) {
+				Copy(
+					ServerArguments.MetricsPath(options, scratch),
+					Path.ChangeExtension(destination, null) + "-arena.tsv",
+					progress);
+			}
+		}
 
 		if (options.KeepScratch)
 			progress.WriteLine($"scratch kept at {scratch.Root}");

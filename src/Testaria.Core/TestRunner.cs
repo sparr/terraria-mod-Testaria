@@ -82,6 +82,14 @@ public sealed class TestRunner
 	/// </summary>
 	public ITestContext? CurrentContext => context;
 
+	/// <summary>
+	/// The running test's full name, or null between tests.
+	/// <para/>
+	/// For measurement and diagnostics that happen outside the runner but
+	/// belong to a test, such as watching a box after its tenant has gone.
+	/// </summary>
+	public string? CurrentTestName => current is { } test ? $"{test.ClassName}.{test.Name}" : null;
+
 	/// <summary>Results so far; complete once <see cref="State"/> is finished.</summary>
 	public TestRunResult Result => TestRunResult.FromResults(options.RunName, results);
 

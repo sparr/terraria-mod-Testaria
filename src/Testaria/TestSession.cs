@@ -67,8 +67,16 @@ public sealed class TestSession
 	/// <summary>How many runnable tests discovery found.</summary>
 	public int Discovered { get; }
 
-	/// <summary>True once every test has finished.</summary>
-	public bool IsFinished => runner.State == RunnerState.Finished;
+	/// <summary>
+	/// True once every test has finished and nothing is left to watch.
+	/// <para/>
+	/// The second half matters only for a measured run, which keeps watching
+	/// released boxes for a while after the last test. Saying it had finished
+	/// would stop the game stepping the session, and the watching would never
+	/// end: the report is written when this turns true, so it has to mean
+	/// "there is genuinely nothing left to do".
+	/// </summary>
+	public bool IsFinished => runner.State == RunnerState.Finished && ArenaMetrics.Pending == 0;
 
 	/// <summary>Results so far, complete once <see cref="IsFinished"/>.</summary>
 	public TestRunResult Result => runner.Result;
@@ -122,8 +130,25 @@ public sealed class TestSession
 			// TerrariaWorldGeometry does not come into it.
 			WorldGeometry geometry = blank?.Geometry ?? TerrariaWorldGeometry.Current();
 
-			arena = new Arena(geometry, new ArenaOptions { Reserved = blank?.Reserved ?? [] });
+			arena = new Arena(geometry, new ArenaOptions {
+				Reserved = blank?.Reserved ?? [],
+				// A measured run holds boxes back longer than it otherwise
+				// would, so that watching a released box measures the box
+				// rather than its next tenant. Measured the hard way: with the
+				// ordinary sixty tick quarantine, seven boxes appeared never to
+				// go quiet, and what they were actually showing was the next
+				// test building in them.
+				QuarantineTicks = ArenaMetrics.Enabled
+					? ArenaMetrics.ObservationTicks + 10
+					: new ArenaOptions().QuarantineTicks,
+			});
 		}
+
+		// The context wants the name of the test it belongs to, and the runner
+		// is the thing that knows it. The runner needs the options to exist
+		// first, so the reference is filled in a line after it is captured,
+		// which is safe because the factory only runs once a test has begun.
+		TestRunner? started = null;
 
 		var runner = new TestRunner(discovery, new TestRunnerOptions {
 			RunName = runName,
@@ -134,13 +159,17 @@ public sealed class TestSession
 			// its own. Claiming otherwise would let a [FreshWorld] test run in
 			// a world shared with everything else and report a pass.
 			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
-			CreateContext = lease => new TestContext(lease, pacing),
+			CreateContext = lease => new TestContext(lease, pacing, started?.CurrentTestName),
 			Pacing = pacing,
 			// Pinned for every tier, not just the ones with a world. A Tier 1
 			// test reading a drop table or a recipe can roll too.
 			Random = new TerrariaRandomControl(),
 			RunSeed = runSeed,
 		});
+
+		started = runner;
+
+		ArenaMetrics.Clear();
 
 		var session = new TestSession(runner, pacing, runName, discovery.Tests.Count) { RunSeed = runSeed };
 		session.ApplyLaunchPacing();
@@ -220,10 +249,44 @@ public sealed class TestSession
 	{
 		bool more = runner.Step();
 
-		if (!more && ResultsPath is null && ResultsError is null)
+		ArenaMetrics.Observe();
+
+		// A measured run outlives its last test: released boxes are watched
+		// for a while to see how long they take to go quiet, and the harness
+		// stops the process the moment the report appears. So the report is
+		// written last, after the watching is done.
+		if (!more && ArenaMetrics.Pending > 0)
+			return true;
+
+		if (!more && ResultsPath is null && ResultsError is null) {
+			MetricsPath = WriteMetrics();
 			ResultsPath = WriteResults();
+		}
 
 		return more;
+	}
+
+	/// <summary>Where the measurements were written, when a run was measured.</summary>
+	public string? MetricsPath { get; private set; }
+
+	private string? WriteMetrics()
+	{
+		if (!ArenaMetrics.Enabled || ArenaMetrics.Count == 0)
+			return null;
+
+		try {
+			string path = ResultsLocation.ForRun(Main.SavePath, RunName + "-arena", ".tsv");
+
+			Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+			File.WriteAllText(path, ArenaMetrics.ToTsv());
+
+			return path;
+		}
+		catch (Exception ex) {
+			ResultsError = $"measurements: {ex.GetType().Name}: {ex.Message}";
+
+			return null;
+		}
 	}
 
 	/// <summary>A one-line summary suitable for a console or chat reply.</summary>

@@ -64,6 +64,17 @@ public sealed record RunOptions
 	/// </summary>
 	public int Require { get; init; }
 
+	/// <summary>
+	/// Measure what every boxed test costs and uses, writing a table beside the
+	/// report.
+	/// <para/>
+	/// For calibrating the arena's constants against a real suite rather than
+	/// against intuition. A measured run outlives its last test by a few
+	/// seconds, because released boxes are watched to see how long they take to
+	/// go quiet.
+	/// </summary>
+	public bool Measure { get; init; }
+
 	/// <summary>Keep the scratch save directory instead of deleting it.</summary>
 	public bool KeepScratch { get; init; }
 
@@ -136,6 +147,8 @@ public static class CommandLine
 
 		output:
 		  --results <path>       Copy the JUnit XML report here.
+		  --measure              Write a table of what each boxed test cost and used,
+		                         beside the report, for calibrating the arena.
 		  --keep-scratch         Keep the scratch save directory and say where it is.
 		  --quiet                Print only the summary.
 		  --verbose              Print the server's log as it happens.
@@ -288,6 +301,10 @@ public static class CommandLine
 						return new ParseResult { Error = $"--client needs a positive number of clients, got '{clientsText}'." };
 
 					options = options with { Clients = clients };
+					break;
+
+				case "--measure":
+					options = options with { Measure = true };
 					break;
 
 				case "--blank":

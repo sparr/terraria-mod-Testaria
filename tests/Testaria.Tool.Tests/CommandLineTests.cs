@@ -123,6 +123,13 @@ public class CommandLineTests
 	}
 
 	[Fact]
+	public void Measuring_is_off_unless_asked_for()
+	{
+		XAssert.False(Parse("run", "--mod", "A").Measure);
+		XAssert.True(Parse("run", "--mod", "A", "--measure").Measure);
+	}
+
+	[Fact]
 	public void A_value_flag_with_no_value_says_which_one()
 		=> XAssert.Contains("--filter", Error("run", "--mod", "A", "--filter"));
 

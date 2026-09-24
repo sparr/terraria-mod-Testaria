@@ -54,6 +54,111 @@ public sealed class BoxSnapshot
 		items = TypesIn(interior, Main.maxItems, i => Main.item[i].active, i => Main.item[i].Center, i => Main.item[i].type);
 	}
 
+	/// <summary>The rectangle this snapshot covers.</summary>
+	public TileRect Interior => interior;
+
+	/// <summary>
+	/// Writes every recorded tile back, undoing whatever the box's tenant did
+	/// to the ground.
+	/// <para/>
+	/// PLAN.md section 2.4 lists this first among the things teardown has to
+	/// undo. Without it, entities are deactivated and the ground is left exactly
+	/// as the last test built it, for the next tenant of that slot to inherit.
+	/// <para/>
+	/// Deliberately no reframing afterwards. The frames recorded here are the
+	/// truth about what the box looked like, and recomputing them invents
+	/// different ones: a blank world writes its ground without framing it, so
+	/// a reframe after restore leaves every tile differing from the snapshot it
+	/// was just restored from. Measured, that makes five boxes out of
+	/// twenty-eight look as though they never went quiet.
+	/// </summary>
+	/// <returns>How many tiles differed and were put back.</returns>
+	public int Restore()
+	{
+		int changed = 0;
+
+		for (int y = 0; y < interior.Height; y++) {
+			for (int x = 0; x < interior.Width; x++) {
+				TileRecord record = tiles[(y * interior.Width) + x];
+				Tile tile = Main.tile[interior.Left + x, interior.Top + y];
+
+				if (Matches(tile, record))
+					continue;
+
+				changed++;
+				Apply(tile, record);
+			}
+		}
+
+		return changed;
+	}
+
+	/// <summary>
+	/// The smallest rectangle, in box-relative tiles, covering everything that
+	/// differs from this snapshot, or null when nothing does.
+	/// <para/>
+	/// What a test actually used, as against what it asked for. The two being
+	/// far apart is what makes a default box size the wrong size.
+	/// </summary>
+	public TileRect? ChangedBounds()
+	{
+		int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+
+		for (int y = 0; y < interior.Height; y++) {
+			for (int x = 0; x < interior.Width; x++) {
+				if (Matches(Main.tile[interior.Left + x, interior.Top + y], tiles[(y * interior.Width) + x]))
+					continue;
+
+				left = Math.Min(left, x);
+				top = Math.Min(top, y);
+				right = Math.Max(right, x);
+				bottom = Math.Max(bottom, y);
+			}
+		}
+
+		return left > right ? null : new TileRect(left, top, right - left + 1, bottom - top + 1);
+	}
+
+	private static bool Matches(Tile tile, TileRecord record)
+		=> tile.HasTile == record.HasTile
+			&& tile.TileType == record.Type
+			&& tile.TileFrameX == record.FrameX
+			&& tile.TileFrameY == record.FrameY
+			&& tile.WallType == record.Wall
+			&& tile.LiquidAmount == record.Liquid
+			&& tile.LiquidType == record.LiquidType
+			&& tile.TileColor == record.Paint
+			&& tile.WallColor == record.WallPaint
+			&& (byte)tile.Slope == record.Slope
+			&& tile.IsHalfBlock == record.HalfBlock
+			&& tile.HasActuator == record.Actuator
+			&& tile.IsActuated == record.Actuated
+			&& tile.RedWire == record.RedWire
+			&& tile.BlueWire == record.BlueWire
+			&& tile.GreenWire == record.GreenWire
+			&& tile.YellowWire == record.YellowWire;
+
+	private static void Apply(Tile tile, TileRecord record)
+	{
+		tile.HasTile = record.HasTile;
+		tile.TileType = record.Type;
+		tile.TileFrameX = record.FrameX;
+		tile.TileFrameY = record.FrameY;
+		tile.WallType = record.Wall;
+		tile.LiquidAmount = record.Liquid;
+		tile.LiquidType = record.LiquidType;
+		tile.TileColor = record.Paint;
+		tile.WallColor = record.WallPaint;
+		tile.Slope = (Terraria.ID.SlopeType)record.Slope;
+		tile.IsHalfBlock = record.HalfBlock;
+		tile.HasActuator = record.Actuator;
+		tile.IsActuated = record.Actuated;
+		tile.RedWire = record.RedWire;
+		tile.BlueWire = record.BlueWire;
+		tile.GreenWire = record.GreenWire;
+		tile.YellowWire = record.YellowWire;
+	}
+
 	/// <summary>
 	/// The types of a kind of entity standing in the box, sorted.
 	/// <para/>
