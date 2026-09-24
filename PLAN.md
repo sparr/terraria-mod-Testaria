@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: plan, not yet implemented. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
+Status: implemented through section 8.3e. Tiers 0 through 2 run green in a headless server; tier 3 is not started; nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records the milestones as they were reached, and section 8.5 onward is what remains, in order. Written against a checkout of [tModLoader](https://github.com/tModLoader/tModLoader) on branch `1.4.5` at HEAD `7f5a46e98d`. Paths given below as `patches/...` are relative to the root of that checkout.
 
 ## 0. The short version
 
@@ -9,7 +9,28 @@ Status: plan, not yet implemented. Written against a checkout of [tModLoader](ht
 - **Recommended brand: `Testaria`**, a coined portmanteau reused across the mod internal name, root namespace, NuGet ID prefix, and repo name. This is the only genuinely irreversible decision in the plan.
 - **Primary distribution is GitHub Releases plus nuget.org, not the Steam Workshop.** The Workshop is a player channel, it cannot express prerelease versions, and test mods are never meant to reach players.
 - **Boxes are leased and recycled, so the arena scales with concurrency, not suite size.** Two kinds: banded boxes inside one layer, and spanning columns for tests whose subject *is* a layer boundary. Isolation needs four layered mechanisms (geometry, an ownership warden, pool budgeting, declared global effects), all provisional until a real test corpus can adjudicate them (section 2.4).
-- **First milestone is Tier 1, not Tier 0**, because Tier 0 already works today with a stock MSTest project and proves nothing new.
+- **The first milestone is Tier 1, not Tier 0**, because Tier 0 already works with a stock MSTest project and proves nothing new.
+- **Publication is gated on tier 3, not on a date.** Preparation for section 5 begins once the earlier holes are filled, but nothing is published anywhere until tier 3 works and has worked examples against a real mod. CI for the game tiers ships in the same change as the first GitHub release, before nuget.org sees anything (section 5.1).
+
+## 0.1 Where this stands
+
+Measured on 2026-09-24 against the checkout this document lives in, by running the core gate and the green path rather than by reading the code.
+
+| Piece | State |
+| --- | --- |
+| Tier 0 | Works. `Testaria.Core` plus a stock `dotnet test` project; 432 core self-tests pass in under a second |
+| Tiers 1 and 2 | Work. Discovery, the tick scheduler, the arena, the blank world, the ownership warden, a test player, parameterised cases, filtering, pacing, and stepping all run inside a live headless server. The self-test mod reports 31 tests, 30 passing and one skipped; the ExampleMod calibration suite is 924 cases (section 8.3c) |
+| Tier 3 | Not started. No second process, no client, no netcode fixtures |
+| Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
+| Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
+| Artifacts B, C, D | Not built. `scripts/*.sh` stands in for D and only works from a checkout |
+| CI | Core tiers only, on three operating systems. The game tiers have no job (section 8.3a) |
+| Publication | Nothing published to any channel, by design (section 5.1) |
+| Section 2.2 mitigations | Mitigation 1 only: the core carries no tModLoader reference. No boundary analyzer, no `[RequiresLoadedGame]` marker |
+| Seed control (risk 5) | World seed only, passed to the harness. Nothing pins `Main.rand` or `WorldGen.genRand` per test |
+| The five unmeasured numbers (risk 3) | Still unmeasured. `ArenaOptions.Gutter` remains a guess at 8 |
+
+The holes in that table are the subject of section 8.5, and they come before any distribution work.
 
 ## 1. Constraints this plan rests on
 
@@ -365,6 +386,15 @@ Two shapes, and the choice has real consequences for players:
 
 The asymmetry worth internalizing: **GitHub is the right primary for the `.tmod` precisely because local mod loading does not require Steam.** Publish to the Workshop only if you later want end users of published test mods to get dependency resolution automatically, which, if test mods are never published, you never need.
 
+### 5.1 When any of this actually happens
+
+The table above is the shape of distribution, not a schedule. The schedule is settled, and it is deliberately conservative about the public half:
+
+1. **Fill the earlier holes first.** The gaps recorded in section 0.1, meaning the section 2.2 boundary mitigations, seed control, artifacts B through D, and the five unmeasured arena numbers, come before any distribution work at all. Preparation for this section, meaning packing, a release workflow, and `docs/`, starts once those are closed.
+2. **Prepare, but do not publish, until tier 3 works and has worked examples.** Publication is the one step in this plan that cannot be undone: mod internal names are first come, and a NuGet ID can be unlisted but never deleted (risk 1). A framework that cannot test netcode is not finished enough to ask anyone to commit those names to. The bar is tier 3 running *and* worked examples against a real mod, of the kind section 8.3b produced for tiers 1 and 2 against ExampleMod. Until then every artifact stays a local build or a draft release.
+3. **CI for the game tiers lands in the same change as the first GitHub publication, not after it.** The recipe in section 8.3a is what makes a release trustworthy rather than a zip that one machine built once. Publishing a `.tmod` that no machine but a developer's own has ever run would defeat the point of a testing framework, so the job that builds tModLoader and runs `scripts/run-all.sh` is part of the release change rather than a follow-up to it.
+4. **nuget.org comes after GitHub, never before.** GitHub Releases carry artifact A and prove the pipeline end to end on a channel where a mistake is recoverable. The NuGet packages, B through E, follow once that channel is working, because the ID commitment is permanent and the audience is wider.
+
 ## 6. Versioning
 
 Three clocks, kept deliberately separate:
@@ -382,7 +412,7 @@ Three clocks, kept deliberately separate:
 3. **World state isolation between Tier 2 tests** is the hardest engineering problem, and section 2.4 sets out a four-mechanism working design that is explicitly provisional pending real test surface. Five numbers in it are unverified and must be measured rather than hardcoded on a guess: the `Main.SceneMetrics` scan radius, which sets the gutter for any biome-sensitive test; the default banded box size; the quarantine duration before a released box is safe to re-lease, which is longer for columns than for banded boxes; the split between the banded and column arena regions; and the width at which a spanning column stops being cheaper than `[FreshWorld]`.
 4. **Reload safety.** Every hook, event subscription, and static registration the framework makes must be undone in `Unload()`, or it pins dead `AssemblyLoadContext` instances (`AssemblyManager.cs:177`, `196`). A test framework that leaks across reloads will be blamed for the leaks of the mods it tests.
 5. **Nondeterminism.** Seed control over `Main.rand` and `WorldGen.genRand` must be a day-one feature.
-6. **The 1.4.5 toolchain is not yet obtainable as a prebuilt artifact.** Confirmed while setting up the repository: the Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
+6. **The 1.4.5 toolchain, settled by opting into the beta branch.** Everything above tier 0 builds and runs against a `1.4.5-dev` Steam install. The reasoning is worth keeping because CI has to solve the same problem without Steam (section 8.3a), and because the naming trap at the end of this item still catches people. The Steam release of tModLoader is still the 1.4.4 line (`net8.0`, `LangVersion 12.0`) even though Terraria 1.4.5.8 has shipped, and no GitHub release carries a 1.4.5 asset since the release tags all come off the 1.4.4 branch. Reaching 1.4.5 means either opting into the `1.4.5-dev` Steam beta branch (password `iamacontributor`) or running `setup-cli.sh` to decompile and patch from source, which also requires a Terraria install and generates the `src/` tree the checkout currently lacks. Note the naming trap: the `preview-*` Steam branches are the monthly CI channel on the **1.4.4** line, not 1.4.5, and installing one yields `net8.0` with `LangVersion 12.0`. This does not affect `Testaria.Core`, which references neither, but it gates every tier above 0.
 7. **tModLoader is a moving target.** The 1.4.5 port is in progress; `MigrationGuide_1.4.5.md` and `PortingNotes_1.4.5.md` are live documents. Expect churn in whatever hooks the framework attaches to, and expect to run `tModPorter` more than once.
 8. **Upstreaming.** The TML team currently has only hand-driven failure-case mods in `test/Test Local/`. If this framework works, they may want it in-tree. Keeping it MIT and structurally separable from any one mod preserves that option at no cost.
 9. **Test mods under `ModSources`.** `ModSources` lives under the shared stable save path, so all build purposes (Stable, Preview, Dev) share it. A test mod placed there is visible to every tModLoader install on the machine, which is convenient for iteration and surprising if unexpected.
@@ -492,6 +522,8 @@ The only real gate is that ownership key, documented in `DecompileCommand.cs:40`
 
 That is real work, and the cache is what makes it viable rather than absurd, but it is not blocked.
 
+**Scheduled:** section 8.7 ships this recipe in the same change as the first GitHub release, for the reason given in section 5.1. Until then CI covers the core tiers only.
+
 #### tModLoader's own CI does not run its own tests
 
 Worth recording, because it says something about the gap this framework fills. Across all five workflows on the 1.4.5 branch there is not one occurrence of `dotnet test`, `vstest`, or a reference to `tModLoaderTests`. Their CI builds 1.4.5 and publishes it; the MSTest project in `test/` is never executed by it.
@@ -542,6 +574,43 @@ Players are replaced rather than merely deactivated at teardown, so no state sur
 
 A test spawns a player and a zombie and asserts the zombie targets the player, which has no subject at all without one.
 
+### 8.3e How fast a run ticks, and stopping it
+
+The dedicated server paces itself to real time, so a tick is 16.7 ms of wall clock and a thousand-tick test takes 16.7 seconds on any machine. Section 2.4 records that measurement; this is the mechanism that answers it.
+
+The rate is not configurable by any sanctioned means. The server build's `Main` derives from a stub `Terraria.Server.Game` whose `TargetElapsedTime` returns `TimeSpan.Zero` and discards writes, so the XNA knobs do nothing, and the loop's period is a bare local (`double num6 = 16.666666666666668` in vanilla, `double delta = 1000 / 60D` in tModLoader's rewrite). Neither is a field, a property, a config value, or a parameter, and a mod cannot patch the method either: mods load from inside `DedServ`, so the frame that will run the loop is already on the stack before any hook can exist.
+
+What is reachable is the `Thread.Sleep` that fills out each tick. Shortening it is the whole mechanism. `RunPacing` and `TickRateGovernor` expose it as `-testariaspeed` and `testaria speed`, either a rate in ticks per second or `max`. **The simulation is unchanged**: one update per iteration, same hooks, same order, same ratios, only the wall clock differs, confirmed by the self-test suite consuming the same 452 ticks and reporting identical per-test tick counts at every speed. Measured, the suite runs 7.08s at realtime and 0.91s at `max`.
+
+Two consequences worth keeping. A bounded rate is reproducible across machines and `max` is not, so CI should name a number rather than take the last few seconds. And anything keyed to the wall clock rather than to ticks, a real elapsed duration, a background `Task`, a timer, cannot survive fast forward, so `[RealTime]` opts a test back down to 60 tps and the run's own speed resumes afterward.
+
+Stopping the world came with it. `ITestContext.Pause`, `Step(n)`, and `Resume`, plus `[StartPaused]`, let a test walk the simulation a tick at a time, which is how you pin down the exact tick something goes wrong on. It reuses the game's own debug gate: `DoUpdate` keeps running and only `DoUpdateInWorld` is skipped, so a frozen tick is a shape the game already produces. A test that pauses and neither steps nor resumes is thawed by the harness after 1800 frames with a note on its result, so a wedged test cannot hang a run.
+
 ### 8.4 Complex mods are a load test, not a graduation
 
 Calamity-class mods stress precisely what section 2.4 defers: entity pool exhaustion, mod-count interactions, world generation at scale, long reload times. That deserves to be a named milestone aimed at the **arena**, run deliberately, rather than something stumbled into while trying to test gameplay.
+
+### 8.5 Fill the holes before building anything outward facing
+
+Everything in section 0.1's table that is not a tier. These come first because each one is a correctness problem in what already exists, and shipping over them would make them permanent:
+
+1. **The section 2.2 boundary mitigations.** The Tier 0 analyzer over `ContentSamples`, `ModLoader.Mods`, `Lang.*`, `ModContent.*`, and `*ID.Sets.*`, and a `[RequiresLoadedGame]` marker that fails fast. The measurement in 2.2 says a tier 0 test touching any of those goes green while proving nothing, which is the highest-severity risk in this plan and the only one whose symptom is silence.
+2. **Seed control (risk 5).** `Main.rand` and `WorldGen.genRand` pinned per test and recorded in the report. The harness pins the world seed today and nothing else, so gameplay tests are one unlucky roll away from flaking, and retrofitting determinism after a suite exists is much harder than having it.
+3. **Artifacts B, C, and D (section 4.2).** D, the `testaria` CLI, matters most: the scripts under `scripts/` do its job but only from a checkout of this repository, so nobody else can currently run the framework at all. D is also what section 8.3a's CI job would invoke, so it unblocks that too.
+4. **The five unmeasured numbers (risk 3).** Chiefly the `Main.SceneMetrics` scan radius, since `ArenaOptions.Gutter` is a guess at 8 and any biome-sensitive test is only as isolated as that number is right.
+
+### 8.6 Tier 3, and worked examples on a real mod
+
+The last tier and the publication gate in one milestone (section 5.1). Two processes, a virtual framebuffer for anything with a client, and fixtures for `ModPacket` round trips, `netMode` branching, and server-versus-client ownership.
+
+Worked examples are half the milestone rather than a garnish. Tiers 1 and 2 are trustworthy because section 8.3b's real suite against ExampleMod found three framework gaps that smoke tests miss; there is no reason to expect tier 3 to be different, and a netcode fixture nobody has pointed at real cross-process behaviour is a guess.
+
+### 8.7 CI for the game tiers, shipped with the first GitHub release
+
+One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run `scripts/run-all.sh` or its CLI equivalent.
+
+The release half is artifact A as a GitHub Release with a full SemVer tag, plus whatever `docs/` has by then. The point of pairing them is that the release is only worth making if a machine other than a developer's own has run the gates that produced it.
+
+### 8.8 nuget.org, once GitHub is working
+
+Artifacts B through E to nuget.org with the `Testaria.*` ID prefix reserved, after the GitHub channel has proved itself. Last because it is the least reversible step in the plan: an ID can be unlisted but never deleted, and by this point the names have been carried by a working release rather than by an intention.
