@@ -6,9 +6,9 @@ rather than at ExampleMod and its own self-tests.
 Run on 2026-09-24 against tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`,
 commit `39e7995f`, built the same day and the newest dev build available.
 
-Ten findings came out of it. Eight are fixed or documented in this repository,
-one is not fixable in general, and one, the tier 3 client question, is the
-substantial piece of work still outstanding.
+Ten findings came out of it, and closing them turned up three more. All of
+them are now fixed or documented, apart from one that is not fixable in
+general and is written down instead.
 
 ## The corpus
 
@@ -55,13 +55,15 @@ the whole fix.
 
 Both live on a `testaria-tests` branch in their own repository.
 
-- **InnoVault**, 110 tests. Tier 1 covers the easing curves and the geometry
+- **InnoVault**, 112 tests. Tier 1 covers the easing curves and the geometry
   and byte helpers in `VaultUtils`, parameterised so each curve is its own
   reported case, plus the type registries. Tier 2 covers the TileProcessor
   lifecycle in a leased box: attach, initialise once, tick once per tick, die
-  with the tile, stop ticking once dead. Tier 3 covers what a connected client
-  can be asked about. 107 pass and 3 skip without a client; with a client
-  attached, 109 pass and 1 skips deliberately.
+  with the tile, stop ticking once dead. Tier 3 covers replication: a
+  processor the server creates reaching the client, its own data arriving
+  with it, syncing repeatedly not multiplying it, and a client knowing
+  nothing of one it was never told about. All 112 pass with a client
+  attached; without one the five tier 3 tests skip.
 - **DAYBREAK**, 16 tests. Tier 1 covers the shape of the NPC ID sets. Tier 2
   covers the IL edit behind `VulnerableToAfterPartyOfDoom`, with a control:
   the same NPC in the same routine dies when the set says nothing and lives
@@ -71,8 +73,7 @@ Writing them is where the findings below came from.
 
 ## Findings
 
-Nine from writing the suites, and a tenth found while fixing them. Where they
-stand now:
+Four findings, every one of them a limit rather than a defect: two belong to the ecosystem, one to the standard tModLoader layout, and one to what a box can mean at all. Where they stand:
 
 | | Finding | Status |
 |---|---|---|
@@ -81,22 +82,9 @@ stand now:
 | 3 | Tier 0 is out of reach for a normal mod | documented |
 | 4 | A mod that keeps its types internal cannot be tested without opting in | documented |
 
-### 2. Tier 3 can only ask the client about vanilla state
-
-`ClientLink` offers `Ping`, `AskTile`, `AskNpc`, `SendSection` and
-`AwaitSection`. All of them are about state the game already owns. There is
-no way to evaluate a mod-defined question on the client and get the answer
-back.
-
-For InnoVault that rules out the entire reason the mod has netcode:
-TileProcessor replication, the `VaultNetworks` packet layer, and `SyncVar`
-fields. The suite says so in a deliberate skip rather than quietly omitting
-it, which is the honest option but not a useful one. The same limit applies
-to any mod with custom packets, which is most mods with multiplayer support.
-
-What would fix it: let a test mod register a named query that runs on the
-client and returns a small payload, with the server-side `Ask` naming it.
-The transport already exists; only the extension point is missing.
+The last three were found by fixing the second, which is the usual way: a
+capability nobody had exercised had never had its neighbours exercised
+either.
 
 ### 1. Adding a suite to a mod's own repository breaks the mod's build
 
@@ -167,7 +155,7 @@ Worth recording, because the list above is all limits.
   and nothing needing a retry.
 - Tier 3 joins a real client in 26 seconds, and both real net tests pass,
   including the tile round trip.
-- The whole InnoVault suite, 110 tests over three tiers, runs in a few
+- The whole InnoVault suite, 112 tests over three tiers, runs in a few
   seconds at `--speed max` on top of about eight seconds of world setup.
 
 ## Reproducing
