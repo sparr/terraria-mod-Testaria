@@ -21,6 +21,7 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 	private readonly List<int> spawnedPlayers = [];
 	private readonly List<SpawnedProjectile> spawnedProjectiles = [];
 	private readonly List<SpawnedItem> spawnedItems = [];
+	private readonly List<Action> restorations = [];
 
 	private readonly RunPacing? pacing;
 
@@ -265,12 +266,119 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 		return Main.item[index];
 	}
 
-	/// <summary>Places a tile at a box-relative position.</summary>
+	/// <summary>
+	/// Places a tile at a box-relative position.
+	/// <para/>
+	/// Through <c>WorldGen.PlaceTile</c>, which puts the tile there and
+	/// nothing else. In particular it does not fire
+	/// <c>ModTile.PlaceInWorld</c> or <c>GlobalTile.PlaceInWorld</c>: those
+	/// are called from <c>Player</c> alone, when somebody places a tile from
+	/// an item. Use <see cref="PlaceTileAsPlayer"/> when the behaviour under
+	/// test hangs off that hook.
+	/// </summary>
 	public void PlaceTile(int offsetX, int offsetY, int type)
 	{
 		(int x, int y) = Absolute(offsetX, offsetY);
 
 		WorldGen.PlaceTile(x, y, type, mute: true, forced: true);
+	}
+
+	/// <summary>
+	/// Places a tile and then tells the mod loader a player placed it, which
+	/// is what <c>WorldGen.PlaceTile</c> on its own does not do.
+	/// <para/>
+	/// A great deal of mod behaviour hangs off the placement hook rather than
+	/// off the tile existing: InnoVault creates its TileProcessor entities
+	/// there, and vanilla-adjacent code commonly uses it to attach a tile
+	/// entity, seed data, or start an animation. tModLoader calls it from
+	/// <c>Player</c> only, so a test that placed a tile the ordinary way and
+	/// then waited for the entity waited until its timeout for something that
+	/// was never coming.
+	/// <para/>
+	/// This is the hook, not a simulated player: no item is consumed, no
+	/// animation plays, and nothing checks whether a player could have reached
+	/// the spot. What it buys is that code listening for a placement hears one.
+	/// </summary>
+	/// <param name="offsetX">Box-relative tile column.</param>
+	/// <param name="offsetY">Box-relative tile row.</param>
+	/// <param name="type">The tile to place.</param>
+	/// <param name="item">
+	/// The item the placement is attributed to, for behaviour that reads it.
+	/// Null means the hook is told no item was involved, which is what a
+	/// placement from anything other than an inventory slot looks like.
+	/// </param>
+	/// <returns>True if the tile is there afterwards.</returns>
+	public bool PlaceTileAsPlayer(int offsetX, int offsetY, int type, Item? item = null)
+	{
+		(int x, int y) = Absolute(offsetX, offsetY);
+
+		WorldGen.PlaceTile(x, y, type, mute: true, forced: true);
+
+		if (!Main.tile[x, y].HasTile || Main.tile[x, y].TileType != type)
+			return false;
+
+		Terraria.ModLoader.TileLoader.PlaceInWorld(x, y, item ?? new Item());
+
+		return true;
+	}
+
+	/// <summary>
+	/// Something to put back when this test ends, however it ends.
+	/// <para/>
+	/// A box isolates a region of the world; it cannot isolate a static field.
+	/// A test that flips a global, an ID set entry, or a vanilla flag has to
+	/// put it back by hand, and the obvious way, doing it on the last line,
+	/// silently stops happening the moment an assertion above it fails. The
+	/// alternative is <c>try</c>/<c>finally</c> around the whole body, which
+	/// works but which every author has to remember, in a coroutine, forever.
+	/// <para/>
+	/// Registered restorations run at teardown in reverse order, after the
+	/// test's entities are cleared and before the ground goes back. Reverse,
+	/// because that is the order that makes nesting behave: the last thing
+	/// changed is the first thing undone.
+	/// <para/>
+	/// A restoration that throws does not stop the others: teardown is the one
+	/// place where giving up half way is worse than carrying on, since the
+	/// next test inherits whatever was left behind.
+	/// </summary>
+	/// <example>
+	/// <code>
+	/// bool before = Main.dayTime;
+	/// ctx.Restore(() => Main.dayTime = before);
+	/// Main.dayTime = false;
+	/// </code>
+	/// </example>
+	public void Restore(Action restoration)
+	{
+		ArgumentNullException.ThrowIfNull(restoration);
+
+		restorations.Add(restoration);
+	}
+
+	/// <summary>
+	/// Reads a value, registers putting it back, and writes the new one.
+	/// <para/>
+	/// The one-line form of <see cref="Restore(Action)"/>, for the common case
+	/// where what is being changed is a single mutable slot. Doing the read
+	/// and the registration together removes the way this is usually got
+	/// wrong, which is registering a restoration that captures the new value
+	/// because the assignment happened first.
+	/// </summary>
+	/// <example>
+	/// <code>
+	/// ctx.Change(() => Main.dayTime, value => Main.dayTime = value, false);
+	/// </code>
+	/// </example>
+	public void Change<T>(Func<T> read, Action<T> write, T value)
+	{
+		ArgumentNullException.ThrowIfNull(read);
+		ArgumentNullException.ThrowIfNull(write);
+
+		T original = read();
+
+		Restore(() => write(original));
+
+		write(value);
 	}
 
 	/// <summary>
@@ -518,7 +626,34 @@ public sealed class TestContext : ITickingContext, ISteppableContext, IContamina
 
 		spawnedItems.Clear();
 
+		RunRestorations();
+
 		RestoreGround();
+	}
+
+	/// <summary>
+	/// Puts back whatever the test asked to have put back.
+	/// <para/>
+	/// After the entities and before the ground: a restoration may well touch
+	/// a setting the ground restore should have the last word over, and it
+	/// must not be looking at entities that are about to vanish.
+	/// <para/>
+	/// Reverse order, so nesting unwinds the way a stack does. Each one is
+	/// isolated, because one throwing must not strand the rest: the whole
+	/// point of registering them was to be sure they happen.
+	/// </summary>
+	private void RunRestorations()
+	{
+		for (int i = restorations.Count - 1; i >= 0; i--) {
+			try {
+				restorations[i]();
+			}
+			catch (Exception ex) {
+				AddNote($"A restoration registered by this test threw during teardown: {ex.GetType().Name}: {ex.Message}");
+			}
+		}
+
+		restorations.Clear();
 	}
 
 	/// <summary>

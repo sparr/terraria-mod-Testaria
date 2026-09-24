@@ -43,18 +43,80 @@ public static class Assert
 			throw new AssertionException(message ?? "Assert.False() Failure\nExpected: False\nActual:   True");
 	}
 
-	/// <summary>Asserts that two values are equal.</summary>
+	/// <summary>
+	/// Asserts that two values are equal.
+	/// <para/>
+	/// Collections are compared element by element, the way xUnit's
+	/// <c>Assert.Equal</c> does. The default equality of a <c>List&lt;T&gt;</c>
+	/// is reference equality, so without this a test comparing two lists of
+	/// the same strings fails, and fails with "Expected:
+	/// System.Collections.Generic.List`1[System.String], Actual:
+	/// System.Collections.Generic.List`1[System.String]", which says nothing
+	/// at all. That happened while writing this framework's own tests, twice.
+	/// <para/>
+	/// Strings are not treated as collections of characters, for the obvious
+	/// reason.
+	/// </summary>
 	public static void Equal<T>(T expected, T actual, string? message = null)
 	{
-		if (!EqualityComparer<T>.Default.Equals(expected, actual))
-			throw new AssertionException(message ?? Describe("Assert.Equal()", expected, actual));
+		if (AreEqual(expected, actual))
+			return;
+
+		throw new AssertionException(message ?? Describe("Assert.Equal()", expected, actual));
 	}
 
 	/// <summary>Asserts that two values are not equal.</summary>
 	public static void NotEqual<T>(T notExpected, T actual, string? message = null)
 	{
-		if (EqualityComparer<T>.Default.Equals(notExpected, actual))
-			throw new AssertionException(message ?? $"Assert.NotEqual() Failure\nExpected: not {Format(notExpected)}\nActual:   {Format(actual)}");
+		if (!AreEqual(notExpected, actual))
+			return;
+
+		throw new AssertionException(message ?? $"Assert.NotEqual() Failure\nExpected: not {Format(notExpected)}\nActual:   {Format(actual)}");
+	}
+
+	/// <summary>
+	/// Structural equality: element by element for sequences, the type's own
+	/// equality for everything else.
+	/// </summary>
+	private static bool AreEqual<T>(T expected, T actual)
+	{
+		// The type's own equality first, so anything that has defined what it
+		// means to be equal keeps saying so, arrays and lists included when
+		// they happen to be the same object.
+		if (EqualityComparer<T>.Default.Equals(expected, actual))
+			return true;
+
+		// A string is IEnumerable<char>, and comparing two unequal strings
+		// character by character would report a difference at an index rather
+		// than showing the strings.
+		if (expected is string || actual is string)
+			return false;
+
+		if (expected is not IEnumerable left || actual is not IEnumerable right)
+			return false;
+
+		IEnumerator one = left.GetEnumerator();
+		IEnumerator two = right.GetEnumerator();
+
+		try {
+			while (true) {
+				bool hasOne = one.MoveNext();
+				bool hasTwo = two.MoveNext();
+
+				if (hasOne != hasTwo)
+					return false;
+
+				if (!hasOne)
+					return true;
+
+				if (!Equals(one.Current, two.Current))
+					return false;
+			}
+		}
+		finally {
+			(one as IDisposable)?.Dispose();
+			(two as IDisposable)?.Dispose();
+		}
 	}
 
 	/// <summary>Asserts that a reference is null.</summary>
@@ -199,6 +261,36 @@ public static class Assert
 		null => "null",
 		string s => $"\"{s}\"",
 		IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+		// Contents, not the type name. A collection whose ToString is
+		// "System.Collections.Generic.List`1[System.String]" tells the reader
+		// nothing about why their assertion failed, and printing that on both
+		// the expected and actual lines is worse than printing nothing.
+		IEnumerable sequence => FormatSequence(sequence),
 		_ => value.ToString() ?? "null",
 	};
+
+	/// <summary>
+	/// A sequence as its elements, truncated so that a large collection does
+	/// not bury the assertion that mentions it.
+	/// </summary>
+	private static string FormatSequence(IEnumerable sequence)
+	{
+		const int Limit = 10;
+
+		List<string> parts = [];
+		int count = 0;
+
+		foreach (object? element in sequence) {
+			count++;
+
+			if (parts.Count < Limit)
+				parts.Add(Format(element));
+		}
+
+		string body = string.Join(", ", parts);
+
+		return count > Limit
+			? $"[{body}, ... {count} in total]"
+			: $"[{body}]";
+	}
 }
