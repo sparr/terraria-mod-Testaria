@@ -61,6 +61,12 @@ public sealed record TestCase
 
 	/// <summary>True when the test asked for a fresh world instead of a box.</summary>
 	public bool FreshWorld { get; init; }
+
+	/// <summary>True when the test opted out of the run's fast forward.</summary>
+	public bool RealTime { get; init; }
+
+	/// <summary>True when the world should be frozen from the test's first tick.</summary>
+	public bool StartPaused { get; init; }
 }
 
 /// <summary>

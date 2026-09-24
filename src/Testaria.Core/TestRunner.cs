@@ -159,6 +159,17 @@ public sealed class TestRunner
 		current = test;
 		startedAt = options.TimeProvider.GetTimestamp();
 
+		// Each test starts from the run's own pacing, whatever the last one
+		// left behind. A test that pauses and then throws must not freeze the
+		// rest of the suite.
+		if (options.Pacing is RunPacing pacing) {
+			pacing.ResetForNextTest();
+			pacing.CurrentTestWantsRealtime = test.RealTime;
+
+			if (test.StartPaused)
+				pacing.Pause();
+		}
+
 		if (test.Box is BoxRequest request) {
 			if (options.Arena is null) {
 				Complete(TestOutcome.Errored, "This test needs a box but the runner has no arena configured.");
@@ -286,6 +297,10 @@ public sealed class TestRunner
 
 	private void Complete(TestOutcome outcome, string? message, string? stackTrace = null, int? ticks = null)
 	{
+		// Unfreeze before anything else. However this test ended, the world
+		// has to be moving again for the next one to get its ticks.
+		options.Pacing?.ResetForNextTest();
+
 		TestCase test = current!;
 		TimeSpan duration = options.TimeProvider.GetElapsedTime(startedAt);
 

@@ -84,3 +84,28 @@ public sealed class GameTestAttribute : TestariaTestAttribute
 /// </summary>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 public sealed class FreshWorldAttribute : Attribute;
+
+/// <summary>
+/// Exempts a test from the run's fast forward, running it at the game's own
+/// 60 ticks per second.
+/// <para/>
+/// For tests whose subject is wall clock rather than simulated time: anything
+/// measuring real elapsed duration, waiting on a background task, or talking
+/// to something outside the tick loop. Simulated behaviour is unaffected by
+/// fast forward, so an ordinary gameplay test never needs this.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class RealTimeAttribute : Attribute;
+
+/// <summary>
+/// Freezes the world as the test begins, so nothing moves until the test asks
+/// it to with <see cref="TestContextSteppingExtensions.Step"/>.
+/// <para/>
+/// The tick the body starts on still happens, because the body has to run in
+/// order to ask for anything; the freeze takes effect from the tick after. So
+/// this is exactly equivalent to calling
+/// <see cref="TestContextSteppingExtensions.Pause"/> as the first statement,
+/// and exists so the intent is visible in the test list.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class StartPausedAttribute : Attribute;

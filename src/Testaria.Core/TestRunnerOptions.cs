@@ -62,6 +62,14 @@ public sealed record TestRunnerOptions
 	/// </summary>
 	public Func<BoxLease?, ITestContext>? CreateContext { get; init; }
 
+	/// <summary>
+	/// Pacing and freeze state for the run, or null when the host cannot vary
+	/// either. The runner applies each test's <c>[RealTime]</c> and
+	/// <c>[StartPaused]</c> to it, and resets it between tests so one test's
+	/// pause cannot strand the next.
+	/// </summary>
+	public RunPacing? Pacing { get; init; }
+
 	/// <summary>Clock used for wall clock durations. Injectable so runs are reproducible under test.</summary>
 	public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }

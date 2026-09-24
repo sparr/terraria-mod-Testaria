@@ -24,6 +24,8 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[FreshWorld]` | A test no box can isolate, which needs a freshly generated world instead |
 | `[Case]` | One set of arguments for a parameterised test, reported as a case of its own |
 | `[CaseSource]` | A member supplying a parameterised test's cases, read during discovery |
+| `[RealTime]` | Exempts a test from the run's fast forward, running it at 60 ticks per second |
+| `[StartPaused]` | Freezes the world as the test begins, for a test that steps it by hand |
 
 The single most important rule the framework enforces is the **Tier 0 boundary**: the moment a test touches `Main`, `ModContent`, or `ContentSamples`, it depends on state that only a completed load pass establishes. In a bare test host those statics are default-initialized rather than absent, so such a test will often pass silently against garbage. `Testaria.Core` therefore carries no reference to tModLoader at all, which makes that boundary structural rather than advisory.
 
@@ -54,6 +56,8 @@ All of it in `Testaria.Core`, all of it free of any tModLoader reference, and al
 | `TestRunner`, `TestSession` | Drives discovery, the arena and the scheduler from the game's update loop |
 | `BlankWorldLayout` | A deterministic stone-and-air world, with reserved ground for whatever vanilla insists exists |
 | `PortableFileName`, `ResultsLocation` | Report paths valid on every OS Terraria runs on |
+| `RunPacing`, `TickRateGovernor` | How fast a run may simulate, and whether it simulates at all. The game-side wiring follows separately |
+| `ISteppableContext` | Stopping the world and stepping it a tick at a time |
 
 ## Getting started on your own mod
 

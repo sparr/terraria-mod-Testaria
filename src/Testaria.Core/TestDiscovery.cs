@@ -31,6 +31,8 @@ public static class TestDiscovery
 
 		foreach (Type type in types) {
 			bool typeFreshWorld = type.GetCustomAttribute<FreshWorldAttribute>() is not null;
+			bool typeRealTime = type.GetCustomAttribute<RealTimeAttribute>() is not null;
+			bool typeStartPaused = type.GetCustomAttribute<StartPausedAttribute>() is not null;
 
 			foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
 				if (method.GetCustomAttribute<TestariaTestAttribute>() is not TestariaTestAttribute marker)
@@ -44,6 +46,8 @@ public static class TestDiscovery
 				}
 
 				bool freshWorld = typeFreshWorld || method.GetCustomAttribute<FreshWorldAttribute>() is not null;
+				bool realTime = typeRealTime || method.GetCustomAttribute<RealTimeAttribute>() is not null;
+				bool startPaused = typeStartPaused || method.GetCustomAttribute<StartPausedAttribute>() is not null;
 				bool wantsContext = WantsContext(method);
 				int dataParameters = method.GetParameters().Length - (wantsContext ? 1 : 0);
 
@@ -57,6 +61,8 @@ public static class TestDiscovery
 					TimeoutTicks = marker.Timeout,
 					Box = marker is GameTestAttribute game ? game.ToRequest() : null,
 					FreshWorld = freshWorld,
+					RealTime = realTime,
+					StartPaused = startPaused,
 				};
 
 				if (dataParameters == 0) {
