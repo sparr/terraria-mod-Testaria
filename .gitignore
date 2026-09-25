@@ -22,6 +22,11 @@ Testaria.code-workspace
 .DS_Store
 Thumbs.db
 
+# What scripts/ci-local.sh keeps: one directory per run, plus the history and
+# the lock. Local by definition, and named by TESTARIA_CI_RUNS if somewhere
+# outside the checkout suits better.
+ci-runs/
+
 # Machine-specific paths, written by scripts/discover-paths.sh: one file for
 # the shell gates and one for MSBuild, since neither reads the other's format.
 # The committed .example beside each is the same thing filled in by hand.

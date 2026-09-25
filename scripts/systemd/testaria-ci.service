@@ -1,0 +1,30 @@
+[Unit]
+Description=Testaria game-tier gates for the latest commit
+# What this runs, and why, is scripts/ci-local.sh and PLAN.md section 8.6h.
+# Not a Documentation= line: systemd wants an absolute URL there, and where
+# this checkout sits is the one thing these units do not know.
+
+[Service]
+Type=oneshot
+
+# The one machine-specific line lives outside the repository, for the same
+# reason scripts/paths.local.sh does: nothing committed here should know where
+# this checkout sits. Create it with one line:
+#
+#   TESTARIA_CHECKOUT=%h/src/games/terraria/mods/mine/Testaria
+#
+EnvironmentFile=%h/.config/testaria-ci.env
+
+# --if-new does nothing unless HEAD is a commit no run has covered and the tree
+# is clean, so the timer below can fire as often as it likes.
+ExecStart=/usr/bin/env sh -c 'exec "$TESTARIA_CHECKOUT/scripts/ci-local.sh" --if-new'
+
+# A run starts a game server, a client, and a framebuffer, and takes minutes.
+# It yields to anything the person at the keyboard is doing.
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+
+# Long enough for every gate on a loaded machine, short enough that a hung run
+# does not hold the lock until the next reboot.
+TimeoutStartSec=2h

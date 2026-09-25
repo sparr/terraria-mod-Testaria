@@ -35,7 +35,17 @@ FILTER_ARGS=()
 [ -n "$FILTER" ] && FILTER_ARGS=(--filter "$FILTER")
 failures=0
 
-cleanup() { rm -rf "$WORK"; }
+cleanup() {
+	# RESULTS_DIR, when a CI run sets it, is where these two reports are kept
+	# rather than discarded. Both of them: the run without a client is the
+	# half that proves tier 3 was not quietly skipped, so a stored run that
+	# omitted it would be missing its own evidence.
+	if [ -n "${RESULTS_DIR:-}" ]; then
+		[ -f "$WORK/net.xml" ] && cp "$WORK/net.xml" "$RESULTS_DIR/tier-3.xml"
+		[ -f "$WORK/alone.xml" ] && cp "$WORK/alone.xml" "$RESULTS_DIR/tier-3-no-client.xml"
+	fi
+	rm -rf "$WORK"
+}
 trap cleanup EXIT
 
 echo "=== building ==="

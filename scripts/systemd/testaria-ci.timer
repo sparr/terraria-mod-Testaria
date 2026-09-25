@@ -1,0 +1,14 @@
+[Unit]
+Description=Check for a Testaria commit the gates have not covered
+
+[Timer]
+# Fifteen minutes is a compromise: often enough that a commit is covered while
+# it is still the thing being worked on, rare enough that the check itself
+# costs nothing. The check is a git rev-parse and a grep; a run only happens
+# when there is a new commit to run against.
+OnBootSec=10min
+OnUnitInactiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

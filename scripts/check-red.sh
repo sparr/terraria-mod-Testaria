@@ -13,7 +13,17 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$(mktemp -d -t testaria-red-XXXXXX)"
-trap 'rm -rf "$OUT"' EXIT
+
+# RESULTS_DIR, when a CI run sets it, is where the report is kept rather than
+# discarded. Copied on the way out and not written there directly, because the
+# checks below are about a report this script alone is responsible for.
+cleanup() {
+	if [ -n "${RESULTS_DIR:-}" ] && [ -f "$OUT/red.xml" ]; then
+		cp "$OUT/red.xml" "$RESULTS_DIR/red-path.xml"
+	fi
+	rm -rf "$OUT"
+}
+trap cleanup EXIT
 
 echo "running the deliberately broken suite..."
 

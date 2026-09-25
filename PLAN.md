@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6g, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
+Status: implemented through section 8.6h, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 
 ## 0. The short version
 
@@ -26,13 +26,13 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Gates | Eight by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, the templates generated and then built and run, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. A ninth, the arena load test, is deliberate (`RUN_LOAD=1`); its most recent run, the first since teardown began restoring the ground, is green at 308 boxes with a slowest restore of 28.9 ms. The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
-| CI | Core tiers only, on three operating systems. The game tiers have no job, and by section 5.1 that job ships with the first GitHub release (sections 8.3a and 8.7) |
+| CI | Two halves. GitHub Actions covers the core tiers on three operating systems. The game tiers run locally, under `scripts/ci-local.sh`: preflight, provisioning, every gate strictly, a kept run directory, a lock, and a commit history, on a timer (section 8.6h). The hosted half of the game tiers still ships with the first GitHub release (sections 8.3a and 8.7), and now has a recipe to port rather than to invent |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
 | The five unmeasured numbers (risk 3) | All five measured (sections 8.5d and 8.5f). The box default and the quarantine are now calibrated numbers; the gutter stays a deliberate floor; the column region split has no corpus to calibrate against and says so |
 
-Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1), and section 8.9, rendering, which is deliberately after both.
+Sections 8.4, 8.5 and 8.6 are finished, and with them every hole that stood before distribution work. What remains is sections 8.7 and 8.8, the publication sequence, which are gated on decisions and secrets that are not the code's to supply (section 5.1), and section 8.9, rendering, which is deliberately after both. Section 8.6h takes the CI half of 8.7 as far as it can go without a release: the game tiers now run unattended here, on a timer, so what 8.7 ships is a port rather than an invention.
 
 Section 8.6e is the one to read before trusting any of the above. Six mods nobody here wrote produce sixteen findings between them, three of which no existing gate catches and two of which exist *because* of how a gate is written.
 
@@ -893,9 +893,35 @@ An onboarding step nobody executes is an onboarding step nobody has checked: a s
 
 Two details it handles. The pinned version is checked because a mismatch makes every generated project fail to restore with an error naming NuGet rather than the mismatch. And `tMLMod.targets` builds a mod by invoking tModLoader, which writes the `.tmod` into the save path's `Mods` folder and offers no way to redirect it, so the probe mod is named distinctively and removed on the way out: a gate must not leave a mod installed.
 
+### 8.6h CI for the game tiers, on a machine that already has the game
+
+Section 8.7 waits on a GitHub release, and everything section 8.3a lists for that job (download the server zip, hold an ownership key as a secret, decompile, build, cache) exists to reconstruct on a rented machine what a developer's own machine already has. None of it is what makes a run *continuous integration*. So the discipline can be applied here first, and the job that ships in 8.7 becomes a port of a recipe that has been running rather than a first attempt.
+
+`scripts/ci-local.sh` is that recipe. `run-all.sh` remains the developer's loop; two environment variables turn it into the body of a run, and the wrapper supplies the rest.
+
+**Strict mode, because skipping is the failure mode that matters.** `run-all.sh` had five ways to reduce itself: four `SKIP_*` variables and a calibration gate that skipped itself when no `ExampleMod.tmod` was present. Every one of them prints a line and exits zero, which is the same shape as the bug section 8.5 already named twice: a suite that skips everything is not a suite that passed. `STRICT=1` makes a gate that will not run a gate that failed. The load gate is the one exception and says so: it measures rather than asserts, so a loaded machine makes it report a slower arena rather than a broken one.
+
+**Provisioning, because a calibration subject has to be a known one.** The gate consumed whatever `ExampleMod.tmod` was last built, by anything, at any time. A run builds it first, which the incremental cache in `build-examplemod.sh` makes cheap.
+
+**A run directory, because a verdict that is only a terminal is not a record.** `RESULTS_DIR` collects one log per gate, the JUnit report from every gate that writes one (the green path and the calibration through `RESULTS_OUT`, which already existed; the red path and both halves of tier 3 through a copy on the way out, which did not), `gates.tsv`, and a summary counting tests as well as gates. Counting only gates would hide exactly what `MIN_TESTS` exists to catch.
+
+**A lock and a history, because that is the difference between a script and a service.** Two runs share one save directory and one port, so the second fails in ways that look like the framework's fault. `history.tsv` records which commit got which verdict, and `--if-new` reads it: a timer fires every fifteen minutes, finds nothing to do, and costs a `rev-parse` and a `grep`. It declines a dirty tree rather than testing a moving target, since a scheduled run records a verdict against a commit and a tree with edits in it is not any commit.
+
+`scripts/systemd/` holds a user service and timer. The service reads its one machine-specific value from `~/.config/testaria-ci.env`, for the reason `scripts/paths.local.sh` is untracked.
+
+**Measured on this machine:** all eight gates green in 286 seconds, on a machine at a load average of 14 with another game running. 1107 tests meant to pass, of which 1068 did and 39 skipped themselves for want of a client or a fresh world, plus the red path's six deliberate failures. The slowest gate is tier 3 at 81 seconds and the calibration's 927 tests take 29. That is the first evidence in this document that the whole matrix passes from one unattended entry point rather than from a developer's shell, and it says the cost of running everything is five minutes rather than an afternoon.
+
+The red path is the reason the summary counts two totals rather than one. Its six tests fail and error on purpose, and folding them into the rest prints "2 failed, 4 errored" directly above a verdict of pass, which reads as a broken run. They are reported as what they are instead.
+
+**One thing it deliberately does not solve.** Building a mod means invoking tModLoader, which writes the `.tmod` into the save path's `Mods` folder and offers no way to redirect it (section 8.6g met the same wall). A run therefore shares that folder with whatever else uses it. The gates themselves run in a scratch save directory and cannot touch a real world or player, but the `Mods` folder is common ground, and a scheduled run that fires while somebody is playing will replace the mods they have installed. Fixing it means a redirect tModLoader does not offer.
+
+Linux only, as written: `Xvfb`, `systemd-run`, and `flock` all appear in it. The portability that matters is already asserted, on three operating systems, by the core job in section 8.3a.
+
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
-One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run `scripts/run-all.sh` or its CLI equivalent.
+One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run the gates.
+
+What it runs is settled by section 8.6h: `scripts/ci-local.sh`, which already preflights, provisions, runs every gate strictly, and keeps the reports. The hosted job's own work is the four steps above, which end with a tModLoader install and an `EXAMPLEMOD_SRC`, at which point it has what the local recipe assumes. The parts of `ci-local.sh` that are a developer's machine rather than CI, the lock and the commit history, are harmless there: a hosted runner is alone on its own filesystem and its checkout is always the commit under test.
 
 The release half is artifact A as a GitHub Release with a full SemVer tag, plus whatever `docs/` has by then. The point of pairing them is that the release is only worth making if a machine other than a developer's own has run the gates that produced it.
 

@@ -515,17 +515,64 @@ scripts/check-red.sh                                   # prove failures are repo
 scripts/run-fresh.sh                                   # a dedicated server per [FreshWorld] test, very slow
 ```
 
-`run-tests.sh` provisions a scratch save directory, drops the `.tmod` files in, launches a headless server on its own virtual display, pipes a console command, and maps the JUnit report to an exit code. It never touches a real installation's mods, worlds or players.
+## Continuous integration, on your own machine
 
-Still to come: parallel box execution.
+```
+scripts/ci-local.sh
+```
+
+The game tiers need a tModLoader install, and a hosted CI runner has none. Obtaining one there is real work: download the public dedicated-server zip, decompile and build tModLoader with an ownership key held as a repository secret, and cache the result. That job is planned, and everything it does is a reconstruction of what a machine with the game already has. So the gates can be run under CI discipline here first.
+
+`ci-local.sh` wraps `run-all.sh` with the parts that make a run worth keeping:
+
+| It does | Because |
+| --- | --- |
+| Preflights `dotnet`, `python3`, `rsync`, `Xvfb`, `systemd-run`, `flock`, the install, and the ExampleMod sources | A missing `Xvfb` otherwise surfaces as a tier 3 client that joins and then goes quiet |
+| Builds ExampleMod first | Otherwise the calibration gate calibrates against whatever `.tmod` was last built, which is not a known version of anything |
+| Runs the gates with `STRICT=1` | A gate that cannot run is a failed gate. `SKIP_*` exists for a developer's quick loop; a CI run that honored it would report success for a suite it never ran |
+| Keeps a directory per run | Every gate's log, every JUnit report, `gates.tsv`, and a summary, all still there after the terminal is gone |
+| Takes a lock | Two runs share one save directory and one port, so the second fails in ways that look like the framework's fault |
+| Appends to `history.tsv` | Which commit got which verdict, which is what `--if-new` reads |
+
+| Option | What it does |
+| --- | --- |
+| `--if-new` | Run only if `HEAD` is a commit no run has covered, and the tree is clean. Does nothing otherwise, so a timer can fire as often as it likes |
+| `--force` | Run even for a commit already recorded |
+| `--load` | Include the arena load gate, which is opt-in because it measures rather than asserts |
+| `--keep N` | Keep the N most recent run directories, default 20 |
+| `--runs-dir DIR` | Where runs are kept. Defaults to `ci-runs/`, or `TESTARIA_CI_RUNS` |
+
+A run leaves `ci-runs/latest` pointing at the most recent one:
+
+```
+ci-runs/latest/summary.txt       gates, verdicts, and how much each one proved
+ci-runs/latest/run.meta          commit, branch, host, install, load average
+ci-runs/latest/gates.tsv         gate, verdict, seconds
+ci-runs/latest/run.log           everything the run printed
+ci-runs/latest/<gate>.log        one per gate
+ci-runs/latest/<gate>.xml        the JUnit report from every gate that writes one
+```
+
+### Running it on a timer
+
+`scripts/systemd/` has a user service and timer. The service reads the one machine-specific value from a file outside the repository, for the same reason [`scripts/paths.local.sh`](#writing-the-answers-down-once) is untracked:
+
+```
+echo "TESTARIA_CHECKOUT=$PWD" > ~/.config/testaria-ci.env
+cp scripts/systemd/testaria-ci.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now testaria-ci.timer
+```
+
+It checks every fifteen minutes and runs only when there is a commit no run has covered. `systemctl --user list-timers testaria-ci.timer` says when it will next fire, `journalctl --user -u testaria-ci.service` says what happened, and `ci-runs/latest/summary.txt` says what it found.
+
+Two things it deliberately does not do. It does not run against a dirty tree: a scheduled run records a verdict against a commit, and a tree with edits in it is not any commit. And it does not isolate itself from the game's save directory, because building a mod means invoking tModLoader, which writes the `.tmod` into the save path's `Mods` folder and offers no way to redirect it. Playing tModLoader while a run is going will see the mods it builds.
+
+Linux only, for `Xvfb`, `systemd-run`, and `flock`. The core tiers already run on three operating systems in GitHub Actions, which is where the portability that matters is asserted.
 
 ## Building against tModLoader
 
 `Testaria.Core` and its tests need nothing but the .NET SDK. The `Testaria` mod project needs a tModLoader install on the **1.4.5 line** (`net10.0`, C# 14).
-
-The build looks for one in the platform's default Steam library; an install on another drive, in a second library folder, or from GOG needs `TML_PATH` set to the directory holding `tMLMod.targets`, or [`scripts/discover-paths.sh`](#writing-the-answers-down-once) run once to record it where the build can read it. Without an install, the mod project skips building the `.tmod` and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
-
-To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the password `iamacontributor` to unlock the branch, then select **`1.4.5-dev`**. Note that the `preview-*` branches are **not** 1.4.5, they are the monthly CI channel on the 1.4.4 line and install `net8.0` with `LangVersion 12.0`. See [tModLoader issue #5070](https://github.com/tModLoader/tModLoader/issues/5070).
 
 ## Repository layout
 
@@ -545,7 +592,8 @@ To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the passw
 | [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
 | [`tests/TestariaLoadTest/`](tests/TestariaLoadTest) | The arena under load: 300 boxes, every size class, spanning columns, and a full entity pool. |
 | [`templates/`](templates) | The two `dotnet new` templates. |
-| [`scripts/`](scripts) | The headless harness and its gates, including `check-packages.sh`, which consumes the packages the way a stranger would. |
+| [`scripts/`](scripts) | The headless harness and its gates, including `check-packages.sh`, which consumes the packages the way a stranger would, and `ci-local.sh`, which runs all of them the way CI would. |
+| [`scripts/systemd/`](scripts/systemd) | A user service and timer, for running the game tiers on a schedule. |
 | [`build/`](build) | `Testaria.props`, for suites that live outside this repository. |
 
 ## What is built
