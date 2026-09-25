@@ -531,7 +531,7 @@ The game tiers need a tModLoader install, and a hosted CI runner has none. Obtai
 | Builds ExampleMod first | Otherwise the calibration gate calibrates against whatever `.tmod` was last built, which is not a known version of anything |
 | Runs the gates with `STRICT=1` | A gate that cannot run is a failed gate. `SKIP_*` exists for a developer's quick loop; a CI run that honored it would report success for a suite it never ran |
 | Keeps a directory per run | Every gate's log, every JUnit report, `gates.tsv`, and a summary, all still there after the terminal is gone |
-| Takes a lock | Two runs share one save directory and one port, so the second fails in ways that look like the framework's fault |
+| Takes a lock, and closes it before starting anything | Two runs share one save directory and one port, so the second fails in ways that look like the framework's fault. The lock is a file descriptor and children inherit those, so without `9>&-` the `VBCSCompiler` that `dotnet build` leaves running holds it for ten minutes after the run ends |
 | Appends to `history.tsv` | Which commit got which verdict, which is what `--if-new` reads |
 
 | Option | What it does |
