@@ -31,15 +31,32 @@
 #   TML_PATH=/mnt/games/SteamLibrary/steamapps/common/tModLoader
 #   EXAMPLEMOD_SRC=$HOME/code/tModLoader/ExampleMod
 #
+# scripts/discover-paths.sh writes that file, and paths.local.sh.example
+# beside it is the same thing filled in by hand. The generated file is the
+# easier road: it also writes Directory.Build.local.props, which is how the
+# same answers reach MSBuild, since a build sees the environment it was
+# launched with and not anything sourced here.
+#
 # Sourced by the other scripts, not run on its own.
 
 # One machine's own answers, if it has any. paths.local.sh is untracked and is
 # where a path peculiar to a single computer belongs, so that nothing
 # committed here has to know about it. Sourced first, because everything below
 # defers to a variable that is already set.
+#
+# TESTARIA_IGNORE_LOCAL_PATHS skips it, which is what discover-paths.sh needs:
+# a script that rewrites that file must not first read the answers out of it,
+# or a path that has gone stale can never be corrected.
+#
+# An if rather than a && chain, because the callers source this file under
+# `set -e`: a chain ending in a failed test is the one shape errexit treats as
+# an error, so a machine with no paths.local.sh would abort every gate before
+# it started.
 testaria_local="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/paths.local.sh"
-# shellcheck source=/dev/null
-[ -f "$testaria_local" ] && . "$testaria_local"
+if [ "${TESTARIA_IGNORE_LOCAL_PATHS:-0}" != "1" ] && [ -f "$testaria_local" ]; then
+	# shellcheck source=/dev/null
+	. "$testaria_local"
+fi
 unset testaria_local
 
 # First candidate that exists, falling back to the first named so that a

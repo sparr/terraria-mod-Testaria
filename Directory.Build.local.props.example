@@ -1,0 +1,31 @@
+<!--
+  Example Directory.Build.local.props: the one outside path the build itself
+  needs, on machines where the conventional locations are not the answer.
+
+  Copy it to Directory.Build.local.props, which is ignored by git, or run
+  scripts/discover-paths.sh, which writes it and the shell half together.
+
+  Why this exists as a file rather than as an environment variable. The shell
+  gates find an install wherever Steam admits to keeping it, because they ask
+  Steam: steamapps/libraryfolders.vdf lists every library folder, and
+  scripts/paths.sh reads it. MSBuild cannot, so Directory.Build.props probes a
+  fixed list of conventional locations and otherwise sees only the environment
+  the build was launched with. On a machine whose install is in a second Steam
+  library folder, that gap is silent rather than loud: the gates pass, and a
+  plain `dotnet build` compiles no mod code at all, because a mod project with
+  no install to reference removes its own sources rather than failing. A file
+  the build reads on its own closes it for every shell, editor, and IDE at
+  once.
+
+  Directory.Build.props imports this before it probes, and the condition below
+  leaves a TML_PATH already in the environment in charge, so a one-off build
+  against another install needs nothing changed here.
+-->
+<Project>
+
+  <PropertyGroup>
+    <!-- The directory holding tModLoader.dll and tMLMod.targets. -->
+    <TML_PATH Condition="'$(TML_PATH)' == ''">/path/to/tModLoader</TML_PATH>
+  </PropertyGroup>
+
+</Project>

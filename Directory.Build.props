@@ -10,13 +10,28 @@
   </PropertyGroup>
 
   <!--
+    This machine's own answer for TML_PATH, if it has written one down.
+    Untracked, so nothing committed here knows where anything sits on a
+    particular computer; imported before the probes below, which are only
+    conventional guesses; conditional inside, so a TML_PATH in the environment
+    still wins. scripts/discover-paths.sh writes it, and
+    Directory.Build.local.props.example is the same file by hand.
+
+    A build needs it because MSBuild cannot read steamapps/libraryfolders.vdf
+    the way paths.sh and the tool do, so an install in a second Steam library
+    folder is invisible here however reliably the gates find it.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.local.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.local.props')" />
+
+  <!--
     Locate a tModLoader install for the projects that need one. Set the
     TML_PATH environment variable to the folder holding tMLMod.targets to say
     where it is; otherwise only the default Steam library on each platform is
     probed, so an install on another drive or in a custom library folder needs
-    the variable. Projects that reference tModLoader guard on TestariaHasTml
-    so that a checkout without the game still builds, which is what keeps CI
-    green.
+    the variable, or a Directory.Build.local.props to carry it. Projects that
+    reference tModLoader guard on TestariaHasTml so that a checkout without
+    the game still builds, which is what keeps CI green.
   -->
   <PropertyGroup>
     <tModLoaderSteamPath Condition="'$(tModLoaderSteamPath)' == '' And '$(TML_PATH)' != ''">$(TML_PATH)</tModLoaderSteamPath>

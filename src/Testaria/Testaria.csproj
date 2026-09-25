@@ -46,7 +46,7 @@
 
   <Target Name="TestariaReportTml" BeforeTargets="Build">
     <Message Importance="high" Condition="'$(TestariaHasTml)' == 'true'" Text="Testaria: building mod against tModLoader at $(tModLoaderSteamPath)" />
-    <Message Importance="high" Condition="'$(TestariaHasTml)' != 'true'" Text="Testaria: no tModLoader install found, mod will not be built. Set TML_PATH to build it." />
+    <Message Importance="high" Condition="'$(TestariaHasTml)' != 'true'" Text="Testaria: no tModLoader install found, mod will not be built. Only the conventional Steam library is probed here, so an install in a second library folder is one MSBuild cannot see even though the scripts can. Run scripts/discover-paths.sh to write the path down, or set TML_PATH." />
   </Target>
 
 </Project>

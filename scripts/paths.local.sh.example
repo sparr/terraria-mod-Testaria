@@ -1,0 +1,35 @@
+# Example scripts/paths.local.sh: one machine's answers for the paths that
+# live outside this repository.
+#
+# Copy it to scripts/paths.local.sh, which is ignored by git, and fill in the
+# lines a default does not already cover. Or skip all of it and run
+#
+#   scripts/discover-paths.sh
+#
+# which works the answers out and writes the file, along with the MSBuild half
+# the build needs. Only a path nothing can discover has to be written by hand.
+#
+# scripts/paths.sh sources this before it computes anything, and every default
+# there defers to a variable already set, so a line here wins over discovery
+# and anything exported in the environment wins over a line here.
+#
+# The values below are illustrations, not defaults. None of them is where
+# anything is on your machine.
+
+# A tModLoader install: the directory holding tModLoader.dll and
+# tMLMod.targets. Discovery asks Steam for its library folders, so this is
+# needed only for an install Steam does not know about, such as GOG's, or one
+# outside a library folder entirely.
+#TML_PATH="$HOME/GOG/tModLoader"
+
+# Where a mod build leaves its .tmod: the Mods directory under the save path of
+# the tModLoader build you develop against. The default is the dev build's,
+# since the 1.4.5 line only exists as one; a stable or preview install saves
+# under tModLoader or tModLoader-preview instead.
+#MODS_SRC="$HOME/.local/share/Terraria/tModLoader-preview/Mods"
+
+# The ExampleMod directory inside a checkout of
+# https://github.com/tModLoader/tModLoader. Only scripts/build-examplemod.sh
+# wants it, for the calibration gate. discover-paths.sh looks for a checkout
+# in the directories above this one; anywhere else, name it here.
+#EXAMPLEMOD_SRC="$HOME/code/tModLoader/ExampleMod"

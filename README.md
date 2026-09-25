@@ -491,7 +491,18 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `MIN_TESTS` | Fails the run unless at least this many tests actually ran, rather than skipped | 0, meaning no such demand |
 | `SEED` | The world's generation seed, which is a different thing entirely | 42 |
 
-The build itself reads `TML_PATH` too, so an install anywhere unusual needs setting once and no more.
+### Writing the answers down once
+
+```
+scripts/discover-paths.sh
+```
+
+Discovery is per process, so an install Steam keeps somewhere unusual is found again on every run and forgotten again in between. This works the paths out once and writes them into two files git ignores, with a committed `.example` beside each:
+
+| File | Read by | Why it is separate |
+| --- | --- | --- |
+| `scripts/paths.local.sh` | the gates, through `scripts/paths.sh` | shell, sourced before anything is computed |
+| `Directory.Build.local.props` | `dotnet build`, and any editor or IDE | MSBuild does not run bash |
 
 ### Partial tests
 
@@ -512,7 +523,7 @@ Still to come: parallel box execution.
 
 `Testaria.Core` and its tests need nothing but the .NET SDK. The `Testaria` mod project needs a tModLoader install on the **1.4.5 line** (`net10.0`, C# 14).
 
-The build looks for one in the platform's default Steam library; an install on another drive, in a second library folder, or from GOG needs `TML_PATH` set to the directory holding `tMLMod.targets`. Without an install, the mod project skips building the `.tmod` and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
+The build looks for one in the platform's default Steam library; an install on another drive, in a second library folder, or from GOG needs `TML_PATH` set to the directory holding `tMLMod.targets`, or [`scripts/discover-paths.sh`](#writing-the-answers-down-once) run once to record it where the build can read it. Without an install, the mod project skips building the `.tmod` and says so, rather than failing, so a checkout with no game still builds and the core's tests still run.
 
 To get 1.4.5 on Steam: tModLoader, gear icon, Properties, Betas, enter the password `iamacontributor` to unlock the branch, then select **`1.4.5-dev`**. Note that the `preview-*` branches are **not** 1.4.5, they are the monthly CI channel on the 1.4.4 line and install `net8.0` with `LangVersion 12.0`. See [tModLoader issue #5070](https://github.com/tModLoader/tModLoader/issues/5070).
 
