@@ -26,7 +26,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Gates | Eight by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, the templates generated and then built and run, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. A ninth, the arena load test, is deliberate (`RUN_LOAD=1`); its most recent run, the first since teardown began restoring the ground, is green at 308 boxes with a slowest restore of 28.9 ms. The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
-| CI | Two halves. GitHub Actions covers the core tiers on three operating systems. The game tiers run locally, under `scripts/ci-local.sh`: preflight, provisioning, every gate strictly, a kept run directory, a lock, and a commit history, on a timer (section 8.6h). The hosted half of the game tiers still ships with the first GitHub release (sections 8.3a and 8.7), and now has a recipe to port rather than to invent |
+| CI | Two halves. GitHub Actions covers the core tiers on three operating systems. The game tiers run locally, under `scripts/ci-local.sh`: preflight, provisioning, every gate strictly, a kept run directory, a lock, and a commit history, on a timer (section 8.6h). The hosted half still ships with the first GitHub release (sections 8.3a and 8.7), and is now a recipe to port rather than to invent: every step of it, decompile through tier 3, has been run on Linux against a tModLoader built from source (section 8.7a) |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
@@ -933,11 +933,37 @@ Four assumptions were load bearing and invisible, because a developer's machine 
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
-One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run the gates.
+One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run the gates. It is one `ubuntu-latest` job rather than two runners, which section 8.7a establishes by having run every step of it.
 
 What it runs is settled by section 8.6h: `scripts/ci-local.sh`, which already preflights, provisions, runs every gate strictly, and keeps the reports. The hosted job's own work is the four steps above, which end with a tModLoader install and an `EXAMPLEMOD_SRC`, at which point it has what the local recipe assumes. The parts of `ci-local.sh` that are a developer's machine rather than CI, the lock and the commit history, are harmless there: a hosted runner is alone on its own filesystem and its checkout is always the commit under test.
 
 The release half is artifact A as a GitHub Release with a full SemVer tag, plus whatever `docs/` has by then. The point of pairing them is that the release is only worth making if a machine other than a developer's own has run the gates that produced it.
+
+#### 8.7a One Linux job, rehearsed rather than assumed
+
+tModLoader's own build job runs on `windows-latest` (their `documentation` and `deploy` jobs are the only `ubuntu-latest` ones, and neither compiles the game). That made the Linux path the plan's largest unknown, since our gates are Linux-only and a Windows-build-to-Linux-gates handoff would cost a second runner and an artifact. So it was rehearsed locally, in a scratch clone of the `1.4.5` branch, and it works:
+
+| Step | Result |
+| --- | --- |
+| `setup-cli.sh decompile --terraria-steam-dir <install> --tml-dev-steam-dir steam_build --plain-progress -f --strict` | 41 MB of C# under `src/decompiled` |
+| `setup-cli.sh regen-source --plain-progress -f --strict` | every patch applied, no failure and no fuzz |
+| `dotnet build src/tModLoader/Terraria/Terraria.csproj -c Release` | a 170 MB `steam_build/` carrying `tModLoader.dll`, `tMLMod.targets` and `Libraries/Native/Linux` |
+| `TML_PATH=<steam_build> scripts/run-tests.sh` | 60 tests, the same as against the Steam install |
+| `TML_PATH=<steam_build> scripts/check-net.sh` | both halves pass: 58 of 60 with a client, every tier 3 test skipped without one |
+
+That last pair is the part worth having done. It confirms `TML_PATH` can name a source build rather than a Steam install, which section 8.6h hardened a check for and could not exercise, and it confirms `MODS_SRC` needs no special handling: a build from source reports the Dev purpose and writes its `.tmod` to the same `tModLoader-dev` save path a dev install uses.
+
+**Three things the source settles that guesswork would have got wrong.**
+
+*A dedicated server needs no Terraria content at all.* `Main.TML.cs` opens its content resolution with `if (dedServ) { return; }`, which is why the rehearsal's server ran happily from a scratch directory with no Terraria anywhere near it. A **client** does need it, and outside Steam and GOG it falls back to `../Terraria/Content`, then `../Content`, then exits fatally. So the CI job has to put Terraria's `Content` beside the install as `<tml>/../Terraria/Content`, the side-by-side manual layout. This is also, incidentally, why tier 3 works today without anyone having thought about it: Steam installs tModLoader and Terraria as siblings under `steamapps/common`, so the fallback resolves by accident. The rehearsal reproduced the CI layout with a symlink and the client joined.
+
+*The server zip version is 1458, and that is not an inference.* `TerrariaDecompileExecutableProvider` hardcodes `ClientVersion` and `ServerVersion` as `1.4.5.8` and builds the URL from the version with its dots removed, giving `terraria-server-1458.zip`. tModLoader's `TERRARIA_VERSION: 1458` agrees.
+
+*The download may not be ours to make.* `Retrieve` returns `<TerrariaDir>/Terraria_v1.4.5.8_win.exe` when it already exists, and otherwise falls back per executable: the client is decrypted from `setup/SecretAssets/Terraria_v1.4.5.8_win.exe.enc` with the ownership key, and the server is downloaded from terraria.org **by the setup tool itself**. So the explicit `curl` in tModLoader's workflow is belt and braces. What the job does still need from that zip is the `Content` directory, for the reason above.
+
+**What the rehearsal did not prove.** This machine has `Terraria_v1.4.5.8_win.exe` in its Terraria install, so `Retrieve` short-circuited and the decrypt path never ran. `--key` on Linux is therefore still untested. It is AES in .NET with no platform-specific surface and the option exists precisely for non-Windows hosts, so the risk is low, but it is an assumption until a runner exercises it, and it is the first thing to watch fail.
+
+**Runner requirements, from the two sections above.** `Xvfb` for the tier 3 client, and nothing for the memory cap: section 8.6h made that a probe, and all eight gates pass uncapped, which is what a runner with no systemd user manager will do.
 
 ### 8.8 nuget.org, once GitHub is working
 
