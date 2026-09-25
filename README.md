@@ -486,10 +486,14 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `TML_PATH` | A tModLoader install, the directory holding `tModLoader.dll` and `tMLMod.targets` | Found by asking Steam: every library folder in `steamapps/libraryfolders.vdf` is checked, not just the default one. Set this for a GOG install or anything else Steam does not know about |
 | `MODS_SRC` | Where a mod build leaves its `.tmod`, the `Mods` directory under tModLoader's save path | The save path of a **dev** build, since 1.4.5 is only available as one |
 | `EXAMPLEMOD_SRC` | `ExampleMod` inside a tModLoader source checkout | None. It is a checkout you made, not something an install provides |
-| `SPEED` | [Fast forward](#fast-forward) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
+| `SPEED` | [Fast forward](#realtime-testing) for the run: `max`, or a number of ticks per second | Unset, meaning the game's own 60 tps |
 | `RUN_SEED` | Shifts every test's [seed](#seeds-and-reproducibility) at once, for rerunning a suite against different rolls | 0, so a run draws the same rolls everywhere |
 | `MIN_TESTS` | Fails the run unless at least this many tests actually ran, rather than skipped | 0, meaning no such demand |
+| `BEHAVIOUR` | `1` asks for the sweep's [behaviour checks](#invariant-tests), which lease a box per piece of content across every enabled mod | 0, so they skip carrying that reason |
+| `ECONOMY` | `1` asks for the sweep's [recipe checks](#invariant-tests), whose failure is a balance claim rather than a defect | 0, so they skip carrying that reason |
 | `SEED` | The world's generation seed, which is a different thing entirely | 42 |
+| `MEM_MAX` | How much memory the game is allowed, when it can be capped at all | `4G` |
+| `MEM_CAP` | `0` runs the game without a cap. The cap needs a systemd **user manager**, not just the `systemd-run` binary, so the gates probe for one and go without when there is none, which is the common shape of a CI runner. Set it to 0 to exercise that path on a machine that could cap | 1 |
 
 ### Writing the answers down once
 

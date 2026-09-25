@@ -123,9 +123,15 @@ writable "$props_file" || exit 1
 	echo "#"
 	echo "# Sourced by scripts/paths.sh, which defers to anything already in the"
 	echo "# environment, so a one-off run can still override what is here."
+	echo "#"
+	echo "# Each assignment is written with :- for that reason. A plain one would"
+	echo "# win over the environment instead, which is the wrong way round and is"
+	echo "# worst where it is least visible: a CI runner names its install in the"
+	echo "# environment, and a file like this one left in the checkout would"
+	echo "# silently point the run at a path that machine does not have."
 	echo
 	if [ -n "$TML_PATH" ]; then
-		echo "TML_PATH=\"$TML_PATH\""
+		echo "TML_PATH=\"\${TML_PATH:-$TML_PATH}\""
 	else
 		echo "# No tModLoader install found. Set this to the directory holding"
 		echo "# tModLoader.dll and tMLMod.targets."
@@ -133,7 +139,7 @@ writable "$props_file" || exit 1
 	fi
 	echo
 	if [ -n "$MODS_SRC" ]; then
-		echo "MODS_SRC=\"$MODS_SRC\""
+		echo "MODS_SRC=\"\${MODS_SRC:-$MODS_SRC}\""
 	else
 		echo "# No Mods directory found. Set this to the Mods directory under the"
 		echo "# save path of the tModLoader build you develop against."
@@ -141,7 +147,7 @@ writable "$props_file" || exit 1
 	fi
 	echo
 	if [ -n "$EXAMPLEMOD_SRC" ]; then
-		echo "EXAMPLEMOD_SRC=\"$EXAMPLEMOD_SRC\""
+		echo "EXAMPLEMOD_SRC=\"\${EXAMPLEMOD_SRC:-$EXAMPLEMOD_SRC}\""
 	else
 		echo "# No tModLoader source checkout found nearby. Set this to the"
 		echo "# ExampleMod directory inside one to run the calibration gate."

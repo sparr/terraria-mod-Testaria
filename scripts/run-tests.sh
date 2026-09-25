@@ -50,6 +50,28 @@ RUN_SEED_ARG=""
 # and the run reported "0 tests: 0 passed" and exited 0.
 REQUIRE_MODS_ARG="-testariarequiremods $(printf '%s,' $ENABLED | sed 's/,$//')"
 MEM_MAX="${MEM_MAX:-4G}"
+# The cap is applied with a transient systemd scope, which needs a systemd user
+# manager and not merely the systemd-run binary. A CI runner commonly has the
+# second and not the first, and the failure is not a warning: the server never
+# starts, so every gate that comes through here fails at once and says nothing
+# about the framework.
+#
+# Probed rather than assumed, because there is no reliable way to ask. Running
+# the real thing against `true` costs one process and answers exactly the
+# question that matters. MEM_CAP=0 skips the probe and runs uncapped, which is
+# how the uncapped path gets exercised on a machine that could cap.
+MEM_CAP="${MEM_CAP:-1}"
+CAP=()
+CAP_WHY="no systemd-run"
+if [ "$MEM_CAP" != "1" ]; then
+  CAP_WHY="MEM_CAP=$MEM_CAP"
+elif command -v systemd-run >/dev/null; then
+  if systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" true >/dev/null 2>&1; then
+    CAP=(systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX")
+  else
+    CAP_WHY="no usable systemd user manager"
+  fi
+fi
 
 # Prefer the system dotnet. The runtime bundled with the Steam install can lag
 # the game assemblies: switching to the 1.4.5-dev branch updates tModLoader.dll
@@ -60,6 +82,13 @@ DOTNET="${DOTNET:-$(command -v dotnet || true)}"
 [ -x "$DOTNET" ] || { echo "no usable dotnet found (set DOTNET)" >&2; exit 2; }
 
 [ -f "$TML/tModLoader.dll" ] || { echo "no tModLoader at $TML (set TML_PATH)" >&2; exit 2; }
+# An install is more than its main assembly, and a build from source is the
+# case where that stops being obvious: setup-cli produces a directory laid out
+# like the Steam one, but pointed at the wrong level of it, or at a build that
+# did not finish, the server starts and then dies on a native library. Checked
+# here, where the path is still the thing being talked about.
+[ -d "$TML/Libraries/Native/Linux" ] || [ "$(uname -s)" != "Linux" ] \
+  || { echo "no Libraries/Native/Linux under $TML, so this is not a complete install" >&2; exit 2; }
 
 ROOT="$(dirname "$HERE")"
 
@@ -133,7 +162,23 @@ mkdir -p "$SCRATCH/Mods" "$SCRATCH/Worlds"
 mkfifo "$FIFO"
 
 for mod in $ENABLED; do
-  [ -f "$MODS_SRC/$mod.tmod" ] || { echo "missing $MODS_SRC/$mod.tmod (build it first)" >&2; exit 2; }
+  if [ ! -f "$MODS_SRC/$mod.tmod" ]; then
+    echo "missing $MODS_SRC/$mod.tmod (build it first)" >&2
+    # A build writes its .tmod to the save path of the tModLoader that built
+    # it, and which folder that is depends on the build's purpose: Mods under
+    # tModLoader, tModLoader-preview, or tModLoader-dev. So the usual cause of
+    # this is a correct build and the wrong MODS_SRC, which matters most where
+    # nobody chose the install by hand. Name the alternatives rather than
+    # leaving it to be guessed.
+    for base in "$HOME/.local/share/Terraria" "$HOME/Library/Application Support/Terraria"; do
+      [ -d "$base" ] || continue
+      for candidate in "$base"/tModLoader*/Mods; do
+        [ -d "$candidate" ] && [ "$candidate" != "$MODS_SRC" ] \
+          && echo "  a Mods directory that does exist: $candidate (set MODS_SRC)" >&2
+      done
+    done
+    exit 2
+  fi
   cp "$MODS_SRC/$mod.tmod" "$SCRATCH/Mods/"
 done
 
@@ -142,6 +187,11 @@ done
 printf '[%s]\n' "$(printf '"%s",' $ENABLED | sed 's/,$//')" > "$SCRATCH/Mods/enabled.json"
 
 echo "dotnet:   $DOTNET"
+if [ "${#CAP[@]}" -gt 0 ]; then
+  echo "memory:   capped at $MEM_MAX"
+else
+  echo "memory:   uncapped ($CAP_WHY)"
+fi
 DISPLAY_NUM="$(pick_display)"
 if command -v Xvfb >/dev/null; then
   Xvfb "$DISPLAY_NUM" -screen 0 640x480x24 -nolisten tcp >/dev/null 2>&1 &
@@ -169,7 +219,7 @@ echo "mods:     $ENABLED"
 exec 3<>"$FIFO"
 
 # shellcheck disable=SC2086
-nice -n 19 systemd-run --user --quiet --scope -p MemoryMax="$MEM_MAX" \
+nice -n 19 "${CAP[@]}" \
   env --chdir="$TML" \
       LD_LIBRARY_PATH="$TML/Libraries/Native/Linux${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
       SDL_AUDIODRIVER=dummy \

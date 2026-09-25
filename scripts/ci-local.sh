@@ -70,9 +70,10 @@ die() { echo "[ci] $*" >&2; exit 2; }
 # Preflight
 #
 # Every one of these is something a gate depends on and none of them announces
-# itself well when absent: a missing Xvfb surfaces as a client that joins and
-# then goes quiet, and a missing systemd-run as a server that never starts. A
-# check here costs a second and names the fix.
+# itself well when absent: a missing Xvfb surfaces as a tier 3 client that
+# joins and then goes quiet. A check here costs a second and names the fix.
+# What is genuinely optional is checked below instead, and reported rather
+# than refused.
 # ---------------------------------------------------------------------------
 
 missing=0
@@ -85,8 +86,18 @@ need dotnet "the .NET SDK, https://dotnet.microsoft.com/download"
 need python3 "the gates parse their JUnit reports with it"
 need rsync "scripts/build-examplemod.sh copies the calibration sources with it"
 need Xvfb "a tier 3 client needs a real display; package 'xorg-server-xvfb' or 'xvfb'"
-need systemd-run "the gates cap the game's memory with a transient scope"
 need flock "one run at a time, and this is what holds the lock"
+
+# Not required, unlike the above. The memory cap is a courtesy to the machine
+# the run is on, and run-tests.sh probes for a usable systemd user manager and
+# goes without when there is none. Worth saying out loud all the same, because
+# an uncapped run of a game is a thing to know about before it happens rather
+# than after: a CI runner typically has the binary and no user manager.
+if systemd-run --user --quiet --scope -p MemoryMax=64M true >/dev/null 2>&1; then
+	:
+else
+	say "no usable systemd user manager; the game will run without a memory cap"
+fi
 
 [ -f "$TML_PATH/tModLoader.dll" ] \
 	|| { echo "[ci] no tModLoader at $TML_PATH (set TML_PATH, or run scripts/discover-paths.sh)" >&2; missing=1; }

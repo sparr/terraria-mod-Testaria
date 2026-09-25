@@ -919,6 +919,18 @@ The red path is the reason the summary counts two totals rather than one. Its si
 
 Linux only, as written: `Xvfb`, `systemd-run`, and `flock` all appear in it. The portability that matters is already asserted, on three operating systems, by the core job in section 8.3a.
 
+#### What a rented machine breaks that this one does not
+
+Four assumptions were load bearing and invisible, because a developer's machine satisfies all of them without being asked. Each is now either probed or reported, and the first is the one that would have cost a day.
+
+**The memory cap needed a systemd user manager, not a binary.** `run-tests.sh` capped the game with `systemd-run --user --scope`, unconditionally. A CI runner commonly has the binary and no user manager, and the failure is not a warning: the scope never starts, so the server never starts, and every gate that goes through `run-tests.sh` fails at once, which is four of the eight and says nothing about the framework. It is now probed by running the real thing against `true`, which costs one process and answers the only question that matters, since there is no reliable way to ask. `MEM_CAP=0` forces the uncapped path so it can be exercised on a machine that could cap, and the run header says which path it took and why. Measured: all eight gates pass uncapped.
+
+**A `.tmod` is written to the save path of the build that built it.** Which of `tModLoader`, `tModLoader-preview` and `tModLoader-dev` that is depends on the build's purpose, so a tModLoader built by CI may not write where `MODS_SRC` points. The old failure was `missing <path>.tmod (build it first)`, which names the wrong problem: the build succeeded. It now lists the `Mods` directories that do exist.
+
+**An install is more than its main assembly.** The check was for `tModLoader.dll` alone, which a half-finished build or a path pointed one level too high can satisfy; the server then starts and dies on a native library. `Libraries/Native/Linux` is checked too, where the path is still what is being discussed.
+
+**And `scripts/paths.local.sh` overrode the environment, which is the wrong way round.** Found while testing the check above: setting `TML_PATH` on the command line changed nothing, because the generated file assigned it plainly and `paths.sh` sources that file first. Both the file's own header and `paths.local.sh.example` promise the opposite, that a value in the environment wins over a line in the file, and the MSBuild half has always been written as a condition that honors exactly that. Only the shell half disagreed, and it disagreed silently. This is precisely a CI-shaped bug: a runner names its install in the environment, and one of these files left in a checkout would send the run somewhere that machine has never had. `discover-paths.sh` now writes `${TML_PATH:-...}`, and the example teaches the same form. The general lesson is the one section 8.6g reached from another direction: a documented behavior nothing executes is a guess.
+
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
 One change, not two (section 5.1, item 3). The CI job follows section 8.3a: derive the ownership key once from an owned install and store it as a repository secret, download the public server zip from terraria.org, decompile and build tModLoader with the result cached as tModLoader's own CI caches it, then build the mods and run the gates.

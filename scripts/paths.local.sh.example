@@ -13,6 +13,12 @@
 # there defers to a variable already set, so a line here wins over discovery
 # and anything exported in the environment wins over a line here.
 #
+# That last part is what the :- in each line below is for, and it is not
+# decoration: a plain assignment wins over the environment instead, which is
+# the wrong way round and is worst where it is least visible. A CI runner
+# names its install in the environment, and a file like this one left in the
+# checkout would quietly send the run to a path that machine does not have.
+#
 # The values below are illustrations, not defaults. None of them is where
 # anything is on your machine.
 
@@ -20,16 +26,16 @@
 # tMLMod.targets. Discovery asks Steam for its library folders, so this is
 # needed only for an install Steam does not know about, such as GOG's, or one
 # outside a library folder entirely.
-#TML_PATH="$HOME/GOG/tModLoader"
+#TML_PATH="${TML_PATH:-$HOME/GOG/tModLoader}"
 
 # Where a mod build leaves its .tmod: the Mods directory under the save path of
 # the tModLoader build you develop against. The default is the dev build's,
 # since the 1.4.5 line only exists as one; a stable or preview install saves
 # under tModLoader or tModLoader-preview instead.
-#MODS_SRC="$HOME/.local/share/Terraria/tModLoader-preview/Mods"
+#MODS_SRC="${MODS_SRC:-$HOME/.local/share/Terraria/tModLoader-preview/Mods}"
 
 # The ExampleMod directory inside a checkout of
 # https://github.com/tModLoader/tModLoader. Only scripts/build-examplemod.sh
 # wants it, for the calibration gate. discover-paths.sh looks for a checkout
 # in the directories above this one; anywhere else, name it here.
-#EXAMPLEMOD_SRC="$HOME/code/tModLoader/ExampleMod"
+#EXAMPLEMOD_SRC="${EXAMPLEMOD_SRC:-$HOME/code/tModLoader/ExampleMod}"
