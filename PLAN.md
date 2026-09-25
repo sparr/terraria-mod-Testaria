@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6f, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
+Status: implemented through section 8.6g, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 
 ## 0. The short version
 
@@ -23,7 +23,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Tier 3 | Works, sections 8.6a, 8.6c and 8.6e. A client process joins a real server; fourteen self-tests, three worked examples against ExampleMod, five replication tests against InnoVault and three layout tests against SilkyUI pass. A test mod can register questions the client answers, so a mod's own synced state is reachable, and so is anything else that process can do: two self-tests read back pixels the GPU drew. Rendering **tooling** is section 8.9; input is still unexplored |
 | Artifact A, the `.tmod` | Built, loading, and exercised by every gate |
 | Artifact E, templates | Scaffolded under `templates/`, neither packed nor published |
-| Gates | Seven by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. An eighth, the arena load test, is deliberate (`RUN_LOAD=1`). The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
+| Gates | Eight by default, run by `scripts/run-all.sh`: the core suites, the green path, the red path, the packages consumed as packages, the templates generated and then built and run, tier 3 both with and without a client, fresh worlds, and the ExampleMod calibration. A ninth, the arena load test, is deliberate (`RUN_LOAD=1`); its most recent run, the first since teardown began restoring the ground, is green at 308 boxes with a slowest restore of 28.9 ms. The tier 3 gate selects by tier out of the report rather than by class name, which section 8.6e explains at some length |
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Core tiers only, on three operating systems. The game tiers have no job, and by section 5.1 that job ships with the first GitHub release (sections 8.3a and 8.7) |
@@ -882,6 +882,16 @@ Configuration is a first-class tModLoader feature and section 0.1 lists it among
 Worse, a default can make a mod untestable. SilkyUI enables a blur effect by default; on a machine whose build cannot compile the shader, the client dies at its first frame and every tier 3 test against it times out.
 
 `--config <path>` seeds a file, for the same reason `enabled.json` is written by hand rather than through a menu: it is what the game reads, and nothing about it needs Steam or a person. The file's own name is the contract, `<ModName>_<ConfigClassName>.json`, and a misnamed one is refused up front rather than ignored by the game and discovered as a run that quietly tested defaults. Each file is copied into both the client and the server config directories, because the game reads a `ClientSide` config from one and a `ServerSide` config from the other and ignores what it cannot match, so the caller is never asked which scope somebody else's mod used.
+
+### 8.6g Using what the templates produce
+
+`check-packages.sh` consumes the packages the way a stranger would, because unit tests cannot see packaging at all. The templates need the same treatment: nothing else compiles a generated project, let alone runs one.
+
+An onboarding step nobody executes is an onboarding step nobody has checked: a suite can stop its own mod from compiling, a mod's internals can be invisible to its own tests, and a template's post action can make the template fail to install while `dotnet new` says nothing and simply lists one template instead of two.
+
+`check-templates.sh` packs `Testaria.Core` into a throwaway feed, checks that the version the templates pin is the version packing produces, installs both templates, generates from each, runs the tier 0 project's tests, and builds the mod-tests project into a real `.tmod`. All of it passes.
+
+Two details it handles. The pinned version is checked because a mismatch makes every generated project fail to restore with an error naming NuGet rather than the mismatch. And `tMLMod.targets` builds a mod by invoking tModLoader, which writes the `.tmod` into the save path's `Mods` folder and offers no way to redirect it, so the probe mod is named distinctively and removed on the way out: a gate must not leave a mod installed.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 

@@ -48,6 +48,7 @@ if [ "${SKIP_PACKAGES:-0}" = "1" ]; then
 	echo "=== packages: skipped by request ==="
 else
 	step "packages" "$HERE/check-packages.sh"
+	step "templates" "$HERE/check-templates.sh"
 fi
 
 # A second process, a framebuffer, and a handshake. Slower than the gates

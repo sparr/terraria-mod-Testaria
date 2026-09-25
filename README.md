@@ -413,81 +413,42 @@ An entity of a test's own that leaves its box is recorded for review but does no
 </testcase>
 ```
 
-That note is usually the explanation for a neighbouring box behaving oddly a few tests later, which is otherwise very hard to work out.
-
-Something that enters a test that shouldn't is instead considered **contamination**, which errors the test.
+If a later test fails, it could be the case that this escapee wandered/fell/etc into that test's box. In that case, the latter test will error, and you can use this result to figure out why.
 
 ## A box is a region, not a sandbox
 
-A box isolates a rectangle of world. It has nothing to say about a static field, and neither the escape watch nor the ground restore can help you there: a test that sets `Main.afterPartyOfDoom` triggers a vanilla routine that kills every town NPC in the world, not the ones inside the box.
+A box isolates a rectangle of the world. It does not isolate anything world-global. e.g. A test that sets `Main.afterPartyOfDoom` kills every town NPC in the world on the next update, not the ones standing in its box, and clears half a dozen saved-spawn flags along with them.
 
-So state outside the box has to be put back, and putting it back on the last line stops happening the moment an assertion above it fails. Register it instead, and the runner does it at teardown however the test ended:
+So global state a test changes has to be put back, and putting it back on the last line of the test stops happening the moment an assertion above it fails. Register the undo instead, and the runner runs it at teardown however the test ended:
 
 ```csharp
 [GameTest(Band = Band.Surface)]
-public IEnumerator A_marked_npc_is_spared(ITestContext ctx)
+public IEnumerator A_test_that_changes_the_time_puts_it_back(ITestContext ctx)
 {
     var box = (TestContext)ctx;
 
-    // Read, register the undo, and write, in one step.
-    box.Change(() => SomeMod.Sets.Vulnerable[NPCID.Guide], v => SomeMod.Sets.Vulnerable[NPCID.Guide] = v, false);
+    // Change takes three things: how to read the value, how to write it, and
+    // what to set it to. It reads Main.dayTime, registers putting that value
+    // back at teardown, and only then writes the new one.
+    box.Change(() => Main.dayTime, value => Main.dayTime = value, false);
 
-    // Or the long form, when the undo is not a simple assignment.
-    box.Restore(() => SomeCache.Clear());
+    // Restore is the long form, for an undo that is not one assignment. This
+    // one empties a list that a hook in the test mod appends to.
+    box.Restore(PlacementWatcher.Placements.Clear);
 
     ...
 }
 ```
 
-Restorations run in reverse order, so nesting unwinds the way a stack does, and one throwing does not strand the rest.
+Restorations run in reverse order, popping from a stack, and one exception won't stop the rest.
 
 ## Placing a tile the way a player does
 
-`ctx.PlaceTile` calls `WorldGen.PlaceTile`, which puts the tile there and tells nobody. In particular it does **not** fire `ModTile.PlaceInWorld` or `GlobalTile.PlaceInWorld`: tModLoader calls those from `Player` alone, when somebody places a tile from an item.
-
-A great deal of mod behaviour hangs off that hook. InnoVault creates its TileProcessor entities there, so the obvious test, place the tile and wait for the entity, waits out its timeout for something that never comes.
+`ctx.PlaceTile` calls `WorldGen.PlaceTile`, which puts the tile there but doesn't announce it, so `ModTile.PlaceInWorld` and `GlobalTile.PlaceInWorld` won't fire. You probably want `PlaceTileAsPlayer`:
 
 ```csharp
 box.PlaceTileAsPlayer(4, 4, ModContent.TileType<MyTile>());
 ```
-
-places the tile and then announces it, returning false if the tile did not go down. It is the hook, not a simulated player: no item is consumed, nothing checks reach, and no animation plays.
-
-## A suite that skips everything is not a suite that passed
-
-That honesty has a failure mode of its own. A suite whose subject is another mod skips itself when that mod is absent, and tModLoader drops a mod that fails to load against a build it was not compiled for, which it does whenever the game updates under you. Every skip is then correct and the sum of them is a run that reports success having tested nothing.
-
-So a run can be asked to prove it did something:
-
-```
-testaria run --mod MyMod --mod MyModTests --require 100
-MIN_TESTS=100 scripts/run-tests.sh
-```
-
-Fewer tests than that actually running is a failure, with a message saying so. Worth setting for any suite whose subject is another mod, which is every suite this framework is for.
-
-**The commonest cause of it is caught without being asked.** A mod that throws during its load pass is disabled by tModLoader, and the game carries on. `testaria` tells the run which mods it installed, and the run refuses to start if any of them is absent:
-
-```
-1 tests: 0 passed, 0 failed, 1 errored, 0 skipped
-  ERROR Testaria.Preflight.The run was refused before it started:
-      This run required mods Daybreak, DaybreakTests, which did not load. ...
-      Check the log for the load error. Loaded: ModLoader, Testaria.
-```
-
-That is a report rather than silence, because the harness waits for one and a run that produced none would time out, which says much less than a named error. Without the check, the same scenario prints `0 tests: 0 passed` and exits 0.
-
-A run that discovers **no** tests at all, or whose filter matches none of them, is an error for the same reason: reported on the console and then written to the report as an empty pass, it leaves the person watching and the harness reading with opposite verdicts.
-
-**And a test that asserts nothing says so.** Passing without a single assertion reaching the body is not an error, since "this does not throw" is a real thing to test, but it is worth reading:
-
-```xml
-<testcase name="Every_processor_maps_to_its_mod" classname="MyModTests.RegistrationTests">
-  <system-out>This test passed without making a single assertion, so it proved nothing.</system-out>
-</testcase>
-```
-
-A test looping over a registry that is always empty does exactly that.
 
 ## Test Outcomes
 
@@ -495,24 +456,16 @@ A test looping over a registry that is always empty does exactly that.
 |---|---|
 | Failed | An assertion did not hold. The mod (or game) is broken. |
 | Errored | The test threw an exception, could not run properly, or had its box contaminated. The test is broken. |
-| Skipped | Intentionally omitted, or the runner could not honour what it asked for (e.g. FreshWorld). |
+| Skipped | Intentionally omitted, or the runner could not honor what it asked for (e.g. FreshWorld). |
 | Blocked | Didn't run because it couldn't. |
 
 ## Retained boxes, and tests that never ran
 
 Every test gets its own region of the game world to run, a "box". With `KeepFailedBoxes`, on by default, a test that fails keeps its box. The tiles it placed, the entities it spawned and whatever state it left behind all stay exactly as they were, so you can load the world and go and look.
 
-A run with many failures can run out of room. When that happens the tests that could not be given a box are reported as **blocked**:
-
-```
-1324 tests: 1290 passed, 9 failed, 0 errored, 25 blocked, 0 skipped
-```
-
-A blocked test's message names what is holding the space and what to do about it:
+A run with many failures can run out of room. When that happens the tests that could not be given a box are reported as **blocked**. A blocked test's message names what is holding the space and what to do about it:
 
 > This test never ran: the arena had no box for it. 49 of 49 slots are retained from earlier failures and are never reused, so that the state a failing test left behind survives for you to go and look at. Inspect them, then rerun. Set `KeepFailedBoxes` to false to give that ground up instead.
-
-**A run containing blocked tests fails**, even when everything that actually ran passed. In the JUnit report a blocked test is written as an `<error type="Testaria.Blocked">` rather than as `<skipped>`.
 
 ## Run the self tests
 
@@ -520,7 +473,7 @@ A blocked test's message names what is holding the space and what to do about it
 scripts/run-all.sh
 ```
 
-Five gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), fresh worlds (tests asking for an untouched world get one), and calibration against ExampleMod.
+Eight gates, fastest-failing first: the core self-tests, the green path (the self-test mod must pass in a live headless server), the red path (deliberate failures must be reported as failures), the packages consumed the way a stranger would, the templates generated and then built and run, tier 3 both with a client and without one, fresh worlds (tests asking for an untouched world get one), and calibration against ExampleMod. A ninth, the arena under load, is opt-in with `RUN_LOAD=1`, since it takes longer than the other steps combined.
 
 Calibration needs `scripts/build-examplemod.sh` to have been run once, with `EXAMPLEMOD_SRC` pointing at the `ExampleMod` directory inside a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 

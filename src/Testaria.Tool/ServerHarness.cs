@@ -185,8 +185,14 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 				try {
 					File.WriteAllText(logPath, clientLog.ToString());
 				}
-				catch (IOException) {
-					// A diagnostic, not the run.
+				catch (Exception) {
+					// Everything, not just IOException. This runs on a thread
+					// pool thread inside a process output handler, and an
+					// exception escaping one of those is rethrown on another
+					// pool thread, which takes the whole tool down without
+					// running any finally block. So it leaks the very server
+					// and client this class is careful to stop. Writing a
+					// diagnostic must never be able to do that.
 				}
 			}
 
@@ -267,11 +273,23 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 		if (line is null)
 			return;
 
-		lock (log)
-			log.AppendLine(line);
+		try {
+			lock (log)
+				log.AppendLine(line);
 
-		if (verbose)
-			progress.WriteLine("  | " + line);
+			if (verbose)
+				progress.WriteLine("  | " + line);
+		}
+		catch (Exception) {
+			// This runs on a thread pool thread inside a process output
+			// handler, and an exception escaping one of those is rethrown on
+			// another pool thread, which takes the tool down without running
+			// any finally block and so leaks the server it was watching.
+			//
+			// The realistic cause is the echo rather than the log: writing to
+			// standard output throws once whatever was reading it has gone,
+			// which is what piping a verbose run into `head` does.
+		}
 	}
 
 	private string ClientLogPath(Process client)
