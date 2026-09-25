@@ -287,7 +287,17 @@ print(f"{total} test(s) that were meant to pass: {total - failed - errored - ski
       f"{failed} failed, {errored} errored, {skipped} skipped")
 print(f"{len([g for g in gates if g[1] == 'ok'])} of "
       f"{len([g for g in gates if g[1] not in ('not-requested',)])} gates passed in {elapsed}s")
-print("VERDICT: " + ("pass" if rc == 0 else f"fail ({rc} gate(s))"))
+
+# A declared reduction is reported next to the verdict rather than below it.
+# A green run that covered less than the matrix must not read like one that
+# covered all of it, which is the whole reason declaring is required.
+uncovered = [name for name, verdict, _ in gates if verdict == "declared-uncovered"]
+if uncovered:
+    print("NOT COVERED: " + ", ".join(uncovered)
+          + " -- declared by this run, so nothing here speaks to them")
+
+print("VERDICT: " + ("pass" if rc == 0 else f"fail ({rc} gate(s))")
+      + (" (partial coverage)" if uncovered else ""))
 PY
 
 cat "$RUN/summary.txt"

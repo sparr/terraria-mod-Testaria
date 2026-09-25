@@ -81,12 +81,40 @@ step() {
 	fi
 }
 
+# Gates this run says up front it does not cover, one per line, matched
+# against the gate name in full. A hosted runner has no Terraria installation
+# and so cannot give tier 3 a client (see the workflow in .github/workflows),
+# and there is no honest way to hide that: strict mode would fail, and turning
+# strict off would let every other skip through with it.
+#
+# So a reduction has to be declared rather than discovered. What is named here
+# is reported as uncovered, in the log and in the summary, and does not fail
+# the run. Anything else that tries to skip still does.
+UNCOVERED="${UNCOVERED:-}"
+
+is_uncovered() {
+	local name="$1" entry
+	[ -n "$UNCOVERED" ] || return 1
+	while IFS= read -r entry; do
+		[ "$entry" = "$name" ] && return 0
+	done <<EOF
+$UNCOVERED
+EOF
+	return 1
+}
+
 # A gate that is not going to run. In strict mode that is a failure, because
 # the alternative is a run reporting success for work it never did.
 skip() {
 	local name="$1" reason="$2"
 	echo
-	if [ "$STRICT" = "1" ]; then
+	if is_uncovered "$name"; then
+		# Loud on purpose. A run that covers less than the whole matrix must
+		# not be readable as one that covers all of it.
+		echo "=== $name: NOT COVERED BY THIS RUN ($reason) ==="
+		echo "--- $name: declared uncovered, so this run proves nothing about it"
+		record "$name" declared-uncovered 0
+	elif [ "$STRICT" = "1" ]; then
 		echo "=== $name: NOT RUN ($reason) ===" >&2
 		echo "--- $name: FAILED, strict mode does not skip gates" >&2
 		record "$name" not-run 0

@@ -494,6 +494,8 @@ Nothing here knows where anything sits on your machine. Every path outside the r
 | `SEED` | The world's generation seed, which is a different thing entirely | 42 |
 | `MEM_MAX` | How much memory the game is allowed, when it can be capped at all | `4G` |
 | `MEM_CAP` | `0` runs the game without a cap. The cap needs a systemd **user manager**, not just the `systemd-run` binary, so the gates probe for one and go without when there is none, which is the common shape of a CI runner. Set it to 0 to exercise that path on a machine that could cap | 1 |
+| `STRICT` | `1` makes a gate that will not run a **failed** gate, rather than a line of output nobody reads | 0 |
+| `UNCOVERED` | Gate names, one per line, that this run declares up front it does not cover. They are reported as `declared-uncovered` and do not fail the run; anything else that tries to skip still does under `STRICT`. A hosted CI runner uses it for tier 3, which needs game assets it cannot have | empty |
 
 ### Writing the answers down once
 

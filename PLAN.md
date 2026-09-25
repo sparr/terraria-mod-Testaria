@@ -965,6 +965,20 @@ That last pair is the part worth having done. It confirms `TML_PATH` can name a 
 
 **Runner requirements, from the two sections above.** `Xvfb` for the tier 3 client, and nothing for the memory cap: section 8.6h made that a probe, and all eight gates pass uncapped, which is what a runner with no systemd user manager will do.
 
+#### 8.7b What a hosted runner cannot do, and saying so out loud
+
+The draft workflow is `.github/workflows/game-tiers.yml`. It runs seven of the eight gates and cannot run the eighth.
+
+**Terraria's content is not obtainable on a hosted runner.** The assumption throughout section 8.3a was that the public dedicated-server zip supplies it. It does not: `terraria-server-1458.zip` is 45 MB and holds 77 files, of which none is a `Content` directory and none is an `.xnb`. Terraria's `Content` is 755 MB and comes only from an owned installation. A dedicated server does not care (section 8.7a: `dedServ` returns before content is resolved), so tiers 1 and 2 and everything around them are unaffected, but a tier 3 **client** exits fatally without it, and no amount of arranging directories changes that.
+
+So the hosted job covers tiers 1 and 2, the packages, the templates, fresh worlds and the calibration, and does not cover tier 3. Full coverage is what section 8.6h already provides on a machine that owns the game, which makes the local runner the more capable of the two rather than a rehearsal for the hosted one.
+
+**A reduction has to be declared, not discovered.** Strict mode fails any gate that quietly declines to run, and that is the behavior worth keeping; turning strict off to accommodate one gate would let every other skip through with it. So `UNCOVERED` names the gates a run admits it does not cover. A named gate is recorded as `declared-uncovered`, reported in the log and in `gates.tsv`, given its own `NOT COVERED` line in the summary, and the verdict reads `pass (partial coverage)`. A gate that is not named still fails. Measured both ways: with one gate declared and three skips left undeclared, the run exits 3, counting only the undeclared ones.
+
+It takes two variables and they do different jobs. `SKIP_NET` stops the gate running, which it otherwise would, and would then fail on the first client that cannot find content. `UNCOVERED` says that absence is intended. Without the second the first is a silent hole, and without the first the second never arises.
+
+**Two ways to get tier 3 covered by a push, neither of them the code's to choose.** A self-hosted runner on a machine that owns Terraria, which needs no new mechanism at all. Or caching the content encrypted the way the decompiled tree is cached, which is 755 MB of shipped game assets rather than derived source, and is a licensing judgment rather than a technical one.
+
 ### 8.8 nuget.org, once GitHub is working
 
 Artifacts B through E to nuget.org with the `Testaria.*` ID prefix reserved, after the GitHub channel has proved itself. Last because it is the least reversible step in the plan: an ID can be unlisted but never deleted, and by this point the names have been carried by a working release rather than by an intention.

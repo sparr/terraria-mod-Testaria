@@ -1,0 +1,213 @@
+# DRAFT. Never run, and reachable only by hand: this repository has no remote
+# yet, and the two secrets it names do not exist until somebody creates them.
+#
+# Tiers 1 through 3, on a runner that has to build the game first.
+#
+# The core tiers need only the SDK and are covered by ci.yml on three
+# operating systems. Everything above tier 0 needs a tModLoader install, and a
+# hosted runner has none, so this job builds one: decompile Terraria, apply
+# tModLoader's patches, compile, and only then run the gates.
+#
+# One Linux job rather than two runners. tModLoader builds themselves on
+# windows-latest, which left the Linux path unproven, so every step below was
+# rehearsed locally first against a scratch clone of the 1.4.5 branch: the
+# decompile, the patches (no failures and no fuzz), the Release build, and
+# both Testaria gate suites against the result. See PLAN.md section 8.7a.
+#
+# WHAT THIS JOB CANNOT DO
+#
+# It cannot run tier 3 with a client. A client refuses to start without
+# Terraria's Content directory, which is 755 MB of game assets available only
+# from an owned installation: the public dedicated-server zip contains 77
+# files, none of them content, and no .xnb at all. A dedicated *server* needs
+# none of it (Main.TML.cs returns before resolving content when dedServ), so
+# every other gate is unaffected.
+#
+# The whole tier 3 gate goes, not half of it: check-net.sh runs with a client
+# and then without one in the same script. What is lost is its assertion that
+# every tier 3 test skips when no client is attached. What is not lost is that
+# the tests do skip: the green path runs the same suite without a client and
+# reports those 17 skips in its own report every time.
+#
+# That reduction is declared in UNCOVERED below rather than discovered. Strict
+# mode fails any gate that silently declines to run, which is the behavior
+# worth keeping; a declared gate is reported as uncovered, in the log and in
+# the summary, and the verdict says "partial coverage". Full coverage is what
+# scripts/ci-local.sh gives on a machine that owns the game (PLAN.md 8.6h).
+
+name: Game tiers
+
+on:
+  # Deliberately manual for now. Wire push and pull_request once the cache is
+  # warm: the first run pays for a decompile, and every later one should not.
+  workflow_dispatch:
+
+concurrency:
+  group: game-tiers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  game-tiers:
+    name: Tiers 1 and 2, and tier 3 without a client
+    runs-on: ubuntu-latest
+    # A cold run decompiles Terraria, which is the slow step the cache exists
+    # to avoid. Warm runs are a build plus roughly five minutes of gates.
+    timeout-minutes: 120
+
+    env:
+      # 1.4.5.8 with the dots removed, which is how the setup tool builds the
+      # download URL (TerrariaDecompileExecutableProvider). Not a guess.
+      TERRARIA_VERSION: '1458'
+      TMOD_BRANCH: '1.4.5'
+      # Two variables, because they do different jobs and both are needed.
+      # SKIP_NET stops the tier 3 gate running at all, which it otherwise
+      # would, and would fail on the first client that cannot find Content.
+      # UNCOVERED then says that particular absence is intended, so strict
+      # mode reports it as uncovered instead of failing the run. Without the
+      # second, the first is just a silent hole; without the first, the second
+      # never comes up. Matched against the gate name in full.
+      SKIP_NET: '1'
+      UNCOVERED: 'tier 3'
+
+    steps:
+      - name: Check out Testaria
+        uses: actions/checkout@v4
+        with:
+          path: Testaria
+
+      - name: Check out tModLoader
+        uses: actions/checkout@v4
+        with:
+          repository: tModLoader/tModLoader
+          ref: ${{ env.TMOD_BRANCH }}
+          path: tModLoader
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Xvfb is the one package the runner lacks. rsync, python3 and flock are
+      # already present; scripts/ci-local.sh preflights all of them and names
+      # whatever is missing rather than failing inside a gate.
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+
+      # The decompiled tree is Terraria's own code and must not be published,
+      # so it is cached encrypted, exactly as tModLoader's CI does it. The key
+      # ends in a letter to be bumped by hand when ILSpy or the decompile
+      # settings change and the cached output stops being what a fresh run
+      # would produce.
+      - name: Restore the decompiled cache
+        id: decompiled-cache
+        uses: actions/cache@v4
+        with:
+          path: tModLoader/decompiled.zip.gpg
+          key: decompiled-${{ env.TERRARIA_VERSION }}-A
+
+      - name: Unpack the decompiled cache
+        if: steps.decompiled-cache.outputs.cache-hit == 'true'
+        working-directory: tModLoader
+        run: |
+          gpg --quiet --batch --yes --decrypt \
+            --passphrase="$SETUP_ASSETS_PASSPHRASE" \
+            --output decompiled.zip decompiled.zip.gpg
+          unzip -q -o decompiled.zip -d src
+        env:
+          SETUP_ASSETS_PASSPHRASE: ${{ secrets.SETUP_ASSETS_PASSPHRASE }}
+
+      # Only the Windows TerrariaServer.exe is wanted here, as the decompile's
+      # reference point. The setup tool will fetch this zip itself if it has
+      # to; downloading it explicitly keeps the version pinned to the one this
+      # job names, and gives --terraria-steam-dir something to validate.
+      - name: Fetch the Terraria dedicated server
+        run: |
+          curl -sS -L -o terrariaserver.zip \
+            "https://terraria.org/api/download/pc-dedicated-server/terraria-server-${TERRARIA_VERSION}.zip"
+          unzip -q terrariaserver.zip -d terraria
+          test -f "terraria/${TERRARIA_VERSION}/Windows/TerrariaServer.exe"
+
+      # The client executable is not in that zip and is not downloadable. It
+      # ships in tModLoader's own repository as an encrypted blob, and the
+      # ownership key decrypts it. The key proves you own Terraria; derive it
+      # once locally with `./setup-cli.sh secrets reveal` and store it as a
+      # repository secret. It must never be committed.
+      #
+      # NOTE: this is the one step in the job that has never been run. The
+      # rehearsal machine had Terraria_v1.4.5.8_win.exe in its install, so the
+      # setup tool short-circuited and the decrypt path was never exercised.
+      # It is AES in .NET and the option exists for non-Windows hosts, so the
+      # risk is low, but if this job fails somewhere unexpected, look here.
+      - name: Decompile Terraria
+        working-directory: tModLoader
+        run: |
+          if [ ! -d ./src/decompiled ]; then
+            ./setup-cli.sh decompile \
+              --key "$TERRARIA_OWNERSHIP_KEY" \
+              --terraria-steam-dir "../terraria/${TERRARIA_VERSION}/Windows" \
+              --tml-dev-steam-dir steam_build \
+              --plain-progress -f --strict
+          else
+            echo "src/decompiled restored from cache, skipping the decompile"
+            ./setup-cli.sh update-workspace-info \
+              "../terraria/${TERRARIA_VERSION}/Windows" steam_build --no-validate
+          fi
+        env:
+          TERRARIA_OWNERSHIP_KEY: ${{ secrets.TERRARIA_OWNERSHIP_KEY }}
+
+      - name: Save the decompiled cache
+        if: steps.decompiled-cache.outputs.cache-hit != 'true'
+        working-directory: tModLoader
+        run: |
+          zip -q -r decompiled.zip ./src/decompiled
+          gpg --quiet --batch --yes --symmetric --cipher-algo AES256 \
+            --passphrase="$SETUP_ASSETS_PASSPHRASE" decompiled.zip
+        env:
+          SETUP_ASSETS_PASSPHRASE: ${{ secrets.SETUP_ASSETS_PASSPHRASE }}
+
+      # Applies every patch in patches/ to the decompiled tree, producing
+      # src/Terraria, src/TerrariaNetCore and src/tModLoader. --strict so that
+      # a patch applying with fuzz is an error rather than a warning nobody
+      # reads.
+      - name: Apply tModLoader's patches
+        working-directory: tModLoader
+        run: ./setup-cli.sh regen-source --plain-progress -f --strict
+
+      - name: Build tModLoader
+        working-directory: tModLoader
+        run: |
+          dotnet build src/tModLoader/Terraria/Terraria.csproj \
+            -c Release --nologo -v q
+          test -f steam_build/tModLoader.dll
+          test -f steam_build/tMLMod.targets
+          test -d steam_build/Libraries/Native/Linux
+
+      # Where the gates expect to find things. TML_PATH naming a build from
+      # source rather than a Steam install is exercised by the rehearsal;
+      # MODS_SRC needs no special value because a source build reports the Dev
+      # purpose and writes its .tmod where a dev install would, but the
+      # directory has to exist before the first build writes into it.
+      - name: Point the gates at the build
+        run: |
+          echo "TML_PATH=${GITHUB_WORKSPACE}/tModLoader/steam_build" >> "$GITHUB_ENV"
+          echo "EXAMPLEMOD_SRC=${GITHUB_WORKSPACE}/tModLoader/ExampleMod" >> "$GITHUB_ENV"
+          echo "MODS_SRC=${HOME}/.local/share/Terraria/tModLoader-dev/Mods" >> "$GITHUB_ENV"
+          mkdir -p "${HOME}/.local/share/Terraria/tModLoader-dev/Mods"
+
+      # Preflight, provision ExampleMod, run every gate strictly, keep the
+      # reports. The lock and the commit history it keeps are harmless here: a
+      # runner is alone on its filesystem and its checkout is always the commit
+      # under test.
+      - name: Run the gates
+        working-directory: Testaria
+        run: scripts/ci-local.sh --runs-dir "${GITHUB_WORKSPACE}/ci-runs"
+
+      - name: Upload the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-tier-run
+          path: ci-runs/
+          if-no-files-found: error
