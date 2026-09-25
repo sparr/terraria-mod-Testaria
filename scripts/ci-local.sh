@@ -108,6 +108,14 @@ need flock "one run at a time, and this is what holds the lock"
 # the port the server listens on, so the second one fails in ways that look
 # like the framework's fault. A timer that fires while a run is still going
 # declines quietly; anything else says so and stops.
+#
+# The lock is an open file descriptor, and a child inherits every one of them,
+# so every command started below is given 9>&- to close it. Without that the
+# lock outlives the run: `dotnet build` leaves a VBCSCompiler behind for ten
+# minutes after it is done, that process holds the descriptor, and flock keeps
+# refusing. Measured, not theorised: the first run this script finished left
+# the lock held, and a timer would have declined every fire until Roslyn's
+# build server happened to time out.
 # ---------------------------------------------------------------------------
 
 mkdir -p "$RUNS_DIR" || die "cannot create $RUNS_DIR"
@@ -184,7 +192,7 @@ started=$SECONDS
 # ---------------------------------------------------------------------------
 
 say "building the calibration subject"
-if ! nice -n 19 "$HERE/build-examplemod.sh" > "$RUN/provision.log" 2>&1; then
+if ! nice -n 19 "$HERE/build-examplemod.sh" > "$RUN/provision.log" 2>&1 9>&-; then
 	say "could not build ExampleMod; see $RUN/provision.log"
 	tail -20 "$RUN/provision.log" >&2
 	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -200,7 +208,7 @@ fi
 
 say "running the gates"
 STRICT=1 RESULTS_DIR="$RUN" RUN_LOAD="$WITH_LOAD" \
-	nice -n 19 "$HERE/run-all.sh" 2>&1 | tee "$LOG"
+	nice -n 19 "$HERE/run-all.sh" 2>&1 9>&- | tee "$LOG"
 rc=$?
 elapsed=$((SECONDS - started))
 
@@ -240,7 +248,7 @@ for report in sorted(glob.glob(os.path.join(run, "*.xml"))):
     try:
         root = ET.parse(report).getroot()
     except ET.ParseError as bad:
-        print(f"  {name:<26} unreadable: {bad}")
+        print(f"  {name:<32} unreadable: {bad}")
         continue
     tests = int(root.get("tests", 0))
     fails = int(root.get("failures", 0))
@@ -251,14 +259,14 @@ for report in sorted(glob.glob(os.path.join(run, "*.xml"))):
     # the rest would put "2 failed, 4 errored" under a verdict of pass and
     # make a green run read as a broken one.
     if name == "red-path":
-        print(f"  {name:<26} {tests:>5} tests, {fails} failed and {errs} errored "
+        print(f"  {name:<32} {tests:>5} tests, {fails} failed and {errs} errored "
               f"on purpose, which is the gate")
         continue
     total += tests
     failed += fails
     errored += errs
     skipped += skips
-    print(f"  {name:<26} {tests:>5} tests, {tests - fails - errs - skips:>5} passed, "
+    print(f"  {name:<32} {tests:>5} tests, {tests - fails - errs - skips:>5} passed, "
           f"{fails} failed, {errs} errored, {skips} skipped")
 if not total:
     print("  (none)")
