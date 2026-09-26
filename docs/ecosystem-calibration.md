@@ -263,7 +263,7 @@ leaves behind does not exist.
 
 ## Reproducing
 
-The clones are in `mods/others/`, each on a `testaria-tests` branch. The two
+The clones are in `mods/others/`, each on a `testaria-tests` branch. The
 suites need only a Testaria checkout to point at:
 
 ```
@@ -272,6 +272,19 @@ dotnet build mods/others/InnoVault/InnoVaultTests/InnoVaultTests.csproj
 ```
 
 `TML_PATH` is not required for the suites themselves, since the scripts and the tool ask Steam for its library folders, but `build/Testaria.props` probes a fixed list instead, so an install in a second library needs it set for an out-of-repo suite's own build.
+
+Worth knowing when that happens, because the message does not help: the props
+file carries a target that explains exactly this, and `BeforeTargets="Build"`
+runs after Build's dependencies rather than before them, so the compile fails
+first and what reaches the terminal is a wall of `CS0246` about `Terraria` and
+`Testaria` not existing. The cause is the install, not the code.
+
+**TestingEfficiency** needs two things its branch now carries rather than
+leaving to a workaround: `AssemblyName` set on `TestingEfficiency-main.csproj`,
+without which the `.tmod` builds and will not load, and the suite directory
+excluded from both project files' compile globs. Its repository holds two
+project files in one folder, so a bare `dotnet build` there stops and asks
+which; the suite names the stock one explicitly.
 
 Three of the mods need a local workaround that is not a source change, and so
 is not committed to their branches:
