@@ -354,6 +354,39 @@ Every property is tried before anything is reported, so one bad property does
 not hide the next. Read-only properties, private setters and indexers are
 skipped.
 
+### And that it stops changing
+
+```csharp
+[LoadedTest]
+public void Nothing_drifts_when_written_twice()
+    => Assert.SettersSettleAfterOneWrite(new BossTestData());
+```
+
+Read, write it back, read, write that back, read again: the last two reads must
+agree. The **first** write may change the value, because normalizing what it
+was given is a property doing its job, and `"2:5"` coming back as `"2:05"` is
+correct. The second must not, because a property that keeps moving has no
+resting state, and every pass through the interface it belongs to drifts a
+little further.
+
+This is the sibling of the check above and finds a different fault. That one is
+about a crash; this one is about a value that never settles, which appends,
+re-escapes or truncates a little more each time and throws nothing while doing
+it:
+
+```
+Assert.SettersSettleAfterOneWrite() Failure
+On a EscapesEveryTime, 1 property does not settle:
+  Text: started as "a&b", became "a&amp;b" after one write, and "a&amp;amp;b" after a second, so it never settles
+```
+
+That one is from this framework's own test for it, not from a real mod: unlike
+the check above, this has not yet caught anything in the wild. The message is
+asserted verbatim by a test, so the example cannot drift from the code.
+
+A property that cannot be written at all is reported rather than passed over:
+it cannot be shown to settle, and passing would claim it had been checked.
+
 ## Realtime testing
 
 A tier 2 test body is a coroutine, driven one step per game tick. It yields a `Wait` to say where it may be suspended:

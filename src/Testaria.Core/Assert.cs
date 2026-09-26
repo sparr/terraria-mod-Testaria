@@ -366,17 +366,7 @@ public static class Assert
 
 		List<string> problems = [];
 
-		foreach (PropertyInfo property in subject.GetType()
-			.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
-
-			if (property.GetMethod is not { IsPublic: true } || property.SetMethod is not { IsPublic: true })
-				continue;
-
-			// An indexer is not a property a field can hold, and there is no
-			// argument to give it.
-			if (property.GetIndexParameters().Length != 0)
-				continue;
-
+		foreach (PropertyInfo property in RoundTrippable(subject.GetType())) {
 			object? value;
 			try {
 				value = property.GetValue(subject);
@@ -405,6 +395,87 @@ public static class Assert
 		throw new AssertionException(message ?? "Assert.SettersAcceptTheirOwnGetters() Failure\n"
 			+ $"On a {subject.GetType().Name}, {count}:\n  "
 			+ string.Join("\n  ", problems));
+	}
+
+	/// <summary>
+	/// Asserts that writing a property back a second time changes nothing.
+	/// <para/>
+	/// Read, write it back, read again, write that back, and read once more:
+	/// the last two reads must agree. The first write is allowed to change the
+	/// value, because a property may well normalize what it is given, and
+	/// <c>"2:5"</c> coming back as <c>"2:05"</c> is a property doing its job.
+	/// What it may not do is keep changing: a second write that moves the value
+	/// again means the property has no resting state, and every pass through
+	/// the interface it belongs to drifts a little further.
+	/// <para/>
+	/// This is the sibling of <see cref="SettersAcceptTheirOwnGetters"/> and
+	/// catches a different fault. That one is about a crash; this one is about
+	/// a value that never settles, which appends, re-escapes, re-encodes or
+	/// truncates a bit more each time and throws nothing at all while doing it.
+	/// <para/>
+	/// A property that throws is reported rather than passed, because a
+	/// property that cannot be written cannot be shown to settle.
+	/// </summary>
+	public static void SettersSettleAfterOneWrite(object subject, string? message = null)
+	{
+		Counted();
+
+		NotNull(subject, "Assert.SettersSettleAfterOneWrite() Failure\nSubject was null");
+
+		List<string> problems = [];
+
+		foreach (PropertyInfo property in RoundTrippable(subject.GetType())) {
+			object? first, second, third;
+
+			try {
+				first = property.GetValue(subject);
+				property.SetValue(subject, first);
+				second = property.GetValue(subject);
+				property.SetValue(subject, second);
+				third = property.GetValue(subject);
+			}
+			catch (Exception bad) {
+				problems.Add($"{property.Name}: could not be written back at all, which threw {Unwrap(bad)}");
+				continue;
+			}
+
+			if (AreEqual<object?>(second, third))
+				continue;
+
+			problems.Add($"{property.Name}: started as {Format(first)}, became {Format(second)} "
+				+ $"after one write, and {Format(third)} after a second, so it never settles");
+		}
+
+		if (problems.Count == 0)
+			return;
+
+		string count = problems.Count == 1
+			? "1 property does not settle"
+			: $"{problems.Count} properties do not settle";
+
+		throw new AssertionException(message ?? "Assert.SettersSettleAfterOneWrite() Failure\n"
+			+ $"On a {subject.GetType().Name}, {count}:\n  "
+			+ string.Join("\n  ", problems));
+	}
+
+	/// <summary>
+	/// The properties a value can be read from and written straight back to.
+	/// <para/>
+	/// Public instance properties with both accessors public, excluding
+	/// indexers, which are not a value a field can hold and have no argument to
+	/// be given.
+	/// </summary>
+	private static IEnumerable<PropertyInfo> RoundTrippable(Type type)
+	{
+		foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
+			if (property.GetMethod is not { IsPublic: true } || property.SetMethod is not { IsPublic: true })
+				continue;
+
+			if (property.GetIndexParameters().Length != 0)
+				continue;
+
+			yield return property;
+		}
 	}
 
 	/// <summary>
