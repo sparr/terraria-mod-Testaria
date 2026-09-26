@@ -101,7 +101,7 @@ public class SetterGetterTests
 
 		XAssert.Contains("First", thrown.Message);
 		XAssert.Contains("Second", thrown.Message);
-		XAssert.Contains("2 properties", thrown.Message);
+		XAssert.Contains("2 properties could not take their own values", thrown.Message);
 	}
 
 	private sealed class GetterThrows

@@ -341,8 +341,7 @@ nobody here wrote, by exactly the line above:
 ```
 Assert.SettersAcceptTheirOwnGetters() Failure
 On a BossTestData, 1 property could not take its own value:
-  diedString: reading it gave "", and writing that back threw
-  FormatException: The input string '' was not in a correct format.
+  diedString: reading it gave "", and writing that back threw FormatException: The input string '' was not in a correct format.
 ```
 
 That property renders an unset result as the empty string and parses with

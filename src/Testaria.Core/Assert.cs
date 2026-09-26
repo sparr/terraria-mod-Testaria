@@ -398,9 +398,12 @@ public static class Assert
 		if (problems.Count == 0)
 			return;
 
+		string count = problems.Count == 1
+			? "1 property could not take its own value"
+			: $"{problems.Count} properties could not take their own values";
+
 		throw new AssertionException(message ?? "Assert.SettersAcceptTheirOwnGetters() Failure\n"
-			+ $"On a {subject.GetType().Name}, {problems.Count} "
-			+ $"propert{(problems.Count == 1 ? "y" : "ies")} could not take their own value:\n  "
+			+ $"On a {subject.GetType().Name}, {count}:\n  "
 			+ string.Join("\n  ", problems));
 	}
 
