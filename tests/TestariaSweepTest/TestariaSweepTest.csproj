@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>TestariaSweepTest</AssemblyName>
+    <RootNamespace>TestariaSweepTest</RootNamespace>
+    <BuildMod>$(TestariaHasTml)</BuildMod>
+    <OutputTmlReferences>false</OutputTmlReferences>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <Import Project="$(tModLoaderSteamPath)/tMLMod.targets" Condition="'$(TestariaHasTml)' == 'true'" />
+
+  <ItemGroup Condition="'$(TestariaHasTml)' != 'true'">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+  <!--
+    Private=false: these are resolved at runtime through build.txt's
+    modReferences, so they must not be copied into this mod's own output
+    where ModCompile would treat them as something to pack.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Testaria\Testaria.csproj" Private="false" />
+    <ProjectReference Include="..\..\src\Testaria.Core\Testaria.Core.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

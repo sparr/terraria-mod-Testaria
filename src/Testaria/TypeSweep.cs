@@ -68,6 +68,58 @@ public static class TypeSweep
 	}
 
 	/// <summary>
+	/// The separator between a mod's name and a type's, in the names
+	/// <see cref="EveryConstructibleType"/> produces. A slash, because a mod
+	/// name cannot contain one and a type name cannot either.
+	/// </summary>
+	public const char Separator = '/';
+
+	/// <summary>
+	/// Every constructible type in every loaded mod, as <c>Mod/Type.Full.Name</c>.
+	/// <para/>
+	/// The reason this exists rather than a list per mod: the two property
+	/// checks need no knowledge of their subject, so the set of subjects can be
+	/// every type in every mod that happens to be installed, and a suite
+	/// pointed at them needs no reference to any of them. Enable whichever mods
+	/// are of interest and the sweep covers exactly those.
+	/// <para/>
+	/// The framework and any suite are left out: sweeping the thing doing the
+	/// sweeping says nothing, and a suite's own types are not the subject. Both
+	/// are recognised by name, which is crude and is the only signal available
+	/// from here.
+	/// </summary>
+	public static IEnumerable<string> EveryConstructibleType()
+		=> ModLoader.Mods
+			.Where(mod => !IsHarness(mod.Name))
+			.SelectMany(mod => ConstructibleTypes(mod.Name)
+				.Select(type => $"{mod.Name}{Separator}{type}"))
+			.Order();
+
+	/// <summary>
+	/// One of those, made, given the name <see cref="EveryConstructibleType"/>
+	/// produced.
+	/// </summary>
+	public static object ConstructQualified(string qualified)
+	{
+		int split = qualified.IndexOf(Separator);
+
+		if (split <= 0)
+			Assert.Fail($"'{qualified}' does not name a mod and a type separated by '{Separator}'.");
+
+		return Construct(qualified[..split], qualified[(split + 1)..]);
+	}
+
+	/// <summary>
+	/// Whether a mod is this framework, a suite built on it, or tModLoader's
+	/// own built-in one, none of which is a subject worth sweeping.
+	/// </summary>
+	private static bool IsHarness(string modName)
+		=> modName == "ModLoader"
+			|| modName == nameof(Testaria)
+			|| modName.EndsWith("Test", StringComparison.Ordinal)
+			|| modName.EndsWith("Tests", StringComparison.Ordinal);
+
+	/// <summary>
 	/// Whether a sweep can make one of these without being told anything.
 	/// <para/>
 	/// Public, concrete, not generic, and with a public constructor taking no
@@ -80,5 +132,35 @@ public static class TypeSweep
 			&& !type.IsAbstract
 			&& !type.IsGenericTypeDefinition
 			&& type.FullName is not null
-			&& type.GetConstructor(Type.EmptyTypes) is not null;
+			&& type.GetConstructor(Type.EmptyTypes) is not null
+			&& !IsEntityBound(type);
+
+	/// <summary>
+	/// Whether this is content that only means anything attached to an entity.
+	/// <para/>
+	/// <c>ModType&lt;TEntity&gt;</c> is the base every such kind derives from:
+	/// <c>ModProjectile</c>, <c>ModNPC</c>, <c>ModItem</c> and the rest. Their
+	/// properties are usually named views onto the entity, <c>Projectile.ai[0]</c>
+	/// read as <c>IsStickingToTarget</c> and so on, and a freshly constructed
+	/// one has no entity, so reading them throws through no fault of the mod.
+	/// <para/>
+	/// Measured before it was excluded: sweeping ExampleMod this way reported
+	/// fourteen such properties across five types, every one of them a
+	/// <see cref="NullReferenceException"/> and none of them a defect. The
+	/// loader is what gives these instances meaning, and the instances it has
+	/// already made are live content that a sweep must not write to.
+	/// <para/>
+	/// <c>ModConfig</c> is deliberately not excluded: it derives from
+	/// <c>ModType</c> without an entity, it is a bag of settings, and reading
+	/// and writing those settings is exactly what this is for.
+	/// </summary>
+	private static bool IsEntityBound(Type type)
+	{
+		for (Type? current = type; current is not null; current = current.BaseType) {
+			if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(ModType<>))
+				return true;
+		}
+
+		return false;
+	}
 }
