@@ -365,6 +365,7 @@ public static class Assert
 		NotNull(subject, "Assert.SettersAcceptTheirOwnGetters() Failure\nSubject was null");
 
 		List<string> problems = [];
+		List<string> unreadable = [];
 
 		foreach (PropertyInfo property in RoundTrippable(subject.GetType())) {
 			object? value;
@@ -372,7 +373,14 @@ public static class Assert
 				value = property.GetValue(subject);
 			}
 			catch (Exception bad) {
-				problems.Add($"{property.Name}: reading it threw {Unwrap(bad)}");
+				// Not a failure. This asks whether a setter accepts what its
+				// own getter produced; a getter that throws produced nothing,
+				// so there is no question left to answer. A getter that throws
+				// may well be a defect, but it is a different one, and failing
+				// here would blame the round trip for it. Reported rather than
+				// passed over, because a silent pass claims the property was
+				// checked.
+				unreadable.Add($"{property.Name}: reading it threw {Unwrap(bad)}");
 				continue;
 			}
 
@@ -385,8 +393,17 @@ public static class Assert
 			}
 		}
 
-		if (problems.Count == 0)
+		if (problems.Count == 0) {
+			if (unreadable.Count > 0) {
+				Skip($"on a {subject.GetType().Name}, nothing could be asked of "
+					+ (unreadable.Count == 1
+						? "a property whose getter throws"
+						: $"{unreadable.Count} properties whose getters throw")
+					+ ":\n  " + string.Join("\n  ", unreadable));
+			}
+
 			return;
+		}
 
 		string count = problems.Count == 1
 			? "1 property could not take its own value"
@@ -423,6 +440,7 @@ public static class Assert
 		NotNull(subject, "Assert.SettersSettleAfterOneWrite() Failure\nSubject was null");
 
 		List<string> problems = [];
+		List<string> unavailable = [];
 
 		foreach (PropertyInfo property in RoundTrippable(subject.GetType())) {
 			object? first, second, third;
@@ -435,7 +453,13 @@ public static class Assert
 				third = property.GetValue(subject);
 			}
 			catch (Exception bad) {
-				problems.Add($"{property.Name}: could not be written back at all, which threw {Unwrap(bad)}");
+				// Not a failure here. Whether a property throws is what
+				// SettersAcceptTheirOwnGetters asks, and it will say so; this
+				// asks only whether a value that can be written comes to rest,
+				// and one that cannot be written has no answer either way.
+				// Reporting it in both places made a single defect arrive as
+				// two failures saying different things about it.
+				unavailable.Add($"{property.Name}: could not be read and written, which threw {Unwrap(bad)}");
 				continue;
 			}
 
@@ -446,14 +470,70 @@ public static class Assert
 				+ $"after one write, and {Format(third)} after a second, so it never settles");
 		}
 
-		if (problems.Count == 0)
+		if (problems.Count == 0) {
+			if (unavailable.Count > 0) {
+				Skip($"on a {subject.GetType().Name}, settling could not be asked of "
+					+ (unavailable.Count == 1 ? "a property" : $"{unavailable.Count} properties")
+					+ ":\n  " + string.Join("\n  ", unavailable));
+			}
+
 			return;
+		}
 
 		string count = problems.Count == 1
 			? "1 property does not settle"
 			: $"{problems.Count} properties do not settle";
 
 		throw new AssertionException(message ?? "Assert.SettersSettleAfterOneWrite() Failure\n"
+			+ $"On a {subject.GetType().Name}, {count}:\n  "
+			+ string.Join("\n  ", problems));
+	}
+
+	/// <summary>
+	/// Asserts that every property can be read at all.
+	/// <para/>
+	/// The simplest of the three sweeping checks and the one that most often
+	/// means something: a getter is expected to answer, and code everywhere
+	/// assumes it will. A property that throws when read takes down whatever
+	/// inspects it, and plenty of things inspect properties without being asked
+	/// to, a debugger's watch window and a serializer among them.
+	/// <para/>
+	/// Not always a defect, which is why a suite can declare an exemption. The
+	/// honest example is a client-only property reached on a server: a font
+	/// that exists only where fonts are loaded throws in a headless process and
+	/// is perfectly correct in the one it was written for. That is worth
+	/// knowing rather than hiding, so it is reported by default and excused by
+	/// whoever knows better.
+	/// <para/>
+	/// Read-only properties count. Unlike the other two checks this needs no
+	/// setter, and a property with no setter is exactly the kind that gets
+	/// computed on the fly and throws.
+	/// </summary>
+	public static void GettersDoNotThrow(object subject, string? message = null)
+	{
+		Counted();
+
+		NotNull(subject, "Assert.GettersDoNotThrow() Failure\nSubject was null");
+
+		List<string> problems = [];
+
+		foreach (PropertyInfo property in OwnProperties(subject.GetType())) {
+			try {
+				property.GetValue(subject);
+			}
+			catch (Exception bad) {
+				problems.Add($"{property.Name}: reading it threw {Unwrap(bad)}");
+			}
+		}
+
+		if (problems.Count == 0)
+			return;
+
+		string count = problems.Count == 1
+			? "1 property cannot be read"
+			: $"{problems.Count} properties cannot be read";
+
+		throw new AssertionException(message ?? "Assert.GettersDoNotThrow() Failure\n"
 			+ $"On a {subject.GetType().Name}, {count}:\n  "
 			+ string.Join("\n  ", problems));
 	}
@@ -467,11 +547,41 @@ public static class Assert
 	/// </summary>
 	private static IEnumerable<PropertyInfo> RoundTrippable(Type type)
 	{
+		foreach (PropertyInfo property in OwnProperties(type)) {
+			if (property.SetMethod is not { IsPublic: true })
+				continue;
+
+			yield return property;
+		}
+	}
+
+	/// <summary>
+	/// The public instance properties a type's own assembly declares.
+	/// <para/>
+	/// Not the inherited ones from somewhere else, and that is the whole of the
+	/// rule: these checks ask about the code somebody wrote, not about the
+	/// framework it derives from. Asking otherwise is not merely noisy, it is
+	/// unanswerable. A tModLoader <c>ModType</c> gets its <c>Name</c>,
+	/// <c>FullName</c> and <c>DisplayName</c> from the loader that registered
+	/// it, so an instance built by reflection rather than by the loader throws
+	/// from all three, and the mod that declared none of them is blamed.
+	/// Measured: sweeping one corpus this way produced 51 failures, every one
+	/// of them a property tModLoader declares.
+	/// <para/>
+	/// A base class in the same assembly is still the author's own code and is
+	/// still asked about, which is why this tests the assembly rather than
+	/// simply passing <c>DeclaredOnly</c>.
+	/// </summary>
+	private static IEnumerable<PropertyInfo> OwnProperties(Type type)
+	{
 		foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
-			if (property.GetMethod is not { IsPublic: true } || property.SetMethod is not { IsPublic: true })
+			if (property.GetMethod is not { IsPublic: true })
 				continue;
 
 			if (property.GetIndexParameters().Length != 0)
+				continue;
+
+			if (property.DeclaringType?.Assembly != type.Assembly)
 				continue;
 
 			yield return property;

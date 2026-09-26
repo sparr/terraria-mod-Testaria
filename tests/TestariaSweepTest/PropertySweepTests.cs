@@ -47,7 +47,7 @@ public class PropertySweepTests
 	[LoadedTest]
 	[CaseSource(nameof(Everything))]
 	public void Takes_its_own_values(string qualified)
-		=> Assert.SettersAcceptTheirOwnGetters(TypeSweep.ConstructQualified(qualified));
+		=> Run(qualified, SweepCheck.RoundTrip, subject => Assert.SettersAcceptTheirOwnGetters(subject));
 
 	/// <summary>
 	/// And writing it back twice must change nothing the second time. The first
@@ -57,5 +57,31 @@ public class PropertySweepTests
 	[LoadedTest]
 	[CaseSource(nameof(Everything))]
 	public void Settles_after_one_write(string qualified)
-		=> Assert.SettersSettleAfterOneWrite(TypeSweep.ConstructQualified(qualified));
+		=> Run(qualified, SweepCheck.Settling, subject => Assert.SettersSettleAfterOneWrite(subject));
+
+	/// <summary>
+	/// Every property can be read at all, which is the plainest of the three
+	/// and the one most often worth knowing. A getter is expected to answer,
+	/// and a great deal of code reads properties without being asked to.
+	/// </summary>
+	[LoadedTest]
+	[CaseSource(nameof(Everything))]
+	public void Can_be_read(string qualified)
+		=> Run(qualified, SweepCheck.GetterReads, subject => Assert.GettersDoNotThrow(subject));
+
+	/// <summary>
+	/// One case, unless the mod's own suite has declared that this check does
+	/// not apply to it, in which case its reason is reported as a skip.
+	/// <para/>
+	/// The declaration lives with the mod that knows, not here. A list in this
+	/// file would make the sweep the keeper of facts about mods it has never
+	/// read, and would grow a line for every mod anybody ever points it at.
+	/// </summary>
+	private static void Run(string qualified, SweepCheck check, Action<object> assertion)
+	{
+		if (SweepExemptions.IsExempt(qualified, check, out string reason))
+			Assert.Skip($"{qualified}'s own suite says this does not apply: {reason}");
+
+		assertion(TypeSweep.ConstructQualified(qualified));
+	}
 }

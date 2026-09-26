@@ -137,18 +137,48 @@ public class SetterSettleTests
 	}
 
 	/// <summary>
-	/// A property that cannot be written is reported, not passed over. It
-	/// cannot be shown to settle, and silently passing would claim it had been
-	/// checked.
+	/// A property that cannot be written is a skip, not a failure.
+	/// <para/>
+	/// Whether a property throws is what <c>SettersAcceptTheirOwnGetters</c>
+	/// asks, and it will say so. This asks only whether a value that can be
+	/// written comes to rest, and one that cannot be written has no answer
+	/// either way. Reporting it in both places made one defect arrive as two
+	/// failures saying different things about it. Skipped rather than passed,
+	/// because a silent pass would claim it had been checked.
 	/// </summary>
 	[Fact]
-	public void A_property_that_cannot_be_written_is_reported()
+	public void A_property_that_cannot_be_written_is_skipped_rather_than_failed()
 	{
-		AssertionException thrown = XAssert.Throws<AssertionException>(
+		SkipTestException skipped = XAssert.Throws<SkipTestException>(
 			() => TAssert.SettersSettleAfterOneWrite(new SetterThrows()));
 
-		XAssert.Contains("could not be written back at all", thrown.Message);
-		XAssert.Contains("InvalidOperationException", thrown.Message);
+		XAssert.Contains("could not be read and written", skipped.Message);
+		XAssert.Contains("InvalidOperationException", skipped.Message);
+	}
+
+	private sealed class OneUnwritableAndOneDrifting
+	{
+		private string drifts = string.Empty;
+
+		public string Unwritable {
+			get => string.Empty;
+			set => throw new InvalidOperationException("will not take it");
+		}
+
+		public string Drifts {
+			get => drifts;
+			set => drifts = value + "x";
+		}
+	}
+
+	/// <summary>A property that cannot be written does not hide one that drifts.</summary>
+	[Fact]
+	public void An_unwritable_property_does_not_hide_a_drifting_one()
+	{
+		AssertionException thrown = XAssert.Throws<AssertionException>(
+			() => TAssert.SettersSettleAfterOneWrite(new OneUnwritableAndOneDrifting()));
+
+		XAssert.Contains("Drifts", thrown.Message);
 	}
 
 	[Fact]

@@ -112,14 +112,48 @@ public class SetterGetterTests
 		}
 	}
 
-	/// <summary>A getter that throws is reported too, and named as the getter.</summary>
+	/// <summary>
+	/// A getter that throws is a skip, not a failure.
+	/// <para/>
+	/// This asks whether a setter accepts what its own getter produced. A
+	/// getter that throws produced nothing, so the question has no answer, and
+	/// failing would blame the round trip for a defect somewhere else. It
+	/// happens for real: a property returning a font on a server that has none
+	/// throws from the getter, and is not a defect at all.
+	/// </summary>
 	[Fact]
-	public void A_getter_that_throws_is_reported()
+	public void A_getter_that_throws_is_skipped_rather_than_failed()
 	{
-		AssertionException thrown = XAssert.Throws<AssertionException>(
+		SkipTestException skipped = XAssert.Throws<SkipTestException>(
 			() => TAssert.SettersAcceptTheirOwnGetters(new GetterThrows()));
 
-		XAssert.Contains("reading it threw", thrown.Message);
+		XAssert.Contains("reading it threw", skipped.Message);
+	}
+
+	private sealed class OneUnreadableAndOneBroken
+	{
+		public string Unreadable {
+			get => throw new InvalidOperationException("no font here");
+			set { }
+		}
+
+		public string Broken {
+			get => string.Empty;
+			set => throw new InvalidOperationException("will not take it");
+		}
+	}
+
+	/// <summary>
+	/// An unreadable property does not excuse a broken one: a real problem
+	/// still fails, whatever else could not be asked.
+	/// </summary>
+	[Fact]
+	public void An_unreadable_property_does_not_hide_a_real_one()
+	{
+		AssertionException thrown = XAssert.Throws<AssertionException>(
+			() => TAssert.SettersAcceptTheirOwnGetters(new OneUnreadableAndOneBroken()));
+
+		XAssert.Contains("Broken", thrown.Message);
 	}
 
 	private sealed class NotWritable

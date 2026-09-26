@@ -1,5 +1,6 @@
 using System.Reflection;
 using Terraria.ModLoader;
+using Terraria.ModLoader.Config;
 
 namespace Testaria;
 
@@ -120,6 +121,33 @@ public static class TypeSweep
 			|| modName.EndsWith("Tests", StringComparison.Ordinal);
 
 	/// <summary>
+	/// Whether this is content the loader registers, which a sweep cannot
+	/// validly make for itself.
+	/// <para/>
+	/// Anything <c>ILoadable</c> is built and bound by tModLoader: it is given
+	/// its mod, its name, and for <c>ModType&lt;TEntity&gt;</c> an entity whose
+	/// fields its properties are named views onto, <c>IsStickingToTarget</c>
+	/// reading <c>Projectile.ai[0]</c> and so on. An instance made by
+	/// reflection has none of that, so reading such a property throws through
+	/// no fault of the mod, and the instances the loader did make are live
+	/// content a sweep must never write to.
+	/// <para/>
+	/// Measured twice while narrowing this. Excluding only the entity-bound
+	/// kinds left 51 failures, every one a property tModLoader itself declares;
+	/// restricting each check to the subject's own assembly took that to 14,
+	/// every one a property the mod declares but the loader fills in. Both
+	/// numbers were noise of the kind that teaches a reader to skim a report.
+	/// <para/>
+	/// <c>ModConfig</c> is the exception, and not an arbitrary one. A config is
+	/// a bag of settings that tModLoader itself constructs and serialises
+	/// freely, rather than behaviour bound to a registered thing, and those
+	/// settings are read and written by a generated interface, which is exactly
+	/// the round trip these checks are about.
+	/// </summary>
+	private static bool IsLoaderBound(Type type)
+		=> typeof(ILoadable).IsAssignableFrom(type) && !typeof(ModConfig).IsAssignableFrom(type);
+
+	/// <summary>
 	/// Whether a sweep can make one of these without being told anything.
 	/// <para/>
 	/// Public, concrete, not generic, and with a public constructor taking no
@@ -133,34 +161,5 @@ public static class TypeSweep
 			&& !type.IsGenericTypeDefinition
 			&& type.FullName is not null
 			&& type.GetConstructor(Type.EmptyTypes) is not null
-			&& !IsEntityBound(type);
-
-	/// <summary>
-	/// Whether this is content that only means anything attached to an entity.
-	/// <para/>
-	/// <c>ModType&lt;TEntity&gt;</c> is the base every such kind derives from:
-	/// <c>ModProjectile</c>, <c>ModNPC</c>, <c>ModItem</c> and the rest. Their
-	/// properties are usually named views onto the entity, <c>Projectile.ai[0]</c>
-	/// read as <c>IsStickingToTarget</c> and so on, and a freshly constructed
-	/// one has no entity, so reading them throws through no fault of the mod.
-	/// <para/>
-	/// Measured before it was excluded: sweeping ExampleMod this way reported
-	/// fourteen such properties across five types, every one of them a
-	/// <see cref="NullReferenceException"/> and none of them a defect. The
-	/// loader is what gives these instances meaning, and the instances it has
-	/// already made are live content that a sweep must not write to.
-	/// <para/>
-	/// <c>ModConfig</c> is deliberately not excluded: it derives from
-	/// <c>ModType</c> without an entity, it is a bag of settings, and reading
-	/// and writing those settings is exactly what this is for.
-	/// </summary>
-	private static bool IsEntityBound(Type type)
-	{
-		for (Type? current = type; current is not null; current = current.BaseType) {
-			if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(ModType<>))
-				return true;
-		}
-
-		return false;
-	}
+			&& !IsLoaderBound(type);
 }
