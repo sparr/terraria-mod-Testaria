@@ -56,7 +56,15 @@ jobs:
 
     env:
       # 1.4.5.8 with the dots removed, which is how the setup tool builds the
-      # download URL (TerrariaDecompileExecutableProvider). Not a guess.
+      # download URL (TerrariaDecompileExecutableProvider).
+      #
+      # CHECK THIS AGAINST THE BRANCH BEFORE THE FIRST RUN. The 1.4.5 head
+      # disagrees with itself: the setup tool decompiles 1.4.5.8 while the
+      # InstallVerifier in the generated source expects Terraria 1.4.5.6, and a
+      # mismatch stops tModLoader before it starts, server included. Only the
+      # decompile is fed from here, so this value is right for that; anything
+      # that later puts a Terraria installation beside the build has to match
+      # InstallVerifier instead, and the two are not currently the same number.
       TERRARIA_VERSION: '1458'
       TMOD_BRANCH: '1.4.5'
       # Two variables, because they do different jobs and both are needed.
@@ -175,14 +183,30 @@ jobs:
         working-directory: tModLoader
         run: ./setup-cli.sh regen-source --plain-progress -f --strict
 
+      # The analyzers first, and not as a nicety. tMLMod.targets references
+      # Libraries/tModCodeAssist/1.0.0/tModCodeAssist.dll when it compiles any
+      # mod, and building Terraria.csproj does not produce it; tModLoader's own
+      # workflow builds these two ahead of it for the same reason. Skipped, the
+      # result looks like a complete install and then fails CS0006 on the first
+      # mod built against it.
       - name: Build tModLoader
         working-directory: tModLoader
         run: |
+          dotnet build tModCodeAssist/tModCodeAssist/tModCodeAssist.csproj \
+            -c Release --nologo -v q
+          dotnet build tModCodeAssist/tModCodeAssist.CodeFixes/tModCodeAssist.CodeFixes.csproj \
+            -c Release --nologo -v q
           dotnet build src/tModLoader/Terraria/Terraria.csproj \
             -c Release --nologo -v q
+
+          # Every file a gate will reach for. The list is the check: an earlier
+          # version of it omitted the analyzers and passed on a build that
+          # could not compile a mod.
           test -f steam_build/tModLoader.dll
           test -f steam_build/tMLMod.targets
           test -d steam_build/Libraries/Native/Linux
+          test -f steam_build/Libraries/tModCodeAssist/1.0.0/tModCodeAssist.dll
+          test -f steam_build/Libraries/tModCodeAssist/1.0.0/tModCodeAssist.CodeFixes.dll
 
       # Where the gates expect to find things. TML_PATH naming a build from
       # source rather than a Steam install is exercised by the rehearsal;

@@ -27,7 +27,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Two halves. GitHub Actions covers the core tiers on three operating systems. The game tiers run locally, under `scripts/ci-local.sh`: preflight, provisioning, every gate strictly, a kept run directory, a lock, and a commit history, on a timer (section 8.6h). The hosted half still ships with the first GitHub release (sections 8.3a and 8.7), and is now a recipe to port rather than to invent: every step of it, decompile through tier 3, has been run on Linux against a tModLoader built from source (section 8.7a). A hosted runner cannot cover tier 3 at all, for want of game content it may not have, and says so rather than hiding it (section 8.7b) |
-| Game content | 755 MB for a client to start, of which 86 percent is audio no gate can hear. Section 8.7c plans the 104 MB package that replaces it, measured against the whole tier 3 suite. Not built yet, and worth building for a private runner whatever is decided about hosted CI |
+| Game content | 755 MB for a client to start, of which 86 percent is audio no gate can hear. Section 8.7c plans the 104 MB package that would replace it. The size is measured; that a client starts without the audio is **not**, and the run that seemed to show it was reading another installation's content entirely. Not built, not verified, and worth both whatever is decided about hosted CI |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
@@ -948,11 +948,17 @@ tModLoader's own build job runs on `windows-latest` (their `documentation` and `
 | --- | --- |
 | `setup-cli.sh decompile --terraria-steam-dir <install> --tml-dev-steam-dir steam_build --plain-progress -f --strict` | 41 MB of C# under `src/decompiled` |
 | `setup-cli.sh regen-source --plain-progress -f --strict` | every patch applied, no failure and no fuzz |
-| `dotnet build src/tModLoader/Terraria/Terraria.csproj -c Release` | a 170 MB `steam_build/` carrying `tModLoader.dll`, `tMLMod.targets` and `Libraries/Native/Linux` |
-| `TML_PATH=<steam_build> scripts/run-tests.sh` | 60 tests, the same as against the Steam install |
-| `TML_PATH=<steam_build> scripts/check-net.sh` | both halves pass: 58 of 60 with a client, every tier 3 test skipped without one |
+| `dotnet build tModCodeAssist/...` twice, then `src/tModLoader/Terraria/Terraria.csproj -c Release` | a `steam_build/` carrying `tModLoader.dll`, `tMLMod.targets`, `Libraries/Native/Linux` and the two analyzer assemblies |
+| `TML_PATH=<steam_build> scripts/run-tests.sh`, with no Terraria installation beside it | 60 tests, 43 passed and 17 skipped, exit 0: the same as against the Steam install |
+| `TML_PATH=<steam_build> scripts/check-net.sh` | **not established.** The build expects a Terraria version this machine does not have, so no client has run against it |
 
-That last pair is the part worth having done. It confirms `TML_PATH` can name a source build rather than a Steam install, which section 8.6h hardened a check for and could not exercise, and it confirms `MODS_SRC` needs no special handling: a build from source reports the Dev purpose and writes its `.tmod` to the same `tModLoader-dev` save path a dev install uses.
+`MODS_SRC` needs no special handling: a build from source reports the Dev purpose and writes its `.tmod` to the same `tModLoader-dev` save path a dev install uses. And the server half needs no Terraria installation at all, which is the `dedServ` finding below arriving from the other direction: the row above ran with nothing whatever beside the build.
+
+**Two corrections this table has already been through, both worth keeping.**
+
+*The analyzers are not built by building tModLoader.* `tMLMod.targets` references `Libraries/tModCodeAssist/1.0.0/tModCodeAssist.dll` and its code-fixes companion when it compiles any mod, and building `Terraria.csproj` does not produce them. tModLoader's own workflow builds those two projects first and carries a comment saying they are otherwise not copied. Skipping that step gives a `steam_build` that looks complete, passes a check for `tModLoader.dll` and `tMLMod.targets`, and then fails `CS0006` on the first mod compiled against it. The completeness check is only as good as its list.
+
+*A version mismatch stops the build dead, and the branch disagrees with itself.* `InstallVerifier` in the generated source expects Terraria **1.4.5.6**, while `TerrariaDecompileExecutableProvider` in the same checkout decompiles **1.4.5.8**. With a 1.4.5.8 installation beside it the build refuses to start at all, server included, naming the executable it rejected. With nothing beside it the server is content, which is how the row above passes. What this costs is the client: it needs `../Terraria/Content`, and content is part of an installation whose executable the verifier will then reject. Section 8.7's `TERRARIA_VERSION` cannot simply be the decompiler's answer, and which version a given branch head wants has to be read out of `InstallVerifier` rather than assumed.
 
 **Three things the source settles that guesswork would have got wrong.**
 
@@ -978,13 +984,17 @@ So the hosted job covers tiers 1 and 2, the packages, the templates, fresh world
 
 It takes two variables and they do different jobs. `SKIP_NET` stops the gate running, which it otherwise would, and would then fail on the first client that cannot find content. `UNCOVERED` says that absence is intended. Without the second the first is a silent hole, and without the first the second never arises.
 
-**Two ways to get tier 3 covered by a push, neither of them the code's to choose.** A self-hosted runner on a machine that owns Terraria, which needs no new mechanism at all. Or caching the content encrypted the way the decompiled tree is cached, which is shipped game assets rather than derived source, and is a licensing judgment rather than a technical one. Section 8.7c reduces what either would have to carry from 755 MB to 104 MB; it does not decide between them, and it does not touch the licensing question.
+**Two ways to get tier 3 covered by a push, neither of them the code's to choose.** A self-hosted runner on a machine that owns Terraria, which needs no new mechanism at all. Or caching the content encrypted the way the decompiled tree is cached, which is shipped game assets rather than derived source, and is a licensing judgment rather than a technical one. Section 8.7c would reduce what either has to carry from 755 MB to 104 MB if its premise holds, which is not yet established; it does not decide between them, and it does not touch the licensing question.
 
 #### 8.7c An audio-less content package
 
 A client cannot start without Terraria's content, and that content is 755 MB. Most of it is never reachable: **652 MB, or 86 percent, is audio** (`Wave Bank.xwb` at 473 MB, `Sounds/` at 179 MB, plus the sound bank and the music index), and every gate already runs the game under `SDL_AUDIODRIVER=dummy`, so none of it has a device to arrive at.
 
-Measured rather than assumed: with all audio removed and nothing else changed, the tier 3 gate reports 58 of 60 passing and exits 0, which is what the complete tree reports, and that includes the two self-tests that read back pixels a GPU drew. What remains is `Fonts/` at 26 MB, `Images/` at 78 MB, and the three shaders, for **104 MB**.
+The sizes are measured. **Whether a client starts without the audio is not**, and an earlier version of this section said it was. The run that appeared to establish it had its `TML_PATH` silently overridden by a stale `scripts/paths.local.sh`, the very failure section 8.6h's fourth correction describes, so the client under test was the Steam installation reading the complete 755 MB tree beside it, and the trimmed directory was never opened. The claim is withdrawn rather than softened.
+
+What survives is a reason to expect it, which is not the same thing: every gate runs the game under `SDL_AUDIODRIVER=dummy`, so the audio has no device to reach, and the sizes above say what it would be worth. What remains after the cut would be `Fonts/` at 26 MB, `Images/` at 78 MB, and the three shaders, for **104 MB**, and that number should be treated as a target to verify rather than a result.
+
+Verifying it needs a client, and section 8.7a records why this machine currently has none to offer a source build: the branch head wants a Terraria version the machine does not have. Against the Steam installation the question cannot be asked either, because the content that would have to be trimmed is that installation's own, and trimming somebody's game to run a test is not a thing this project will do. The way through is a copy of the install in a scratch directory with a trimmed content tree beside it, which is work rather than a command, and is the first thing to do before any of the rest of this section is built.
 
 This is worth building for a private runner on its own terms, independently of what section 8.7b's question is answered with: a machine that runs the gates keeps a seventh of what it keeps now.
 
