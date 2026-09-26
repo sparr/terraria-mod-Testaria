@@ -14,26 +14,22 @@
 # decompile, the patches (no failures and no fuzz), the Release build, and
 # both Testaria gate suites against the result. See PLAN.md section 8.7a.
 #
-# WHAT THIS JOB CANNOT DO
+# TIER 3 WITHOUT OWNING TERRARIA
 #
-# It cannot run tier 3 with a client. A client refuses to start without
-# Terraria's Content directory, which is 755 MB of game assets available only
-# from an owned installation: the public dedicated-server zip contains 77
-# files, none of them content, and no .xnb at all. A dedicated *server* needs
-# none of it (Main.TML.cs returns before resolving content when dedServ), so
-# every other gate is unaffected.
+# A client will not start unless a content directory sits beside the install,
+# and Terraria's is 755 MB available only from an owned copy. It does not
+# follow that a runner needs one. The check tests that two paths exist and
+# never opens them, and nothing in the suite asks for a vanilla asset, so two
+# empty files named after them satisfy a client completely: measured by
+# trimming 755 MB to nothing a row at a time with tier 3 green at every step,
+# the last of those rows being this configuration exactly (PLAN.md 8.7d).
 #
-# The whole tier 3 gate goes, not half of it: check-net.sh runs with a client
-# and then without one in the same script. What is lost is its assertion that
-# every tier 3 test skips when no client is attached. What is not lost is that
-# the tests do skip: the green path runs the same suite without a client and
-# reports those 17 skips in its own report every time.
-#
-# That reduction is declared in UNCOVERED below rather than discovered. Strict
-# mode fails any gate that silently declines to run, which is the behavior
-# worth keeping; a declared gate is reported as uncovered, in the log and in
-# the summary, and the verdict says "partial coverage". Full coverage is what
-# scripts/ci-local.sh gives on a machine that owns the game (PLAN.md 8.6h).
+# So this job creates a stub and covers every gate. Two caveats, both real.
+# The stub defeats a check meant to tell a person their Terraria is out of
+# date, which is harmless where there is no person and no Terraria, and must
+# never be done on top of an installation. And it measures the suite that
+# exists: the first test that wants a real texture will need real content,
+# which is what PLAN.md 8.7c is for and where 8.9 is going.
 
 name: Game tiers
 
@@ -48,7 +44,7 @@ concurrency:
 
 jobs:
   game-tiers:
-    name: Tiers 1 and 2, and tier 3 without a client
+    name: Tiers 1 through 3
     runs-on: ubuntu-latest
     # A cold run decompiles Terraria, which is the slow step the cache exists
     # to avoid. Warm runs are a build plus roughly five minutes of gates.
@@ -58,24 +54,16 @@ jobs:
       # 1.4.5.8 with the dots removed, which is how the setup tool builds the
       # download URL (TerrariaDecompileExecutableProvider).
       #
-      # CHECK THIS AGAINST THE BRANCH BEFORE THE FIRST RUN. The 1.4.5 head
-      # disagrees with itself: the setup tool decompiles 1.4.5.8 while the
-      # InstallVerifier in the generated source expects Terraria 1.4.5.6, and a
-      # mismatch stops tModLoader before it starts, server included. Only the
-      # decompile is fed from here, so this value is right for that; anything
-      # that later puts a Terraria installation beside the build has to match
-      # InstallVerifier instead, and the two are not currently the same number.
+      # Only the decompile is fed from here, and for that this is right. Note
+      # that the 1.4.5 head disagrees with itself: the setup tool decompiles
+      # 1.4.5.8 while the InstallVerifier in the generated source expects
+      # Terraria 1.4.5.6. That mismatch stops the build dead when a real
+      # installation sits beside it, and is invisible here only because the
+      # stub arrangement below never reaches the executable check. Anything
+      # that later puts a real Terraria beside the build has to match
+      # InstallVerifier, and the two are not currently the same number.
       TERRARIA_VERSION: '1458'
       TMOD_BRANCH: '1.4.5'
-      # Two variables, because they do different jobs and both are needed.
-      # SKIP_NET stops the tier 3 gate running at all, which it otherwise
-      # would, and would fail on the first client that cannot find Content.
-      # UNCOVERED then says that particular absence is intended, so strict
-      # mode reports it as uncovered instead of failing the run. Without the
-      # second, the first is just a silent hole; without the first, the second
-      # never comes up. Matched against the gate name in full.
-      SKIP_NET: '1'
-      UNCOVERED: 'tier 3'
 
     steps:
       - name: Check out Testaria
@@ -208,14 +196,35 @@ jobs:
           test -f steam_build/Libraries/tModCodeAssist/1.0.0/tModCodeAssist.dll
           test -f steam_build/Libraries/tModCodeAssist/1.0.0/tModCodeAssist.CodeFixes.dll
 
-      # Where the gates expect to find things. TML_PATH naming a build from
-      # source rather than a Steam install is exercised by the rehearsal;
-      # MODS_SRC needs no special value because a source build reports the Dev
+      # Where the gates expect to find things, and the layout a client needs.
+      #
+      # The install goes under a directory named steamapps because
+      # InstallVerifier.DetectPlatform answers Steam when the working directory
+      # contains that word, and otherwise looks for a Terraria executable to
+      # hash against the version it expects. That is the branch a real Steam
+      # install takes and the one this project has always depended on; taking
+      # it deliberately here is what lets a build run without a Terraria to
+      # verify. If this ever stops working the symptom is a fatal error naming
+      # a version it could not match.
+      #
+      # The stub beside it is the whole of the content a client needs: two
+      # empty files at the paths the startup check tests for and never reads.
+      # Never do this on top of a real installation.
+      #
+      # MODS_SRC needs no special value, because a source build reports the Dev
       # purpose and writes its .tmod where a dev install would, but the
       # directory has to exist before the first build writes into it.
-      - name: Point the gates at the build
+      - name: Lay out the install and a stub Terraria
         run: |
-          echo "TML_PATH=${GITHUB_WORKSPACE}/tModLoader/steam_build" >> "$GITHUB_ENV"
+          mkdir -p "${GITHUB_WORKSPACE}/steamapps/common"
+          mv tModLoader/steam_build "${GITHUB_WORKSPACE}/steamapps/common/tModLoader"
+
+          stub="${GITHUB_WORKSPACE}/steamapps/common/Terraria/Content/Images"
+          mkdir -p "$stub"
+          : > "$stub/Projectile_651.xnb"
+          : > "$stub/Projectile_981.xnb"
+
+          echo "TML_PATH=${GITHUB_WORKSPACE}/steamapps/common/tModLoader" >> "$GITHUB_ENV"
           echo "EXAMPLEMOD_SRC=${GITHUB_WORKSPACE}/tModLoader/ExampleMod" >> "$GITHUB_ENV"
           echo "MODS_SRC=${HOME}/.local/share/Terraria/tModLoader-dev/Mods" >> "$GITHUB_ENV"
           mkdir -p "${HOME}/.local/share/Terraria/tModLoader-dev/Mods"

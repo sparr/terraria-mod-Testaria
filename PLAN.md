@@ -27,7 +27,7 @@ Measured on 2026-09-24 against the checkout this document lives in, by running t
 | Artifact D, the CLI | Built, section 8.5c. `testaria run` provisions, runs, reports, and exits with a code, on any platform the SDK runs on |
 | Artifacts B and C | Built, section 8.5e. B wires a test project against an install; C runs a suite from MSBuild and carries the CLI inside itself |
 | CI | Two halves. GitHub Actions covers the core tiers on three operating systems. The game tiers run locally, under `scripts/ci-local.sh`: preflight, provisioning, every gate strictly, a kept run directory, a lock, and a commit history, on a timer (section 8.6h). The hosted half still ships with the first GitHub release (sections 8.3a and 8.7), and is now a recipe to port rather than to invent: every step of it, decompile through tier 3, has been run on Linux against a tModLoader built from source (section 8.7a). A hosted runner cannot cover tier 3 at all, for want of game content it may not have, and says so rather than hiding it (section 8.7b) |
-| Game content | 755 MB for a client to start, of which 86 percent is audio no gate can hear. Section 8.7c plans the 104 MB package that would replace it. The size is measured; that a client starts without the audio is **not**, and the run that seemed to show it was reading another installation's content entirely. Not built, not verified, and worth both whatever is decided about hosted CI |
+| Game content | **None needed by any test that exists.** A client checks that two paths exist and never opens them, and nothing in the suite asks for a vanilla asset, so two empty files satisfy it: measured by trimming 755 MB to zero a row at a time, tier 3 green at every step, including against the source build (section 8.7d). Section 8.7c's package is what a test needing real assets would cost, and section 8.9 is where that arrives |
 | Publication | Nothing published to any channel, by design (section 5.1) |
 | Section 2.2 mitigations | All three, as of section 8.5a: the core carries no tModLoader reference, the `TSTA001`/`TSTA002` analyzer ships in the `Testaria.Core` package, and `[RequiresLoadedGame]` plus `GameState.Require` cover what an analyzer cannot see |
 | Seed control (risk 5) | Done, section 8.5b. Every test is seeded from its own identity, the seed is in the report, and `[Seed]` pins a particular roll |
@@ -976,7 +976,9 @@ tModLoader's own build job runs on `windows-latest` (their `documentation` and `
 
 The draft workflow is `.github/workflows/game-tiers.yml`. It runs seven of the eight gates and cannot run the eighth.
 
-**Terraria's content is not obtainable on a hosted runner.** The assumption throughout section 8.3a was that the public dedicated-server zip supplies it. It does not: `terraria-server-1458.zip` is 45 MB and holds 77 files, of which none is a `Content` directory and none is an `.xnb`. Terraria's `Content` is 755 MB and comes only from an owned installation. A dedicated server does not care (section 8.7a: `dedServ` returns before content is resolved), so tiers 1 and 2 and everything around them are unaffected, but a tier 3 **client** exits fatally without it, and no amount of arranging directories changes that.
+**Terraria's content is not obtainable on a hosted runner.** The assumption throughout section 8.3a was that the public dedicated-server zip supplies it. It does not: `terraria-server-1458.zip` is 45 MB and holds 77 files, of which none is a `Content` directory and none is an `.xnb`. Terraria's `Content` is 755 MB and comes only from an owned installation. A dedicated server does not care (section 8.7a: `dedServ` returns before content is resolved), so tiers 1 and 2 and everything around them are unaffected, but a tier 3 **client** exits fatally without it.
+
+**That last sentence is true and the conclusion drawn from it was wrong.** A client exits without *something in that position*; it does not need that something to be Terraria's content, because nothing in the suite asks for any. Section 8.7d measures how little suffices, and the answer removes this constraint rather than reducing it. What follows is kept because the reasoning is sound wherever a test does need assets, and because the declared-coverage mechanism it produced is worth having on its own.
 
 So the hosted job covers tiers 1 and 2, the packages, the templates, fresh worlds and the calibration, and does not cover tier 3. Full coverage is what section 8.6h already provides on a machine that owns the game, which makes the local runner the more capable of the two rather than a rehearsal for the hosted one.
 
@@ -996,7 +998,7 @@ What survives is a reason to expect it, which is not the same thing: every gate 
 
 Verifying it needs a client, and section 8.7a records why this machine currently has none to offer a source build: the branch head wants a Terraria version the machine does not have. Against the Steam installation the question cannot be asked either, because the content that would have to be trimmed is that installation's own, and trimming somebody's game to run a test is not a thing this project will do. The way through is a copy of the install in a scratch directory with a trimmed content tree beside it, which is work rather than a command, and is the first thing to do before any of the rest of this section is built.
 
-This is worth building for a private runner on its own terms, independently of what section 8.7b's question is answered with: a machine that runs the gates keeps a seventh of what it keeps now.
+**Section 8.7d has since measured the premise and found the floor is lower still: nothing at all.** No current test asks for a vanilla asset, so a stub satisfies a client and no package is needed by anything that runs today. That does not make this section wrong, it makes it early. It becomes the requirement the moment a test needs real assets, which section 8.9's rendering work does by definition, and the sizes below are then what that costs. Until then it is an answer waiting for its question, and the thing to build first is the stub in section 8.7d.
 
 **Creating it.** A script deriving a package from an owned installation, with four properties that are not optional.
 
@@ -1014,6 +1016,36 @@ This is worth building for a private runner on its own terms, independently of w
 **What the report has to say about it.** An audio-less package makes an audio assertion pass for the wrong reason. Nothing tests audio today, so nothing is wrong today, but the first test that does would pass vacuously, which is the failure section 8.5's `MIN_TESTS` and section 8.6h's declared coverage both exist to prevent, arriving by a third route. Two things follow. The run records which package it used, beside the install and the commit in `run.meta`, so a green report says what it was green against. And if audio testing ever arrives, it needs what `[RequiresLoadedGame]` gives tier 0: a way for a test to declare it needs something the package does not carry, and to be blocked rather than passed when it is absent. Written down now so the trap is known before anyone springs it.
 
 **What it does not change.** Two things. The floor: 104 MB is the cost of *starting a client*, not of running any particular test, because fonts and interface textures are needed to reach a menu and join a server no matter what the test then does. So splitting tier 3 by whether a test draws does not reduce it, and cutting into `Images/` for the remaining 78 MB means picking whatever subset satisfies today's startup path, which is a fragile saving against an already small number. And the license: 104 MB of Re-Logic's content is Re-Logic's content. Whether it may sit in a hosted cache is exactly the judgment section 8.7b leaves open, unchanged in kind and only smaller in scale.
+
+#### 8.7d How little a client actually needs, measured by trimming
+
+Section 8.7c's premise needed a client and a content tree that could be cut up, which meant a copy rather than the installation itself. A copy of the tModLoader install with a Terraria directory beside it, both under a path containing `steamapps`, rebuilt for each round with a different subset of content, running the tier 3 gate each time and checking the install it actually used before reading the result.
+
+The path matters and is the first finding. `InstallVerifier.DetectPlatform` answers Steam if the launch says `-steam`, then if **the working directory contains `steamapps`**, then if no vanilla executable is found nearby, then if a `steam_api` file sits beside that executable, and only otherwise GOG, whereupon it hashes the executable against the version it expects. The first copy of the install went somewhere neutral, found the copied `Terraria.exe`, took the GOG branch and refused to start: `not the unmodified Terraria 1.4.5.6 executable`. The real installation never takes that branch because the gates run from inside `steamapps/common/tModLoader`, which means this project has always depended on that heuristic without anyone choosing it. Reproducing the same condition in the copy made the baseline pass.
+
+Then, each row the full tier 3 gate, both halves:
+
+| Content | Size | Result |
+| --- | --- | --- |
+| Everything | 755 MB | 58 of 60, exit 0 |
+| No audio at all | 104 MB | 58 of 60, exit 0 |
+| The two canary files, and the shaders | 36 KB | 58 of 60, exit 0 |
+| The two canary files alone | 8 KB | 58 of 60, exit 0 |
+| Two **empty files** with those names | 0 | 58 of 60, exit 0 |
+| The same, with no Terraria binaries either, just `Content/Images` and the two empty files | 0 | 58 of 60, exit 0 |
+| The same again, against the tModLoader built from source in section 8.7a | 0 | 58 of 60, exit 0 |
+
+**So the answer is none.** Not a smaller package: none. The check at the top of `InitTMLContentManager` tests that two paths exist and never opens them, and nothing afterwards asks for a vanilla asset, so two empty files in a directory called `Content/Images` satisfy a client completely. Checked rather than assumed: across every row the client log carries no `ContentLoadException`, no missing-asset warning, and no "loaded N vanilla assets" line, and the one silently caught exception in it is a `NullReferenceException` in `CreativePowers.GodmodePower` during spawn that appears identically at 755 MB. The gates do not suppress drawing; the client simply never needs what it never draws.
+
+The last row is the one that matters for section 8.7: it is the hosted configuration entire, a tModLoader built from source with a stub beside it, and it covers tier 3. The version disagreement that stopped the source build in section 8.7a stops mattering for the same reason, since the executable is never reached to be hashed.
+
+**Three things to be honest about, because this is a stub and not a discovery that content was unnecessary.**
+
+The two empty files defeat a check that exists to tell a person their Terraria is out of date. On a runner there is no person and nothing to be out of date, so the check protects nothing there; on a developer's machine it protects something real and must keep working. Whatever creates a stub should refuse to create one on top of an installation, which is the same rule section 8.7c already sets for staging a package.
+
+Naming a directory `steamapps` to satisfy a detection heuristic is a trick, and writing it down as one is the price of using it. It is the same branch the real installation takes, so it is not a special case invented for CI, but it is a heuristic and it could change. If it does, the symptom is the GOG branch and a hash mismatch naming a version, which is now a documented failure rather than a mystery.
+
+And **this measures the suite that exists**. Every row says the current tier 3 tests need no assets, not that a client never does. Section 8.9's rendering work draws real game content by definition, and the first test that asks for a vanilla texture against a stub will find out what missing assets do, which these runs never established because nothing ever asked. That is the point at which section 8.7c's package stops being an optimization and becomes the requirement, and it is why that section is kept rather than deleted.
 
 ### 8.8 nuget.org, once GitHub is working
 
