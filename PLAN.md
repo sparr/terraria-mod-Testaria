@@ -805,7 +805,7 @@ Those four rest on one more piece of Terraria: **a client only knows the world s
 
 ### 8.6b What ecosystem churn costs a suite
 
-The tier 3 suite for ExampleMod is written (`tests/TestariaExampleTest/NetTests.cs`) and asserts the property that makes modded multiplayer work at all: modded content ids are assigned per load and synced, so an id meaning ExampleBlock on the server must mean ExampleBlock on the client. Nothing in it hardcodes an id; each test resolves one by name on the server and checks what the client reports back.
+The tier 3 suite for ExampleMod is written (its repository's `ExampleModTests`, on a `testaria-tests` branch as section 8.6i's convention has it) and asserts the property that makes modded multiplayer work at all: modded content ids are assigned per load and synced, so an id meaning ExampleBlock on the server must mean ExampleBlock on the client. Nothing in it hardcodes an id; each test resolves one by name on the server and checks what the client reports back.
 
 **A tModLoader update renamed `ProjectileID.Sets.PlayerHurtDamageIgnoresDifficultyScaling` to `SelfHurtPlayers`.** An `ExampleMod.tmod` built against the old name fails to load with a `Field not found`, and tModLoader disables it. Rebuilding does not help while the local tModLoader checkout ExampleMod's source comes from predates the same change and still uses the old name, with no `SelfHurtPlayers` anywhere in it.
 

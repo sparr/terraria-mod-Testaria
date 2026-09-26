@@ -664,7 +664,8 @@ Linux only, for `Xvfb`, `systemd-run`, and `flock`. The core tiers already run o
 | [`tests/Testaria.Tool.Tests/`](tests/Testaria.Tool.Tests) | Self-tests for the CLI: its command line, its provisioning, and its reading of a report. |
 | [`tests/TestariaSelfTest/`](tests/TestariaSelfTest) | The in-game self-test mod, which is the green path. |
 | [`tests/TestariaRedTest/`](tests/TestariaRedTest) | Deliberately broken tests, which is the red path. |
-| [`tests/TestariaExampleTest/`](tests/TestariaExampleTest) | The calibration suite, aimed at ExampleMod. |
+| [`tests/TestariaSweepTest/`](tests/TestariaSweepTest) | The sweeping checks: asked of every type and every piece of content in whichever mods a run enables, naming none of them. |
+| [`tools/`](tools) | Odds and ends that are neither framework nor gate, such as a `.tmod` reader. |
 | [`tests/TestariaLoadTest/`](tests/TestariaLoadTest) | The arena under load: 300 boxes, every size class, spanning columns, and a full entity pool. |
 | [`templates/`](templates) | The two `dotnet new` templates. |
 | [`scripts/`](scripts) | The headless harness and its gates, including `check-packages.sh`, which consumes the packages the way a stranger would, and `ci-local.sh`, which runs all of them the way CI would. |

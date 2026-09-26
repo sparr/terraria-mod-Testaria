@@ -9,7 +9,7 @@
 #   5. tier 3                 a client must join, and must be missed when absent
 #   5a. load                  the arena under pressure, only when asked for
 #   6. fresh worlds           tests wanting an untouched world get one
-#   7. calibration            the framework must work on someone else's mod
+#   7. calibration            the sweeping checks, against someone else's mod
 #
 # Green alone proves little: a framework that cannot report failure looks
 # exactly like one that works, which is why 3 is not optional.
@@ -180,13 +180,25 @@ fi
 
 if [ "${SKIP_CALIBRATION:-0}" = "1" ]; then
 	skip "calibration against ExampleMod" "by request"
-elif [ -f "$MODS_SRC/ExampleMod.tmod" ]; then
+elif [ -f "$MODS_SRC/ExampleMod.tmod" ] && [ -f "$MODS_SRC/ExampleModTests.tmod" ]; then
+	# ExampleMod's own suite is loaded but not run, which the filter does.
+	#
+	# Loaded, because that is where ExampleMod declares that one of its
+	# showcase configs drifts on purpose. Without it the sweep reports that
+	# drift, correctly, as a finding.
+	#
+	# Not run, because this gate is about whether this framework works against
+	# somebody else's mod, and running their suite would make their failures
+	# into ours. Theirs currently has one, about what a dedicated server
+	# provides on a tModLoader older than a fix it wants, which says nothing
+	# whatever about Testaria.
 	step "calibration against ExampleMod" env \
-		ENABLED="Testaria ExampleMod TestariaExampleTest" \
+		ENABLED="Testaria ExampleMod ExampleModTests TestariaSweepTest" \
 		RUN_NAME="ExampleModSuite" \
+		FILTER="TestariaSweepTest" \
 		BLANK=1 RESULTS_OUT="$(results_out calibration-against-examplemod)" "$HERE/run-tests.sh"
 else
-	skip "calibration against ExampleMod" "no ExampleMod.tmod, run scripts/build-examplemod.sh"
+	skip "calibration against ExampleMod" "no ExampleMod.tmod or ExampleModTests.tmod; run scripts/build-examplemod.sh, and build ExampleModTests from the tModLoader checkout"
 fi
 
 echo
