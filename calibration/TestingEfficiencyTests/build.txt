@@ -1,0 +1,8 @@
+author = Clarence "Sparr" Risher
+displayName = Testaria TestingEfficiency Test
+version = 0.1
+side = NoSync
+modReferences = Testaria
+weakReferences = TestingEfficiency
+includeSource = true
+buildIgnore = *.csproj, *.user, obj\*, bin\*, .vs\*, .git\*

@@ -96,6 +96,9 @@ Four findings, every one of them a limit rather than a defect: two belong to the
 | 2 | A box cannot contain world-global state | documented; not fixable in general |
 | 3 | Tier 0 is out of reach for a normal mod | documented |
 | 4 | A mod that keeps its types internal cannot be tested without opting in | documented |
+| 5 | A mod can build cleanly and produce a `.tmod` that cannot load | documented |
+| 6 | Building a mod rewrites `ModSources/tModLoader.targets` outside any scratch | documented; ours to fix |
+| 7 | Two sibling properties, one defensive and one not | reported to the subject |
 
 ### 1. Adding a suite to a mod's own repository breaks the mod's build
 
@@ -182,6 +185,81 @@ Worth recording, because the list above is all limits.
   including the tile round trip.
 - The whole InnoVault suite, 112 tests over three tiers, runs in a few
   seconds at `--speed max` on top of about eight seconds of world setup.
+
+## A seventh subject, added later
+
+[Doze's Testing Efficiency](https://github.com/Doze-Zoze/TestingEfficiency)
+branch `1.4.5`, which is not from the Workshop survey above: it was named
+directly, after the fact. A mod for measuring how well a weapon performs,
+about 4,400 lines, recording damage against bosses and reporting it.
+
+**As found it builds and does not load**, and the gap between those two is the
+finding. The repository carries two project files in one folder,
+`TestingEfficiency.csproj` on a third-party SDK and
+`TestingEfficiency-main.csproj` on the stock one, so `dotnet build` with no
+argument stops at `MSB1011` and asks which. Naming the stock one builds it
+cleanly, 0 errors and 13 warnings, and packs a `.tmod`. That `.tmod` then
+refuses to load: *Mod name TestingEfficiency does not match assembly name
+TestingEfficiency-main*, because an assembly name defaults to its project's
+file name and tModLoader requires the two to agree. Building with
+`-p:AssemblyName=TestingEfficiency` is the whole fix, and the mod loads.
+
+**The suite is 55 tests**, 25 over the ID sets and 30 over the pair of string
+properties a boss result is edited through. 54 pass. The one that does not is
+a real defect, and it is the reason the pair is worth testing at all:
+
+```
+FormatException: The input string '' was not in a correct format.
+```
+
+`BossTestData` has two properties of the same shape, each rendering a stored
+number as text and parsing it back. `timeString` parses with `int.TryParse`
+and leaves the value alone when the text is not a duration. `diedString`
+parses with `Single.Parse`, which throws. Their getters both render an unset
+value as the empty string, so for `diedString` alone, reading the property and
+writing it straight back is an exception:
+
+```csharp
+data.diedString = data.diedString;   // FormatException when died is null
+```
+
+That is exactly what a text field does, and exactly what the interface already
+does to the sibling property: `SetContents(testData.timeString)` on the way in,
+`testData.timeString = _` on the way out. `diedString` is not wired to anything
+yet, so the defect is latent rather than live; it fires the first time anyone
+gives it the same two lines its sibling has.
+
+Two smaller observations from the same suite, both passing and both worth
+saying. `died` maps zero to null, so a boss finished at exactly zero percent
+and a boss never recorded are the same stored value. And the redirection set
+is clean in a way worth keeping clean: nothing in `NpcToCountAs` points at
+something that is itself redirected, which matters because the tracker reads
+that set once rather than following a chain.
+
+### What it taught us
+
+**A build is not a load, and only one of the two was being checked.** The mod
+compiled, packed, and produced an artifact indistinguishable from a good one.
+Had the gate stopped at `dotnet build` it would have reported success over a
+mod that cannot run. What caught it was the preflight from section 8.6e, which
+refuses a run when a mod it was told to test is not among the loaded ones, and
+which named the missing mod and listed what did load. That check was written
+after a mod threw during its load pass and the suite aimed at it reported a
+clean run; this is the second time it has earned its place, against a different
+cause.
+
+**Our own harness edits a file outside its scratch directory.** `ModCompile`
+writes `<SavePathShared>/ModSources/tModLoader.targets` pointing at the
+tModLoader that is running, and every mod build does it. The gates take care
+to run the game in a scratch save directory, but a mod build is `dotnet build`
+invoking tModLoader separately, which does not inherit that, so the file it
+rewrites is the real one. Running the gates against a scratch install
+therefore repoints the developer's `ModSources` at a directory that is about
+to be deleted, and every mod there that imports `..\tModLoader.targets` stops
+building until something rewrites it again. Found by walking into it: the file
+pointed at a temporary tree from the previous section's work. This is the same
+class as the `Mods` folder being common ground, and worse, because the path it
+leaves behind does not exist.
 
 ## Reproducing
 
