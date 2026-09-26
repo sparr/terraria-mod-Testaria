@@ -318,6 +318,43 @@ public void Every_item_has_a_display_name(string name)
 
 That is where the feature earns its place. The cases only exist once the game has loaded, so they cannot be written out by hand, and discovery runs in the game for every tier above zero. Against ExampleMod the second example alone expands to 178 tests, one per registered item, each named and filterable.
 
+## Every property, against its own output
+
+```csharp
+[LoadedTest]
+public void Nothing_chokes_on_what_it_just_produced()
+    => Assert.SettersAcceptTheirOwnGetters(new BossTestData());
+```
+
+For each public read-write property, read it and write the same value straight
+back. The question is only whether that throws. Values are free to be
+normalized, clamped or reformatted on the way through; none of that is a
+failure here.
+
+Give it a **newly constructed** object. The bug this exists for lives in the
+empty, null and zero cases, which is where a getter hands its own setter
+something the setter was never written to parse.
+
+It is worth having because it needs no knowledge of the type. Found in a mod
+nobody here wrote, by exactly the line above:
+
+```
+Assert.SettersAcceptTheirOwnGetters() Failure
+On a BossTestData, 1 property could not take its own value:
+  diedString: reading it gave "", and writing that back threw
+  FormatException: The input string '' was not in a correct format.
+```
+
+That property renders an unset result as the empty string and parses with
+`Single.Parse`, which throws on one. Its sibling `timeString` does the same job
+with `int.TryParse` and is safe. Reading a value into a text field and writing
+it back unedited is what a user interface does constantly, and the two
+properties disagree about whether that works.
+
+Every property is tried before anything is reported, so one bad property does
+not hide the next. Read-only properties, private setters and indexers are
+skipped.
+
 ## Realtime testing
 
 A tier 2 test body is a coroutine, driven one step per game tick. It yields a `Wait` to say where it may be suspended:

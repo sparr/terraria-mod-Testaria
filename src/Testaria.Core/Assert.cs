@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Reflection;
 
 namespace Testaria;
 
@@ -334,6 +335,87 @@ public static class Assert
 		IEnumerable sequence => FormatSequence(sequence),
 		_ => value.ToString() ?? "null",
 	};
+
+	/// <summary>
+	/// Asserts that no property throws when set to the value its own getter
+	/// just produced.
+	/// <para/>
+	/// Not a check that the value survives: a property may normalize, clamp or
+	/// reformat what it is given, and all of that is fine here. The only
+	/// question asked is whether the assignment throws, because reading a
+	/// property and writing it straight back is what a text field does every
+	/// time somebody opens it and closes it again, and a property that cannot
+	/// take its own output turns that into a crash.
+	/// <para/>
+	/// Give it a **newly constructed** object. The defect this exists to find
+	/// lives in the empty, null and zero cases, which is where a getter
+	/// produces something its parser was never given: the property that
+	/// prompted this renders an unset value as the empty string and parses
+	/// with a method that throws on one, so it failed on a fresh object and
+	/// would have passed on a populated one.
+	/// <para/>
+	/// Public instance properties that are both readable and writable, not
+	/// indexers. Every such property is tried before anything is reported, so
+	/// one bad property does not hide the rest.
+	/// </summary>
+	public static void SettersAcceptTheirOwnGetters(object subject, string? message = null)
+	{
+		Counted();
+
+		NotNull(subject, "Assert.SettersAcceptTheirOwnGetters() Failure\nSubject was null");
+
+		List<string> problems = [];
+
+		foreach (PropertyInfo property in subject.GetType()
+			.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
+
+			if (property.GetMethod is not { IsPublic: true } || property.SetMethod is not { IsPublic: true })
+				continue;
+
+			// An indexer is not a property a field can hold, and there is no
+			// argument to give it.
+			if (property.GetIndexParameters().Length != 0)
+				continue;
+
+			object? value;
+			try {
+				value = property.GetValue(subject);
+			}
+			catch (Exception bad) {
+				problems.Add($"{property.Name}: reading it threw {Unwrap(bad)}");
+				continue;
+			}
+
+			try {
+				property.SetValue(subject, value);
+			}
+			catch (Exception bad) {
+				problems.Add($"{property.Name}: reading it gave {Format(value)}, "
+					+ $"and writing that back threw {Unwrap(bad)}");
+			}
+		}
+
+		if (problems.Count == 0)
+			return;
+
+		throw new AssertionException(message ?? "Assert.SettersAcceptTheirOwnGetters() Failure\n"
+			+ $"On a {subject.GetType().Name}, {problems.Count} "
+			+ $"propert{(problems.Count == 1 ? "y" : "ies")} could not take their own value:\n  "
+			+ string.Join("\n  ", problems));
+	}
+
+	/// <summary>
+	/// The exception a reflected call actually threw, described.
+	/// <para/>
+	/// Reflection wraps whatever the accessor threw in a
+	/// <see cref="TargetInvocationException"/>, which names nothing useful.
+	/// </summary>
+	private static string Unwrap(Exception thrown)
+	{
+		Exception real = thrown is TargetInvocationException { InnerException: { } inner } ? inner : thrown;
+
+		return $"{real.GetType().Name}: {real.Message}";
+	}
 
 	/// <summary>
 	/// A sequence as its elements, truncated so that a large collection does
