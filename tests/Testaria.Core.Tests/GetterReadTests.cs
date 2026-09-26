@@ -63,6 +63,25 @@ public class GetterReadTests
 		XAssert.Contains("Font", thrown.Message);
 	}
 
+	private sealed class HasARefStructProperty
+	{
+		private readonly int[] numbers = [1, 2, 3];
+
+		/// <summary>Reflection cannot box one of these, whatever it returns.</summary>
+		public ReadOnlySpan<int> Numbers => numbers;
+
+		public int Fine { get; set; }
+	}
+
+	/// <summary>
+	/// A property returning a ref struct is skipped rather than reported. It
+	/// cannot be read by reflection at all, so a failure would be about this
+	/// check rather than about the property.
+	/// </summary>
+	[Fact]
+	public void A_ref_struct_property_is_not_reported()
+		=> TAssert.GettersDoNotThrow(new HasARefStructProperty());
+
 	[Fact]
 	public void A_write_only_property_is_left_alone()
 		=> TAssert.GettersDoNotThrow(new WriteOnly());

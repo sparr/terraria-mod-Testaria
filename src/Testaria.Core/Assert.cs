@@ -584,6 +584,16 @@ public static class Assert
 			if (property.DeclaringType?.Assembly != type.Assembly)
 				continue;
 
+			// A ref struct cannot be boxed, so reflection cannot read one at
+			// all: PropertyInfo.GetValue throws NotSupportedException whatever
+			// the property does. Nothing can be asked of a Span<T> here, and
+			// reporting that as the property's fault blames the wrong thing.
+			// Measured: one mod's rigging code exposes its bones as
+			// ReadOnlySpan<int>, and twelve of its types were reported as
+			// unreadable when the only thing that could not read them was this.
+			if (property.PropertyType.IsByRefLike)
+				continue;
+
 			yield return property;
 		}
 	}

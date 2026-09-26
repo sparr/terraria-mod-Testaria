@@ -263,11 +263,13 @@ leaves behind does not exist.
 
 ## The property sweep, across everything at once
 
-Two assertions added later ask a question of an object without needing to
-understand it: that no property throws when handed back what its own getter
-produced, and that writing it back twice changes nothing the second time.
+Three assertions ask a question of an object without needing to understand it:
+that every property can be read, that a setter takes what its own getter
+produced, and that writing that back twice changes nothing the second time.
 Needing no understanding is what makes them worth asking of every type rather
-than the handful somebody thought to name.
+than the handful somebody thought to name. The same suite asks what should be
+true of any mod's content: display names that are not still localization keys,
+NPCs with more life than none, items that can be stacked at least once.
 
 `TestariaSweepTest` names no mod. The subject is reached by name at run time,
 so the suite needs no reference to any mod and no build against one, which
@@ -275,57 +277,89 @@ matters here because two of the four suites above need documented workarounds
 to build at all. Enable the mods of interest and the sweep covers exactly
 those.
 
-Eight mods in one run, 859 cases, 832 passing, 5 failing, 22 skipped for types
-whose constructors will not run:
+### Narrowing what a valid subject is
+
+The first runs of this produced findings about the sweep rather than about any
+mod, and the numbers are the record of that. Four narrowings, each measured:
+
+| What was excluded | Failures left |
+|---|---|
+| Nothing but entity-bound content | 51 |
+| Also anything not declared in the subject's own assembly | 14 |
+| Also everything the loader registers, except `ModConfig` | 15 |
+| Also properties returning a ref struct | **3** |
+
+The first two were properties tModLoader declares on `ModType` and fills in at
+load, then properties the mod declares and the loader fills in: a `ModConfig`
+built by reflection rather than by the loader throws from `Name`, `FullName`
+and `DisplayName`, and the mod that declared none of them was being blamed.
+
+The third count rose rather than fell only because the corpus grew; it is the
+fourth exclusion that matters. `ReadOnlySpan<int>` is a ref struct and cannot
+be boxed, so `PropertyInfo.GetValue` throws `NotSupportedException` whatever
+the property does. InnoVault's rigging exposes its bones that way, and twelve
+of its types were reported unreadable when the only thing unable to read them
+was reflection.
+
+`ModConfig` is kept, and not arbitrarily: it is a bag of settings tModLoader
+constructs and serializes freely rather than behaviour bound to registered
+content, and those settings are read and written by a generated interface,
+which is exactly the round trip being asked about.
+
+Each narrowing is a statement about what a valid subject is rather than a
+filter for what is inconvenient, which is the only thing that makes them
+defensible. 51, 14 and 15 were all noise of the kind that teaches a reader to
+skim a report, and the next real finding goes with it.
+
+### What survives
+
+Ten mods in one run, **1612 cases**, 1436 passing, 3 failing, 173 skipped:
 
 | Mod | Cases |
 |---|---|
-| ExampleMod | 442 |
-| InnoVault | 230 |
-| SilkyUIFramework | 70 |
-| TestingEfficiency | 64 |
-| DAYBREAK | 42 |
-| BeardBench | 8 |
-| Cheat Sheet | 2 |
+| ExampleMod | 1131 |
+| InnoVault | 255 |
+| SilkyUIFramework | 99 |
+| TestingEfficiency | 45 |
+| DAYBREAK | 33 |
+| RecipeBrowser | 30 |
+| DragonLens | 15 |
+| BeardBench | 3 |
 
-### What it found
+**All three failures are SilkyUI properties that cannot be read on a server.**
+`UITextView`, `SUIEditText` and `SUIImage` throw a `NullReferenceException`
+from getters wanting a font or an image. For a client-only UI framework that is
+true rather than wrong, and it is worth knowing: it names precisely which
+properties are unsafe on the side that has no fonts loaded, which is the
+classic tModLoader mistake one layer down from drawing code. SilkyUI's own
+suite can declare them exempt if it would rather not be told again.
 
-**Fourteen false positives, and they are the interesting result.** Before
-entity-bound content was excluded, sweeping ExampleMod reported fourteen
-properties across five types, every one a `NullReferenceException`. None was a
-defect. A `ModType<TEntity>` is a named view onto an entity, `IsStickingToTarget`
-reading `Projectile.ai[0]`, and a freshly constructed one has no entity to
-read. The loader is what makes such an instance mean anything, and the
-instances it has already made are live content a sweep must not write to. So
-they are excluded by base type, which is a statement about what a valid subject
-is rather than a filter for convenience. `ModConfig` is deliberately kept: it
-has no entity, it is a bag of settings, and those are exactly the subject.
-
-**Two properties cannot be read on a server at all.** `UITextView.Font` and
-`SUIEditText.Font` in SilkyUI throw a `NullReferenceException` from their
-getters. For a client-only UI framework that is true rather than wrong, and it
-is worth knowing: it says precisely which properties are unsafe on the side
-that has no fonts loaded, which is the classic tModLoader mistake one layer
-down from drawing code.
-
-**One property drifts, on purpose.** ExampleMod's
+**One property drifts, on purpose, and is no longer reported.** ExampleMod's
 `ModConfigShowcaseAccessibility.Property` reads 0, becomes 0.2 after one write
-and 0.4 after a second. Its own source says why: `// + 0.2f is just to mess
-with the user.` The ecosystem's reference mod contains exactly one
-deliberately unsettling property, and the check found it without being told
-anything about the type.
+and 0.4 after a second; its own source says `// + 0.2f is just to mess with the
+user.` ExampleMod's suite declares that exempt, so it arrives as a skip
+carrying the reason. The check found it without being told anything about the
+type, and the mod that knows it is intended is the one that says so.
 
-**Twenty-two types cannot be constructed**, reported as skips rather than
+**Thirty-three types cannot be constructed**, reported as skips rather than
 failures: UI classes whose constructors touch assets or a graphics device on a
 server. A constructor that will not run is a different subject from the
 properties the sweep is about, and calling it a failure would blame the wrong
 thing.
 
-So across eight mods the sweep found no property defect that anybody would call
-one. That is worth stating plainly rather than dressing up: the value delivered
-here was a list of server-unsafe properties, a confirmation that the reference
-mod behaves as its comments claim, and a correction to what the sweep considers
-a valid subject.
+**The content invariants found nothing, and the reason matters more than the
+result.** Across the same ten mods only ExampleMod contributed any cases at
+all. That is not a gap in the enumeration; it was checked. Daybreak's
+`CattailTile` is abstract, InnoVault's `TestItem` is behind `#if DEBUG` and
+overrides `IsLoadingEnabled`. The 1.4.5 corpus reachable today is almost
+entirely tools and frameworks, so invariants about items and NPCs have nearly
+nothing to bite on, and "no failures" should be read against that rather than
+as a verdict on the ecosystem.
+
+So the sweeping checks have found one real defect in this ecosystem,
+`diedString` in the seventh subject above, and everything else they produced
+was either information about where a property may safely be read, or a
+correction to the sweep's own idea of a valid subject.
 
 ## Reproducing
 

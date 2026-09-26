@@ -316,76 +316,63 @@ public void Every_item_has_a_display_name(string name)
 }
 ```
 
-That is where the feature earns its place. The cases only exist once the game has loaded, so they cannot be written out by hand, and discovery runs in the game for every tier above zero. Against ExampleMod the second example alone expands to 178 tests, one per registered item, each named and filterable.
+Use this functionality for any part of your mod that procedurally creates many things that need the same test run against each of them.
 
-## Every property, against its own output
+### Invariant tests
+
+Testaria includes a test suite (`TestariaSweepTest`) that applies mod-agnostic rules based on game mechanics and engine functionality.
+
+```
+ENABLED="Testaria TestariaSweepTest InnoVault CheatSheet" scripts/run-tests.sh
+```
+
+Two helpers turn "everything" into cases a `[CaseSource]` can enumerate:
+
+| Helper | Yields |
+| --- | --- |
+| `TypeSweep.EveryConstructibleType()` | `Mod/Type.Full.Name` for every type with a public parameterless constructor |
+| `ContentSweep.Every<>()` | `Mod/InternalName` for every piece of content of a kind (NPC, Tile, Item, etc) |
+
+Loader-registered content is omitted, because they require properties that cannot be trivially constructed via reflection. `ModConfig` is the exception, included despite being registered.
+
+These tests fall into a variety of families, each with different Subjects:
+
+| Family | What it asks |
+| --- | --- |
+| Property round trips | Whether each declared property can be read, takes back what its own getter produced, and stops changing after one write |
+| Content invariants | Whether a piece of content carries the values it cannot function without: a real display name, positive life, a non-zero size, a usable weapon, etc |
+| Persistence | Whether a `ModSystem` or `ModPlayer` can read back what it writes into a `.twld` or `.tplr`, including a tag with nothing in it and a record longer than this build writes |
+| Net symmetry | Whether the two halves of a mod's own networking agree, calling `SendExtraAI` against a freshly defaulted NPC, projectile or system and reading the result back with `ReceiveExtraAI` |
+| Config | Whether a `ModConfig` survives being written out and read back, and whether it can be populated from nothing |
+| References | Whether the IDs a piece of content points at exist, since a field naming content that was never registered throws at the moment somebody uses the thing |
+| Localization | Whether every string a mod ships is text rather than a raw key, including tooltips, dialogue, config labels, and invented keys |
+| Cloning | Whether content can be copied without its copies sharing state, akin to `IsCloneable` |
+| ID sets | Whether the vanilla set size is relied upon after a mod extends the set |
+| Behaviour | Whether content (NPC, projectile, tile) survives being placed in the world, ticked, and interacted with |
+| Recipes | Whether a recipe crafts its own ingredient, or sits in a loop that hands back more than it takes |
+
+Where possible (e.g. properties, net symmetry, and config) a test is run through round trips, first confirming a single success, then that one round trip succeeds, then that two round trips produce a consistent second result.
+
+Two families are off unless a run asks for them:
+
+**Behaviour** leases a box of world space per piece of content, across every enabled mod, where the rest of the sweep only costs a reflection call; ask for it with `BEHAVIOUR=1`, or `--arg -testariabehaviour` through the tool.
+
+**Recipes** is cheap, but its failure is a balance claim rather than a defect, and some mods intentionally have "infinite free items" crafting loops. Ask for it with `ECONOMY=1`, or `--arg -testariaeconomy`.
+
+#### Opting out
+
+Some mods intentionally violate one of these invariant tests. e.g. ExampleMod has a property that reads back a different value than written, every time, "just to mess with the user". The mod's suite declares an exemption:
 
 ```csharp
-[LoadedTest]
-public void Nothing_chokes_on_what_it_just_produced()
-    => Assert.SettersAcceptTheirOwnGetters(new BossTestData());
+public sealed class SweepDeclarations : ModSystem
+{
+    public override void Load()
+        => SweepExemptions.Declare(
+            "ExampleMod/ExampleMod.Common.Configs.ModConfigShowcases.ModConfigShowcaseAccessibility",
+            SweepCheck.Settling,
+            "Property adds 0.2 to whatever it is given, so it cannot settle.");
+}
 ```
-
-For each public read-write property, read it and write the same value straight
-back. The question is only whether that throws. Values are free to be
-normalized, clamped or reformatted on the way through; none of that is a
-failure here.
-
-Give it a **newly constructed** object. The bug this exists for lives in the
-empty, null and zero cases, which is where a getter hands its own setter
-something the setter was never written to parse.
-
-It is worth having because it needs no knowledge of the type. Found in a mod
-nobody here wrote, by exactly the line above:
-
-```
-Assert.SettersAcceptTheirOwnGetters() Failure
-On a BossTestData, 1 property could not take its own value:
-  diedString: reading it gave "", and writing that back threw FormatException: The input string '' was not in a correct format.
-```
-
-That property renders an unset result as the empty string and parses with
-`Single.Parse`, which throws on one. Its sibling `timeString` does the same job
-with `int.TryParse` and is safe. Reading a value into a text field and writing
-it back unedited is what a user interface does constantly, and the two
-properties disagree about whether that works.
-
-Every property is tried before anything is reported, so one bad property does
-not hide the next. Read-only properties, private setters and indexers are
-skipped.
-
-### And that it stops changing
-
-```csharp
-[LoadedTest]
-public void Nothing_drifts_when_written_twice()
-    => Assert.SettersSettleAfterOneWrite(new BossTestData());
-```
-
-Read, write it back, read, write that back, read again: the last two reads must
-agree. The **first** write may change the value, because normalizing what it
-was given is a property doing its job, and `"2:5"` coming back as `"2:05"` is
-correct. The second must not, because a property that keeps moving has no
-resting state, and every pass through the interface it belongs to drifts a
-little further.
-
-This is the sibling of the check above and finds a different fault. That one is
-about a crash; this one is about a value that never settles, which appends,
-re-escapes or truncates a little more each time and throws nothing while doing
-it:
-
-```
-Assert.SettersSettleAfterOneWrite() Failure
-On a EscapesEveryTime, 1 property does not settle:
-  Text: started as "a&b", became "a&amp;b" after one write, and "a&amp;amp;b" after a second, so it never settles
-```
-
-That one is from this framework's own test for it, not from a real mod: unlike
-the check above, this has not yet caught anything in the wild. The message is
-asserted verbatim by a test, so the example cannot drift from the code.
-
-A property that cannot be written at all is reported rather than passed over:
-it cannot be shown to settle, and passing would claim it had been checked.
 
 ## Realtime testing
 

@@ -1,6 +1,6 @@
 # A testing framework for Terraria mods: naming, scope, packaging, and distribution
 
-Status: implemented through section 8.6h, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains; 8.7a and 8.7b record what has already been rehearsed for the first of those, and 8.7c is the part of it worth building before anything is published anywhere. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
+Status: implemented through section 8.6j, with section 8.4 done as well. All four tiers run green in a live headless game, every artifact in the matrix is built, the framework has been calibrated against the published 1.4.5 ecosystem rather than only against ExampleMod, and nothing has been published to any channel. Section 0.1 is the status snapshot, section 8 records what each milestone establishes, and sections 8.7, 8.8 and 8.9 are what remains; 8.7a and 8.7b record what has already been rehearsed for the first of those, and 8.7c is the part of it worth building before anything is published anywhere. Written against tModLoader on the `1.4.5` line; the calibration in section 8.6e ran against the `1.4.5-dev` Steam build `1.4.5.8+9999.0|2026.07|1.4.5|dev`, commit `39e7995f`. Paths given below as `patches/...` are relative to a [tModLoader](https://github.com/tModLoader/tModLoader) checkout.
 
 ## 0. The short version
 
@@ -941,6 +941,67 @@ Four assumptions were load bearing and invisible, because a developer's machine 
 **A build is not a load.** The mod compiles cleanly, packs, and produces a `.tmod` indistinguishable from a working one, which then refuses to load because an assembly name defaults to its project's file name and tModLoader requires it to equal the mod's. A gate that stopped at `dotnet build` would have called that success. What caught it is the preflight from section 8.6e, which refuses a run when a mod it was told to test is not among the loaded ones; that check was written after a mod threw during loading and its suite reported a clean run, and this is the second time it has paid for itself against a different cause. The repository also carries two project files in one folder, so `dotnet build` with no argument stops and asks which, which is worth knowing before writing documentation that assumes one project per mod.
 
 **The one failing test is a real defect**, and of a shape worth naming: two sibling properties written to do the same job, one parsing with `int.TryParse` and the other with `Single.Parse`. Both render an unset value as the empty string, so for the second, reading the property and writing it straight back throws. That is what a text field does, and what the interface already does to the first of the pair. The defect is latent only because nothing is wired to it yet.
+
+#### 8.6j Checks that need no knowledge of their subject
+
+Everything up to here was written against a subject somebody had read. The
+calibration suites name their mod, and even the invariants in them, an NPC
+having more life than none, were pinned to whichever mod the suite was for. A
+check written that way only ever asks about that one mod.
+
+Three assertions ask a question without understanding the answer's subject:
+that every property can be read, that a setter takes what its own getter
+produced, and that writing that back twice changes nothing the second time.
+`TypeSweep` and `ContentSweep` turn "every type and every piece of content in
+every loaded mod" into cases a `[CaseSource]` can enumerate, and
+`TestariaSweepTest` asks all of it while naming no mod: the subject list is
+decided by which mods a run enables. Ten mods, 1612 cases, from one suite that
+names none of them.
+
+**The first defect found this way was in a mod nobody here wrote.**
+`BossTestData.diedString` renders an unset value as the empty string and parses
+with `Single.Parse`, which throws on one, so reading the property and writing
+it back is an exception, which is what a text field does. Section 8.6i has it.
+Its sibling `timeString` does the same job with `int.TryParse` and is safe, and
+the interface already gives that one the two lines that would make the other
+crash.
+
+**Most of what a sweep produces is a statement about the sweep.** Four
+narrowings, each a measured number, taking the failures from 51 to 3: first
+properties tModLoader declares on `ModType` and fills in at load, then those
+the mod declares and the loader fills in, then everything the loader registers
+apart from `ModConfig`, and finally properties returning a ref struct, which
+reflection cannot box and therefore cannot read whatever the property does.
+That last one alone accounted for twelve of InnoVault's types, whose rigging
+exposes its bones as `ReadOnlySpan<int>`. Each narrowing says what a valid
+subject is rather than filtering what is inconvenient, which is the only thing
+that makes them defensible. A check that keeps reporting what nobody will
+change teaches its reader to skim, and the next real finding goes with it.
+
+**An intended answer is declared by whoever knows.** ExampleMod has a
+configuration property that adds 0.2 to whatever it is given, on purpose.
+`SweepExemptions` lets that mod's own suite say so, with a required reason,
+reported as a skip carrying it rather than as a pass. The alternative, a list
+inside the sweep, would make this framework the keeper of facts about mods it
+has never read, grow a line for every mod anyone points it at, and put the
+claim furthest from the person able to check it.
+
+**The calibration suite is dissolved by the same argument.** Its invariants
+were never about ExampleMod and now run against every mod; what assumed a
+reference mod, that it registers mounts, that a named showcase item exists,
+moved to ExampleMod's own `testaria-tests` branch, where a suite may name its
+subject because it is compiled against it. The gate loads that suite, for the
+declaration, and filters it out of the run, because a gate about whether this
+framework works against somebody else's mod should not adopt their failures. It
+reports 1132 cases where it used to report 927, and none of them is about
+ExampleMod in particular.
+
+**What this has not established.** Across ten mods the content invariants found
+nothing, and only ExampleMod contributed any cases at all: Daybreak's tiles are
+abstract, InnoVault's test item is behind `#if DEBUG`. The reachable 1.4.5
+corpus is almost entirely tools and frameworks, so invariants about items and
+NPCs have nearly nothing to bite on, and "no failures" should be read against
+that rather than as a verdict on the ecosystem.
 
 ### 8.7 CI for the game tiers, shipped with the first GitHub release
 
