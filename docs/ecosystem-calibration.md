@@ -261,6 +261,72 @@ pointed at a temporary tree from the previous section's work. This is the same
 class as the `Mods` folder being common ground, and worse, because the path it
 leaves behind does not exist.
 
+## The property sweep, across everything at once
+
+Two assertions added later ask a question of an object without needing to
+understand it: that no property throws when handed back what its own getter
+produced, and that writing it back twice changes nothing the second time.
+Needing no understanding is what makes them worth asking of every type rather
+than the handful somebody thought to name.
+
+`TestariaSweepTest` names no mod. The subject is reached by name at run time,
+so the suite needs no reference to any mod and no build against one, which
+matters here because two of the four suites above need documented workarounds
+to build at all. Enable the mods of interest and the sweep covers exactly
+those.
+
+Eight mods in one run, 859 cases, 832 passing, 5 failing, 22 skipped for types
+whose constructors will not run:
+
+| Mod | Cases |
+|---|---|
+| ExampleMod | 442 |
+| InnoVault | 230 |
+| SilkyUIFramework | 70 |
+| TestingEfficiency | 64 |
+| DAYBREAK | 42 |
+| BeardBench | 8 |
+| Cheat Sheet | 2 |
+
+### What it found
+
+**Fourteen false positives, and they are the interesting result.** Before
+entity-bound content was excluded, sweeping ExampleMod reported fourteen
+properties across five types, every one a `NullReferenceException`. None was a
+defect. A `ModType<TEntity>` is a named view onto an entity, `IsStickingToTarget`
+reading `Projectile.ai[0]`, and a freshly constructed one has no entity to
+read. The loader is what makes such an instance mean anything, and the
+instances it has already made are live content a sweep must not write to. So
+they are excluded by base type, which is a statement about what a valid subject
+is rather than a filter for convenience. `ModConfig` is deliberately kept: it
+has no entity, it is a bag of settings, and those are exactly the subject.
+
+**Two properties cannot be read on a server at all.** `UITextView.Font` and
+`SUIEditText.Font` in SilkyUI throw a `NullReferenceException` from their
+getters. For a client-only UI framework that is true rather than wrong, and it
+is worth knowing: it says precisely which properties are unsafe on the side
+that has no fonts loaded, which is the classic tModLoader mistake one layer
+down from drawing code.
+
+**One property drifts, on purpose.** ExampleMod's
+`ModConfigShowcaseAccessibility.Property` reads 0, becomes 0.2 after one write
+and 0.4 after a second. Its own source says why: `// + 0.2f is just to mess
+with the user.` The ecosystem's reference mod contains exactly one
+deliberately unsettling property, and the check found it without being told
+anything about the type.
+
+**Twenty-two types cannot be constructed**, reported as skips rather than
+failures: UI classes whose constructors touch assets or a graphics device on a
+server. A constructor that will not run is a different subject from the
+properties the sweep is about, and calling it a failure would blame the wrong
+thing.
+
+So across eight mods the sweep found no property defect that anybody would call
+one. That is worth stating plainly rather than dressing up: the value delivered
+here was a list of server-unsafe properties, a confirmation that the reference
+mod behaves as its comments claim, and a correction to what the sweep considers
+a valid subject.
+
 ## Reproducing
 
 The clones are in `mods/others/`, each on a `testaria-tests` branch. The
