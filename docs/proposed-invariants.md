@@ -441,9 +441,22 @@ check is not worth adding is worth recording too.
   is a free-money loop. Precise and needs no knowledge, but it is an
   economy exploit rather than a crash, which is a different claim than
   the rest of the suite makes.
+
+  **Implemented, behind `ECONOMY=1`.** That different claim is the reason for the
+  switch rather than any cost; see "9b, and a rule the core can test" below.
 - **9c. A town NPC has a head texture.** Head textures autoload only
   under `[AutoloadHead]` (`ModNPC.cs:127-129`). Without one the map
   entry degrades rather than crashing, so this is a quality check.
+
+  **Not ours: an upstream analyzer, not started.** A missing attribute is a
+  syntactic fact, and the argument that sent 6b and 9a to `tModCodeAssist` sends
+  this too. The rule would be: in a type deriving from `ModNPC` that assigns
+  `NPC.townNPC = true`, require `[AutoloadHead]` on the class. What it has to get
+  right is the legitimate alternative, `Mod.AddNPCHeadTexture` called by hand,
+  which an analyzer can see in the same compilation but has to go looking for.
+  Reporting a mod that registers its head the other way would be the check's
+  ignorance rather than the mod's defect, which is the mistake the withdrawn
+  placeability checks made once already.
 
 ## What the loader already refuses
 
@@ -888,6 +901,8 @@ to calibrate, not a plan.
 | 7a, 7b, placeability | withdrawn | invalid: framed tiles place by the plain path |
 | 8a to 8c, tier 2 family | `BehaviourSweep`, `BehaviourTests` | swept behind `BEHAVIOUR=1`, nothing found |
 | 9a, vanilla-sized arrays | its own tModLoader branch, when somebody writes it | not started, and not ours |
+| 9b, self-duplicating recipe | `RecipeShape` in the core, `RecipeSweep`, `RecipeTests` | swept behind `ECONOMY=1`, nothing found |
+| 9c, town NPC head texture | an upstream analyzer, when somebody writes it | not started, and not ours |
 
 Ordered by item rather than by the order they were written, because this is now
 a state table rather than a record of an afternoon. The findings column counts
@@ -913,7 +928,7 @@ vanilla-only lookup is legitimate, so the rule is about `new T[XID.Count]`
 sized from a vanilla count and then indexed by something that can exceed it,
 which is the part only the syntax knows.
 
-## The log flood, and the three that survived it
+## The log flood, and the reflection boundary under it
 
 `TestariaSystem.Load` now calls
 `Logging.IgnoreExceptionContents("Testaria.Assert.Skip")`, which is the hook
@@ -933,21 +948,85 @@ CheatSheet DragonLens InnoVault Daybreak`, 2135 tests with 245 skips:
 The 29 that are not skips are the same in both columns: the self-test's
 deliberate throws, the eight findings, and one read of `/proc`.
 
-**Three skips still reach the log, and the reason is worth keeping.** Their
-stacks begin inside `RuntimeMethodHandle.InvokeMethod` with no
-`Assert.Skip` frame, so they are second events for the same exception, raised
-where it crosses back out through the reflection call that invoked the test.
+**Three skips reached the log anyway, and the reason decided the second half of
+the fix.** Their stacks began inside `RuntimeMethodHandle.InvokeMethod` with no
+`Assert.Skip` frame: they were second events for the same exception, raised where
+it crossed back out through the reflection call that invoked the test.
 tModLoader's handler would have deduplicated them against `previousException`,
-but it only records that after deciding to log, and our pattern returns first.
-What distinguishes those three from the other 242 is not established. The way to
-remove them is to stop crossing a reflection boundary at all, by invoking test
-methods through a delegate made once rather than `MethodInfo.Invoke`, which is a
-change to `TestRunner` worth making for its own reasons rather than for three log
-lines.
+but it only records that after deciding to log, and the pattern returns first.
 
-`Assert.Skip` also carries `[MethodImpl(MethodImplOptions.NoInlining)]` now, so
-the frame the pattern names cannot be optimised away once a caller is hot. That
-is insurance rather than a fix: the count was 3 with and without it.
+So the reflection went. `TestInvoker` compiles one expression per test method,
+`(instance, arguments) => ((Suite)instance).Method((T)arguments[0], ...)`, and
+`TestRunner` calls that instead of `MethodInfo.Invoke`. A compiled call is a
+direct call: the body's exception propagates once, through frames that name the
+test. The same sweep now logs **27 entries and no skips at all**, with 245 skips
+in the run, and it stays at 27 with `ECONOMY=1` adding 137 more cases.
+
+Two things fell out of it that were not the point. `TargetInvocationException`
+entries went from 5 to 3, since the runner no longer creates the wrappers it then
+unwrapped. And the stack trace recorded against a failing test is now the test's
+own, without four frames of invoke machinery on top of it.
+
+A signature the expression compiler will not bind, a by-ref parameter for
+instance, returns null from `TestInvoker.For` and the runner falls back to
+`MethodInfo.Invoke` for that method alone. Tier 0 covers the fallback, and covers
+the thing worth checking by hand: a private method on a private type is callable
+this way, which it has to be, since discovery accepts non-public test methods and
+a suite inside a mod that keeps its types internal is a case the ecosystem
+calibration already ran into.
+
+`Assert.Skip` also carries `[MethodImpl(MethodImplOptions.NoInlining)]`, so the
+frame the pattern names cannot be optimised away once a caller is hot. Insurance
+rather than a measured fix: the count was 3 with and without it, because what the
+pattern was missing then was the second event rather than an inlined frame.
+
+## 9b, and a rule the core can test
+
+The free-money recipe is in, behind `ECONOMY=1`, which passes
+`-testariaeconomy` and is read through `TestSession.EconomyRequested`. Asked for
+or not, the cases exist: `RecipeTests` skips each one with its reason when the run
+did not ask, the same shape `BehaviourTests` uses, so a report can never read as
+though a mod's recipes had been checked when they were not.
+
+**The switch is about the claim, not the cost.** Reading a recipe is free. Every
+other check in the suite says a mod will break; this one says a mod is
+unbalanced, which is the author's business and, in a cheat or tooling mod, is
+usually the point. Keeping the two apart is what lets the default report mean one
+thing.
+
+**The rule.** One ingredient, of the result's own type, and a result stack no
+smaller than the ingredient's. Each condition excludes a legitimate recipe: a
+second ingredient is consumed, so the loop costs something; a smaller result is a
+compression recipe, which is the useful inverse; a different item is somebody
+else's business. Recipe groups are followed, because that is how the loop arrives
+by accident rather than by design: one group, written once and reused, that holds
+both the ingredient and what the recipe makes. A disabled recipe is skipped, since
+it cannot be crafted and a pass would claim an answer.
+
+**The rule lives in the core, and that is the interesting part.** `RecipeShape.Duplicates`
+is a pure function over ingredients, a result, and the set of types the recipe's
+groups accept. It is there because the sweep cannot be self-tested: every sweep
+excludes mods whose name ends in `Test` or `Tests`, so a deliberately broken
+recipe in this repository is invisible to it, which is exactly the wall the
+withdrawn 3d check hit. Ten tier 0 tests cover the rule in both directions,
+including the group cases and the compression recipe it must not report. What is
+left untested in the game is the plumbing around it, not the decision.
+
+**Measured.** With the seven-mod corpus, `ECONOMY=1` gives **2272 tests, 2019
+passed, 8 failed, 245 skipped**: 137 recipe cases, nothing found. Without the
+switch the same 2272 tests report 382 skipped, the extra 137 being these carrying
+their reason.
+
+**All 137 belong to ExampleMod.** Cheat Sheet, DragonLens, InnoVault and Daybreak
+add no recipes at all, which is what a corpus of tools and frameworks looks like:
+they hand out items through their own UI rather than through crafting. So "nothing
+found" here is one content mod's worth of evidence, and should be read the way the
+content invariants are read rather than as a verdict on the ecosystem.
+
+**What it does not catch**, recorded so nobody assumes otherwise: a two-ingredient
+loop whose second ingredient is effectively free, a recipe whose `Condition`
+restricts when it can be crafted at all, and anything about shimmer decrafting,
+which is a separate table with separate rules.
 
 ## The ladder is one vocabulary, and it paid for itself immediately
 
