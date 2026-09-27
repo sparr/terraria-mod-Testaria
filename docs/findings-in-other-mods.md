@@ -3,6 +3,9 @@
 Eight failures the sweeping checks reported against mods this repository did
 not write, from the twelve-mod run recorded at the end of
 `proposed-invariants.md`, on tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`.
+Finding 8 is a ninth, older than the rest: it came out of writing a mod's own
+suite before any of this was swept or written down, and is here so that the
+reports to one mod are in one place.
 
 This is the working document behind the reports, and the reason it exists
 separately is that a report to somebody else's project has to survive their
@@ -21,8 +24,10 @@ them.
 | 5 | `ExampleMod/ExampleJavelinProjectile` | Fixed, `ead01a5b5e` on tModLoader's `examplemod-tests`. |
 | 6 | `ExampleMod/ExampleTownPet` | Fixed, `210d13831b` on the same branch. |
 | 7 | `Daybreak/ItemDataProviderImpl` | Declared intended, `2dce2ef` in `DaybreakTests`. |
+| 8 | `TestingEfficiency.DataStructures.BossTestData` | Reported, open: [Doze-Zoze/TestingEfficiency#11](https://github.com/Doze-Zoze/TestingEfficiency/issues/11). Out of the sweep's reach. |
 
-All three issues were filed on 2026-09-27, are open, and have no replies yet.
+The first three issues were filed on 2026-09-27 and the fourth on 2026-09-26.
+All are open and none has a reply yet.
 Findings 3 and 4 went as one issue, since they are one mistake made twice in
 one mod. Nothing is pushed: the two ExampleMod fixes and the Daybreak
 declaration are local commits on branches in those checkouts.
@@ -265,6 +270,61 @@ mods do share, an override of tModLoader's own `IsCloneable`, which
 statement is in a library's vocabulary declares it through `SweepExemptions`,
 which is where this started.
 
+## 8. Testing Efficiency: a getter whose own setter will not take it back
+
+**Subject** `TestingEfficiency.DataStructures.BossTestData.diedString`.
+**Check** the property round trip, `Assert.SettersAcceptTheirOwnGetters`, which
+is the `RoundTrip` rung of section 0's ladder.
+**Result** `FormatException: The input string '' was not in a correct format.`
+
+Verified in source, `DataStructures.cs:99-146`:
+
+```csharp
+public float? died { get { return field == 0 ? null : field; } set; }
+
+[JsonIgnore]
+public string diedString
+{
+    get
+    {
+        if (died == null)
+            return string.Empty;
+        return $"{((died ?? 0) * 100).ToString("##.##")}%";
+    }
+    set
+    {
+        value = value.Replace("%", "");
+        died = Single.Parse(value) / 100f;
+    }
+}
+```
+
+A fresh `BossTestData` has `died` null, so the getter produces `""`, and
+`Single.Parse("")` throws. Two lines reproduce it:
+
+```csharp
+var data = new BossTestData();
+data.diedString = data.diedString;
+```
+
+The sibling `timeString` answers the same question correctly a few lines above:
+it parses with `int.TryParse` and leaves `time` alone when the text does not
+parse, which is what a text field bound to a property has to survive.
+
+**How reachable it is.** Not yet, and for a smaller reason than finding 2's.
+`TestingUI` reads and writes `timeString` (`Helpers/TestingUI.cs:537`, `570`,
+`658`) and never touches `diedString`, so nothing hands the empty string back
+today. Wiring the percentage into the same interface is what arrives at it.
+
+**Out of the sweep's reach, which is a fact about this framework.**
+`TypeSweep.Constructible` requires `type.IsPublic`, and that is false for a
+nested type however public it is declared; `BossTestData` is nested inside
+`DataStructures`, so the generic sweep never constructs it. A run of both
+property checks with Testing Efficiency enabled catalogues 105 cases and names
+no `BossTestData` among them. This finding came from the mod's own suite, where
+`BossTestDataTests` names the object by hand, which is why it predates the
+eight above.
+
 ## What is left
 
 - A reply on any of the three issues, none of which has one yet.
@@ -273,6 +333,11 @@ which is where this started.
   checkout, and pushing either is a separate decision.
 - Findings 3 and 4 stay open in the sweep until their author acts, which is the
   correct state for a reported finding rather than something to silence.
+- A decision about `IsPublic` in `TypeSweep.Constructible`. Nested public types
+  are constructible and are where a mod often puts its plain data, and finding
+  8 is one the sweep could have found and did not. Widening it to
+  `IsNestedPublic` would also enlarge every property run, so it wants
+  measuring rather than assuming.
 
 The standards these were written to, kept here because the next report will
 want them: issue text reflowed rather than wrapped, per this repository's own
