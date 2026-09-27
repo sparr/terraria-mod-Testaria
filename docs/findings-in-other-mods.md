@@ -316,14 +316,19 @@ parse, which is what a text field bound to a property has to survive.
 `658`) and never touches `diedString`, so nothing hands the empty string back
 today. Wiring the percentage into the same interface is what arrives at it.
 
-**Out of the sweep's reach, which is a fact about this framework.**
-`TypeSweep.Constructible` requires `type.IsPublic`, and that is false for a
-nested type however public it is declared; `BossTestData` is nested inside
-`DataStructures`, so the generic sweep never constructs it. A run of both
-property checks with Testing Efficiency enabled catalogues 105 cases and names
-no `BossTestData` among them. This finding came from the mod's own suite, where
-`BossTestDataTests` names the object by hand, which is why it predates the
-eight above.
+**It was out of the sweep's reach, which was a fact about this framework.**
+`TypeSweep.Constructible` tested `type.IsPublic`, which is false for a nested
+type however public it is declared, so `BossTestData`, nested inside
+`DataStructures`, was never constructed. The finding came instead from the
+mod's own suite, where `BossTestDataTests` names the object by hand, which is
+why it predates the eight above.
+
+The filter now walks out through `DeclaringType` and admits a nested type when
+everything enclosing it is public too. Measured over the twelve-mod corpus
+before adopting it: subjects per property check rose from 190 to 1227,
+failures from 3 to 4, and the new failure is this one, reported in the same
+words the hand-written test uses. Nothing else moved, so the widening cost no
+false positives and 50 milliseconds.
 
 ## What is left
 
@@ -333,11 +338,11 @@ eight above.
   checkout, and pushing either is a separate decision.
 - Findings 3 and 4 stay open in the sweep until their author acts, which is the
   correct state for a reported finding rather than something to silence.
-- A decision about `IsPublic` in `TypeSweep.Constructible`. Nested public types
-  are constructible and are where a mod often puts its plain data, and finding
-  8 is one the sweep could have found and did not. Widening it to
-  `IsNestedPublic` would also enlarge every property run, so it wants
-  measuring rather than assuming.
+- Nothing about `TypeSweep.Constructible`, which was the open question here
+  and is now decided and measured; see finding 8. The one thing the numbers
+  raise is presentation rather than correctness: 1015 of the 1037 new subjects
+  are one mod's generated hook types, which will pass forever and pad any
+  report that lists passing cases.
 
 The standards these were written to, kept here because the next report will
 want them: issue text reflowed rather than wrapped, per this repository's own

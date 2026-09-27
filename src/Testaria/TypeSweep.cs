@@ -167,11 +167,45 @@ public static class TypeSweep
 	/// tests: none of them is a thing with properties to write back.
 	/// </summary>
 	private static bool Constructible(Type type)
-		=> type.IsPublic
+		=> IsPublicAllTheWayOut(type)
 			&& type.IsClass
 			&& !type.IsAbstract
 			&& !type.IsGenericTypeDefinition
 			&& type.FullName is not null
 			&& type.GetConstructor(Type.EmptyTypes) is not null
 			&& !IsLoaderBound(type);
+
+	/// <summary>
+	/// Whether a type is public, and so is everything it is declared inside.
+	/// <para/>
+	/// <c>Type.IsPublic</c> alone answers this only for a top-level type: a
+	/// nested one reports <c>IsNestedPublic</c> instead and <c>IsPublic</c>
+	/// false however it was written. Asking the wrong one silently drops every
+	/// nested type from every sweep, and a nested type is where a mod
+	/// routinely keeps the plain data these checks are for. Testing
+	/// Efficiency's <c>BossTestData</c> is one: it holds a property whose
+	/// getter produces a string its own setter throws on, and the sweep could
+	/// not see it until this walked out through <c>DeclaringType</c>.
+	/// <para/>
+	/// The walk, rather than <c>IsNestedPublic</c> on its own, because a public
+	/// type inside an internal one is not reachable by anything outside the
+	/// assembly that declares it. Reflection would still build it, and a
+	/// finding about it would name code no other mod can touch.
+	/// <para/>
+	/// Measured over the twelve-mod corpus before it was adopted: subjects per
+	/// check rose from 190 to 1227, failures from 3 to 4, and the one new
+	/// failure is the <c>BossTestData</c> defect above. No new false positive,
+	/// and 50 milliseconds. Admitting nested types without the walk would have
+	/// added four more, all in one mod and all inside an enclosing type that is
+	/// not public.
+	/// </summary>
+	private static bool IsPublicAllTheWayOut(Type type)
+	{
+		for (Type? at = type; at is not null; at = at.DeclaringType) {
+			if (at.IsNested ? !at.IsNestedPublic : !at.IsPublic)
+				return false;
+		}
+
+		return true;
+	}
 }
