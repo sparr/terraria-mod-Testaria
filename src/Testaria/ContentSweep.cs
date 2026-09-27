@@ -112,6 +112,16 @@ public static class ContentSweep
 		return split <= 0 ? qualified : qualified[..split];
 	}
 
+	/// <summary>
+	/// Whether a mod is a subject worth sweeping, rather than this framework, a
+	/// suite built on it, or tModLoader's own built-in one.
+	/// <para/>
+	/// Public because every sweep needs the same answer and three copies of it
+	/// would drift. Recognised by name, which is crude and is the only signal
+	/// available from here.
+	/// </summary>
+	public static bool IsSubjectMod(string modName) => !IsHarness(modName);
+
 	private static bool IsHarness(string modName)
 		=> modName == "ModLoader"
 			|| modName == nameof(Testaria)

@@ -125,12 +125,10 @@ public static class TypeSweep
 	/// <summary>
 	/// Whether a mod is this framework, a suite built on it, or tModLoader's
 	/// own built-in one, none of which is a subject worth sweeping.
+	/// <para/>
+	/// One answer for every sweep, in <see cref="ContentSweep.IsSubjectMod"/>.
 	/// </summary>
-	private static bool IsHarness(string modName)
-		=> modName == "ModLoader"
-			|| modName == nameof(Testaria)
-			|| modName.EndsWith("Test", StringComparison.Ordinal)
-			|| modName.EndsWith("Tests", StringComparison.Ordinal);
+	private static bool IsHarness(string modName) => !ContentSweep.IsSubjectMod(modName);
 
 	/// <summary>
 	/// Whether this is content the loader registers, which a sweep cannot

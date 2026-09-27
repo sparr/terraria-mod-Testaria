@@ -78,6 +78,23 @@ public sealed class TestSession
 		=> Terraria.Program.LaunchParameters.ContainsKey(BehaviourFlag);
 
 	/// <summary>
+	/// Launch parameter asking for the checks whose failure is a balance claim
+	/// rather than a defect.
+	/// <para/>
+	/// Off by default for a different reason than
+	/// <see cref="BehaviourFlag"/>: not cost, but what a failure asserts. A
+	/// recipe that crafts itself for free is unbalanced rather than broken, and
+	/// in a cheat or tooling mod it is the point. Keeping that claim out of the
+	/// default report is what lets the rest of the report mean "this will
+	/// break".
+	/// </summary>
+	public const string EconomyFlag = "-testariaeconomy";
+
+	/// <summary>Whether this run asked for the economy checks.</summary>
+	public static bool EconomyRequested
+		=> Terraria.Program.LaunchParameters.ContainsKey(EconomyFlag);
+
+	/// <summary>
 	/// Launch parameter shifting every test's seed at once, for rerunning a
 	/// suite against different rolls without editing it.
 	/// </summary>

@@ -40,6 +40,11 @@ ISOLATE_ARG=""
 # cost is a box per piece of content across every enabled mod.
 BEHAVIOUR_ARG=""
 [ "${BEHAVIOUR:-0}" = "1" ] && BEHAVIOUR_ARG="-testariabehaviour"
+# ECONOMY=1 asks for the checks whose failure is a balance claim rather than a
+# defect: today that is the recipe that crafts its own ingredient. Off by
+# default because a cheat mod means it, not because it costs anything.
+ECONOMY_ARG=""
+[ "${ECONOMY:-0}" = "1" ] && ECONOMY_ARG="-testariaeconomy"
 # BLANK=1 replaces world generation with Testaria's blank substrate.
 BLANK_ARG=""
 [ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
@@ -246,6 +251,7 @@ nice -n 19 "${CAP[@]}" \
     $FRESH_ARG \
     $ISOLATE_ARG \
     $BEHAVIOUR_ARG \
+    $ECONOMY_ARG \
     $SPEED_ARG \
     $RUN_SEED_ARG \
     $REQUIRE_MODS_ARG \
