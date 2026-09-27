@@ -14,18 +14,18 @@ them.
 
 | # | Subject | State |
 |---|---|---|
-| 1 | `CheatSheet/CheatSheetPlayer` | Reported upstream. Identifier not recorded here yet. |
-| 2 | `DragonLens/MOTDPlayer` | Reported upstream. Identifier not recorded here yet. |
-| 3 | `TestingEfficiency/DamageStatsRecorder` | Reported upstream. Still failing the sweep. |
-| 4 | `TestingEfficiency/ProjectileSourceManager` | Reported upstream. Still failing the sweep. |
+| 1 | `CheatSheet/CheatSheetPlayer` | Reported, open: [JavidPack/CheatSheet#100](https://github.com/JavidPack/CheatSheet/issues/100). |
+| 2 | `DragonLens/MOTDPlayer` | Reported, open: [ScalarVector1/DragonLens#164](https://github.com/ScalarVector1/DragonLens/issues/164). |
+| 3 | `TestingEfficiency/DamageStatsRecorder` | Reported with 4, open: [Doze-Zoze/TestingEfficiency#12](https://github.com/Doze-Zoze/TestingEfficiency/issues/12). Still failing the sweep. |
+| 4 | `TestingEfficiency/ProjectileSourceManager` | Same issue as 3. Still failing the sweep. |
 | 5 | `ExampleMod/ExampleJavelinProjectile` | Fixed, `ead01a5b5e` on tModLoader's `examplemod-tests`. |
 | 6 | `ExampleMod/ExampleTownPet` | Fixed, `210d13831b` on the same branch. |
 | 7 | `Daybreak/ItemDataProviderImpl` | Declared intended, `2dce2ef` in `DaybreakTests`. |
 
-Nothing is pushed: the two ExampleMod fixes and the Daybreak declaration are
-local commits on branches in those checkouts. The three reports were sent by
-hand, and this document does not carry their issue numbers or links; they
-belong in the table above once somebody pastes them in.
+All three issues were filed on 2026-09-27, are open, and have no replies yet.
+Findings 3 and 4 went as one issue, since they are one mistake made twice in
+one mod. Nothing is pushed: the two ExampleMod fixes and the Daybreak
+declaration are local commits on branches in those checkouts.
 
 A cloning sweep over `Testaria TestariaSweepTest ExampleMod CheatSheet
 DragonLens InnoVault Daybreak DaybreakTests TestingEfficiency` now reports 278
@@ -267,8 +267,7 @@ which is where this started.
 
 ## What is left
 
-- The issue numbers or links for 1 to 4, which only whoever sent them has. The
-  table at the top has a column waiting for them.
+- A reply on any of the three issues, none of which has one yet.
 - Nothing is pushed. The ExampleMod fixes sit on `examplemod-tests` in the
   tModLoader checkout, the declaration on `testaria-tests` in the Daybreak
   checkout, and pushing either is a separate decision.
@@ -277,9 +276,12 @@ which is where this started.
 
 The standards these were written to, kept here because the next report will
 want them: issue text reflowed rather than wrapped, per this repository's own
-convention for text aimed at humans on GitHub; a repro a maintainer can run
-without installing this framework, which for 1 and 2 is a player file plus the
-two lines that break it and for 3 to 6 is the sentence from
-`Cloning.IsCloneable` and the field name; and a decision per mod about whether
-it is worth their time, since 3 to 6 are contract hygiene and were offered as
-such rather than as bug reports.
+convention for text aimed at humans on GitHub; permalinks into the mod's own
+source at a pinned commit rather than quoted excerpts; a repro a maintainer can
+run without installing this framework, which for 1 and 2 is a player file plus
+the two lines that break it and for 3 to 6 is the sentence from
+`Cloning.IsCloneable` and the field name; a decision per mod about whether it
+is worth their time, since 3 to 6 are contract hygiene and were offered as such
+rather than as bug reports; and a disclosure paragraph saying that a sweep run
+by an AI found the failure and that a human read the code before filing, which
+all three carry.
