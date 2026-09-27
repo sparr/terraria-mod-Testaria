@@ -4,218 +4,26 @@ using System.Reflection.Emit;
 namespace Testaria.Tests;
 
 /// <summary>
-/// <see cref="DeclaredCloneability"/>, which reads another mod's own statement
-/// about whether one of its types may share state between clones.
+/// <see cref="DeclaredCloneability"/>, which reads a mod's own statement about
+/// whether one of its types may share state between clones.
 /// <para/>
-/// The attributes below stand in for Daybreak's <c>ExpectCloneableAttribute</c>.
-/// They are declared here rather than referenced from it for the same reason
-/// the production code matches by name: the real one lives in an assembly this
-/// solution does not reference and cannot, so what is being tested is exactly
-/// the shape, not the type.
+/// The statement is an override of tModLoader's <c>IsCloneable</c>, so the
+/// types below stand in for swept content: what matters to the reader is which
+/// assembly declares the property and whether its getter is a constant, not
+/// which loader base class it derives from.
 /// </summary>
 public class DeclaredCloneabilityTests
 {
-	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-	private sealed class ExpectCloneableAttribute(bool isCloneable = true) : Attribute
-	{
-		public bool IsCloneable => isCloneable;
-	}
-
-	/// <summary>Named without the suffix, which C# allows and somebody will do.</summary>
-	[AttributeUsage(AttributeTargets.Class)]
-	private sealed class ExpectCloneable : Attribute
-	{
-		public bool IsCloneable;
-	}
-
-	[AttributeUsage(AttributeTargets.Class)]
-	private sealed class ExpectCloneableNotReallyAttribute : Attribute
-	{
-		public bool IsCloneable => false;
-	}
-
-	[AttributeUsage(AttributeTargets.Class)]
-	private sealed class ExpectCloneableSilentAttribute : Attribute
-	{
-		public string IsCloneable => "no";
-	}
-
-	[AttributeUsage(AttributeTargets.Class)]
-	private sealed class ExpectCloneableAngryAttribute : Attribute
-	{
-		public bool IsCloneable => throw new InvalidOperationException("no");
-	}
-
-	[ExpectCloneableAttribute(false)]
-	private sealed class SharesOnPurpose;
-
-	[ExpectCloneableAttribute(true)]
-	private sealed class MustNotShare;
-
-	[ExpectCloneableAttribute]
-	private sealed class MustNotShareByDefault;
-
-	[@ExpectCloneable(IsCloneable = false)]
-	private sealed class SharesOnPurposeWithAField;
-
-	private sealed class SaysNothing;
-
-	[ExpectCloneableNotReally]
-	private sealed class SaysNothingWithASimilarName;
-
-	[ExpectCloneableSilent]
-	private sealed class SaysSomethingUnreadable;
-
-	[ExpectCloneableAngry]
-	private sealed class ThrowsWhenAsked;
-
-	[ExpectCloneableAttribute(false)]
-	[ExpectCloneableAttribute(true)]
-	private sealed class ContradictsItself;
-
-	[ExpectCloneableAttribute(false)]
-	private class DeclaredOnTheBase;
-
-	private sealed class InheritsTheDeclaration : DeclaredOnTheBase;
-
-	[Fact]
-	public void A_type_declaring_it_shares_is_read_as_such()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SharesOnPurpose));
-
-		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
-		XAssert.True(declared.IsDeclared);
-	}
-
-	/// <summary>
-	/// The source is in every message the claim produces, so a reader who
-	/// doubts a skip can go and look at the attribute that caused it.
-	/// </summary>
-	[Fact]
-	public void A_declaration_names_the_attribute_it_came_from()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SharesOnPurpose));
-
-		XAssert.Contains(nameof(ExpectCloneableAttribute), declared.Source);
-	}
-
-	[Fact]
-	public void A_type_declaring_it_must_not_share_is_read_as_such()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(MustNotShare));
-
-		XAssert.Equal(CloneabilityClaim.Cloneable, declared.Claim);
-	}
-
-	/// <summary>
-	/// Daybreak's attribute defaults to true, and an author who writes the bare
-	/// attribute means what its own default means.
-	/// </summary>
-	[Fact]
-	public void An_attribute_left_at_its_default_is_read_at_that_default()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(MustNotShareByDefault));
-
-		XAssert.Equal(CloneabilityClaim.Cloneable, declared.Claim);
-	}
-
-	/// <summary>
-	/// A field rather than a property. Which one an author reached for says
-	/// nothing about what they meant.
-	/// </summary>
-	[Fact]
-	public void A_claim_held_in_a_field_is_read_too()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SharesOnPurposeWithAField));
-
-		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
-	}
-
-	[Fact]
-	public void A_type_saying_nothing_declares_nothing()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SaysNothing));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-		XAssert.False(declared.IsDeclared);
-		XAssert.Equal(CloneabilityDeclaration.None, declared);
-	}
-
-	/// <summary>
-	/// Matching by name is loose enough to be worth pinning: the name has to be
-	/// the name, not merely start with it, or an unrelated attribute could
-	/// silence a finding.
-	/// </summary>
-	[Fact]
-	public void An_attribute_whose_name_merely_begins_the_same_is_not_a_declaration()
-	{
-		CloneabilityDeclaration declared =
-			DeclaredCloneability.Of(typeof(SaysNothingWithASimilarName));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-	}
-
-	[Fact]
-	public void An_attribute_carrying_no_bool_declares_nothing()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SaysSomethingUnreadable));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-	}
-
-	/// <summary>
-	/// Foreign code runs inside this call. A mod whose getter throws has said
-	/// nothing, and must not be able to end the run that asked.
-	/// </summary>
-	[Fact]
-	public void An_attribute_that_throws_when_read_declares_nothing()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(ThrowsWhenAsked));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-	}
-
-	/// <summary>
-	/// Attributes come back in no specified order, so taking the first would
-	/// make the answer depend on it.
-	/// </summary>
-	[Fact]
-	public void Two_declarations_that_disagree_declare_nothing()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(ContradictsItself));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-	}
-
-	/// <summary>
-	/// Inherited, matching what a declaring mod's own enforcer sees:
-	/// <c>GetCustomAttribute</c> on a type searches the base chain by default.
-	/// </summary>
-	[Fact]
-	public void A_declaration_on_a_base_class_governs_its_subclasses()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(InheritsTheDeclaration));
-
-		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
-	}
-
-	[Fact]
-	public void No_type_is_not_a_question()
-		=> XAssert.Throws<ArgumentNullException>(() => DeclaredCloneability.Of(null!));
-
-	// The other route, and the common one in the wild: a mod answering for
-	// itself by overriding tModLoader's own property. Stood in for here by a
-	// base class outside the subject's own hierarchy of declarations, because
-	// what separates an authored answer from a computed one is which assembly
-	// declares the property, and every type in this file shares one assembly
-	// with its base. A cross-assembly base is covered by the types tModLoader
-	// itself supplies, which no unit test can reach.
+	// A base declaring the property, standing in for the ModType that supplies
+	// it in a real sweep. Every type in this file shares an assembly with this
+	// base, so the cross-assembly case is emitted rather than written; see
+	// below.
 	private abstract class Content
 	{
 		public virtual bool IsCloneable => false;
 	}
 
-	private sealed class SaysNothingAboutCloning : Content;
+	private sealed class InheritsItsModsDeclaration : Content;
 
 	private sealed class DeclaresItShares : Content
 	{
@@ -246,23 +54,13 @@ public class DeclaredCloneabilityTests
 		public override bool IsCloneable => base.IsCloneable;
 	}
 
+	private sealed class NoPropertyAtAll;
+
 	private sealed class CopiesItself : Content
 	{
 		public override bool IsCloneable => true;
 
 		public CopiesItself Clone() => new();
-	}
-
-	[ExpectCloneableAttribute(false)]
-	private sealed class SaysItTwice : Content
-	{
-		public override bool IsCloneable => false;
-	}
-
-	[ExpectCloneableAttribute(true)]
-	private sealed class SaysBothThings : Content
-	{
-		public override bool IsCloneable => false;
 	}
 
 	[Fact]
@@ -271,8 +69,7 @@ public class DeclaredCloneabilityTests
 		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(DeclaresItShares));
 
 		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
-		XAssert.Equal(CloneabilityDeclarationKind.Override, declared.Kind);
-		XAssert.True(declared.ReplacesComputation);
+		XAssert.True(declared.IsDeclared);
 		XAssert.Contains(nameof(DeclaresItShares), declared.Source);
 	}
 
@@ -282,7 +79,6 @@ public class DeclaredCloneabilityTests
 		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(DeclaresItDoesNot));
 
 		XAssert.Equal(CloneabilityClaim.Cloneable, declared.Claim);
-		XAssert.Equal(CloneabilityDeclarationKind.Override, declared.Kind);
 	}
 
 	/// <summary>
@@ -328,7 +124,7 @@ public class DeclaredCloneabilityTests
 	public void A_declaration_on_a_base_class_in_the_same_assembly_governs_it()
 	{
 		CloneabilityDeclaration declared =
-			DeclaredCloneability.Of(typeof(SaysNothingAboutCloning));
+			DeclaredCloneability.Of(typeof(InheritsItsModsDeclaration));
 
 		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
 		XAssert.Contains(nameof(Content), declared.Source);
@@ -389,25 +185,6 @@ public class DeclaredCloneabilityTests
 			.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndCollect)
 			.DefineDynamicModule(name);
 
-	[Fact]
-	public void Both_routes_agreeing_is_one_declaration_naming_both()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SaysItTwice));
-
-		XAssert.Equal(CloneabilityClaim.NotCloneable, declared.Claim);
-		XAssert.Equal(CloneabilityDeclarationKind.Both, declared.Kind);
-		XAssert.Contains(nameof(ExpectCloneableAttribute), declared.Source);
-		XAssert.Contains(nameof(SaysItTwice), declared.Source);
-	}
-
-	[Fact]
-	public void Two_routes_that_disagree_declare_nothing()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SaysBothThings));
-
-		XAssert.Equal(CloneabilityClaim.Undeclared, declared.Claim);
-	}
-
 	/// <summary>
 	/// The corroboration, which is not a declaration and is never read as one.
 	/// </summary>
@@ -418,12 +195,17 @@ public class DeclaredCloneabilityTests
 		XAssert.False(DeclaredCloneability.OverridesCloneItself(typeof(DeclaresItDoesNot)));
 	}
 
+	/// <summary>A type with no such property at all says nothing.</summary>
 	[Fact]
-	public void An_attribute_alone_does_not_replace_the_computation()
-	{
-		CloneabilityDeclaration declared = DeclaredCloneability.Of(typeof(SharesOnPurpose));
+	public void A_type_without_the_property_declares_nothing()
+		=> XAssert.Equal(CloneabilityClaim.Undeclared,
+			DeclaredCloneability.Of(typeof(NoPropertyAtAll)).Claim);
 
-		XAssert.Equal(CloneabilityDeclarationKind.Attribute, declared.Kind);
-		XAssert.False(declared.ReplacesComputation);
+	[Fact]
+	public void No_type_is_not_a_question()
+	{
+		XAssert.Throws<ArgumentNullException>(() => DeclaredCloneability.Of(null!));
+		XAssert.Throws<ArgumentNullException>(
+			() => DeclaredCloneability.OverridesCloneItself(null!));
 	}
 }

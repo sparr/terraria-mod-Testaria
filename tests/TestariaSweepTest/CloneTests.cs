@@ -20,11 +20,13 @@ namespace TestariaSweepTest;
 /// with what it declares. <see cref="SweepExemptions"/> is that idea with a
 /// different spelling, and the mod that knows is the one that declares.
 /// <para/>
-/// Which is why a mod that has already declared it needs no entry here.
-/// <see cref="DeclaredCloneability"/> reads an <c>ExpectCloneable</c>-shaped
-/// attribute wherever one exists, and <c>CloneSweep</c> skips on it, so the
-/// declaration stays in the repository that can check it against the code.
-/// An exemption is for the mod that has said nothing anywhere else.
+/// Which is why a mod that answers for itself needs no entry here.
+/// <see cref="DeclaredCloneability"/> reads a mod's own override of
+/// <c>IsCloneable</c>, which is the convention mods use, and <c>CloneSweep</c>
+/// skips on a declaration of intended sharing, so the statement stays in the
+/// repository that can check it against the code. An exemption is for the mod
+/// that has said nothing there: Daybreak's attribute is one such case, since
+/// its vocabulary is its own rather than the ecosystem's.
 /// </summary>
 public class CloneTests
 {

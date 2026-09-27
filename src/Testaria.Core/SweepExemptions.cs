@@ -50,11 +50,12 @@ public enum SweepCheck
 /// check that is not being applied has to say so and say why, which is the
 /// same argument <c>UNCOVERED</c> makes for a gate that will not run.
 /// <para/>
-/// A mod that already states the same thing in its own vocabulary needs no
-/// entry here. <see cref="DeclaredCloneability"/> reads such a statement where
-/// the cloning check is concerned, and a declaration that lives beside the code
-/// beats one restated here: it cannot drift from the type it describes, and its
-/// author maintains it without knowing this framework exists.
+/// A mod that already states the same thing in tModLoader's own vocabulary
+/// needs no entry here. <see cref="DeclaredCloneability"/> reads an overridden
+/// <c>IsCloneable</c>, and a declaration that lives beside the code beats one
+/// restated here: it cannot drift from the type it describes, and its author
+/// maintains it without knowing this framework exists. A mod that says it some
+/// other way, in a library's attribute of its own, still declares it here.
 /// </summary>
 public static class SweepExemptions
 {

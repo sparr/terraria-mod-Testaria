@@ -25,20 +25,17 @@ namespace Testaria;
 /// <para/>
 /// Not every false is a defect, and the mod is sometimes the one saying so. A
 /// mod sharing one object between clones on purpose is doing something correct
-/// that <c>IsCloneable</c> cannot tell from a mistake, and mods do say which it
-/// is: by overriding <c>IsCloneable</c> with a constant, which is the common
-/// way and tModLoader's own vocabulary, or with an <c>ExpectCloneable</c>
-/// attribute. <see cref="DeclaredCloneability"/> reads both, and this check
+/// that <c>IsCloneable</c> cannot tell from a mistake, and mods say which it is
+/// by overriding that property with a constant.
+/// <see cref="DeclaredCloneability"/> reads such an override, and this check
 /// defers to a declaration of intended sharing instead of asking for the same
 /// fact a second time as a <see cref="SweepExemptions"/> entry.
 /// <para/>
-/// A declaration the other way round cuts differently, because an overridden
-/// <c>IsCloneable</c> stands in place of the loader's computation rather than
-/// beside it. Asserting <c>true</c> leaves nothing for this check to read, so
-/// unless the mod also declares a <c>Clone</c> of its own, the case is reported
-/// as measuring nothing rather than as passing. An attribute claiming the same
-/// thing withholds nothing, since the computation still ran, and is quoted in
-/// the failure it contradicts.
+/// The same override cuts the other way too, because it stands in place of the
+/// loader's computation rather than beside it. A type asserting <c>true</c>
+/// leaves nothing for this check to read, so unless the mod also declares a
+/// <c>Clone</c> of its own, the case is reported as measuring nothing rather
+/// than as passing.
 /// <para/>
 /// Read rather than recomputed, deliberately. A source-level guess at which
 /// fields need deep copying was tried while surveying the corpus and was wrong:
@@ -116,19 +113,18 @@ public static class CloneSweep
 			return;
 		}
 
-		// An author who has already answered this, in whichever vocabulary, has
-		// answered the check. See DeclaredCloneability for both of them and for
-		// why they are read rather than asked for again.
+		// What was just read is not always a measurement: a mod may have
+		// overridden IsCloneable and answered for itself. See
+		// DeclaredCloneability for when that counts as a declaration.
 		CloneabilityDeclaration declared = DeclaredCloneability.Of(type);
 
 		if (cloneable) {
-			// An overridden IsCloneable is not a measurement. The mod replaced
-			// the loader's computation with a constant, so true here is an
-			// assertion and nothing readable afterwards says whether it holds.
-			// A Clone override in the mod's own code is the one thing that
-			// corroborates it, and is what the loader looks for first.
-			if (declared.ReplacesComputation
-				&& declared.Claim == CloneabilityClaim.Cloneable
+			// The mod replaced the loader's computation with a constant, so
+			// true here is an assertion and nothing readable afterwards says
+			// whether it holds. A Clone override in the mod's own code is the
+			// one thing that corroborates it, and is what the loader looks for
+			// first.
+			if (declared.Claim == CloneabilityClaim.Cloneable
 				&& !DeclaredCloneability.OverridesCloneItself(type)) {
 				Assert.Skip($"{qualified} asserts it is cloneable by overriding "
 					+ $"{declared.Source}, which replaces what tModLoader would have "
@@ -164,23 +160,17 @@ public static class CloneSweep
 				+ "here for it to answer for.");
 		}
 
-		// A declaration the other way is not a reason to withhold anything. It
-		// is the author saying this type must be cloneable, which is what the
-		// loader has just contradicted, so it belongs in the message as a
-		// second source rather than as an exemption.
-		string against = declared.Claim == CloneabilityClaim.Cloneable
-			? $"\nIts own {declared.Source} says it should be cloneable, so this "
-				+ "breaks a contract the mod set for itself."
-			: "\nGive it a Clone override that copies the fields, or mark the ones that "
-				+ "may be shared with [CloneByReference]. If the sharing is intended, the "
-				+ "mod's own suite can declare it with "
-				+ $"SweepExemptions.Declare(\"{qualified}\", SweepCheck.Cloning, ...)";
-
+		// Nothing reaching here is declared: an overridden IsCloneable is the
+		// value that was read, so a declaration of false was skipped above and
+		// a declaration of true could not have produced this failure.
 		Assert.True(cloneable,
 			$"{qualified} ({type.FullName}) is not cloneable, so its copies share "
 			+ "mutable state: two of the same thing in the world hold one object "
-			+ $"between them.\n  fields the mod declares: {own}\n  fields tModLoader declares: {foreign}"
-			+ against);
+			+ $"between them.\n  fields the mod declares: {own}\n  fields tModLoader declares: {foreign}\n"
+			+ "Give it a Clone override that copies the fields, or mark the ones that "
+			+ "may be shared with [CloneByReference]. If the sharing is intended, say so "
+			+ "by overriding IsCloneable, or have the mod's own suite declare it with "
+			+ $"SweepExemptions.Declare(\"{qualified}\", SweepCheck.Cloning, ...)");
 	}
 
 	/// <summary>
