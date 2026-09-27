@@ -873,7 +873,7 @@ to calibrate, not a plan.
 | 3d, ID set sizing | `IdSetSweep.VanillaSizedSets`, `IdSetTests` | swept |
 | 3e to 3g, redirection flatness | `IdSetSweep.RedirectionIsFlat` | written, no caller, untested |
 | 6a, keys are filled in | `LocalizationSweep`, `LocalizationTests` | swept |
-| 6b, unreachable translations | `HjsonKeys` in the core | written, tier 0 tested, no caller |
+| 6b, unreachable translations | a tModLoader branch, not here | written as an analyzer, handed over |
 | 4a, cloneable as declared | `CloneSweep`, `CloneTests` | swept, 2 findings |
 | 2a to 2d, persistence ladder | `PersistenceSweep`, `PersistenceTests` | swept |
 | 2e, lengthened-list mutation | none | not written |
@@ -962,11 +962,9 @@ Recorded plainly rather than left to be discovered.
   now exercised by a test and reachable through `SweepDeclarations`. See
   "Declaring a subject the sweep cannot find", which also corrects the claim that
   it needed a line in one particular repository.)*
-- **`HjsonKeys` has no in-game caller, and cannot have one.** A mod's
-  localization files live inside its `.tmod` and the loader does not open them
-  to anybody else, so 6b cannot run as a swept check. It is validated against
-  the corpus's 69 translated files through a scratch program and covered by
-  tier 0 tests, but where it belongs in a real workflow is undecided.
+- **`HjsonKeys` has no in-game caller, and cannot have one.** *(Resolved by
+  moving it out: 6b is now an analyzer on a tModLoader branch, and nothing about
+  it remains in this repository. See "Where 6b went".)*
 - **2e, the lengthened-list mutation, is not written.** It is the only proposed
   check that would have found the corpus's one real persistence bug, so this is
   the most valuable gap on the list.
@@ -1103,10 +1101,13 @@ internal. That is why 6b cannot be a swept in-game check.
 
 **The source copies, in the mod's folder,** are read *and written* by tModLoader
 itself. `LocalizationLoader.UpdateLocalizationFilesForMod` regenerates them
-after a build and reload when `ModCompile.activelyModding`, which is the
-mechanism by which new keys appear in the hjson ready to be filled in. So the
-normal reader of the source files is the loader's own file updater, in-game,
-during development.
+after a build and reload, which is the mechanism by which new keys appear in the
+hjson ready to be filled in. So the normal reader of the source files is the
+loader's own file updater, in-game, during development. Its gates are worth
+naming, because they are what keeps it from being a check: the mod's source
+folder has to exist, a locally built `.tmod` has to sit in `ModLoader.ModPath`,
+and the file on disk has to be older than that `.tmod`. A translation edited
+after the last build is newer, so it is left alone.
 
 **And they are already handed to analyzers.** `tMLMod.targets` carries
 
@@ -1123,12 +1124,38 @@ switched on. It would report at edit time, in the editor, next to the line.
 which already receive the files, and is worth raising with them as a feature
 request rather than reimplemented here.
 
-`HjsonKeys` is kept anyway, and deliberately, as the evidence for that request
-rather than as framework surface: a pure function in the core, eleven tier 0
-tests, and a validation across the corpus's 69 translated files finding nothing,
-which is the part that would otherwise be redone when somebody writes the
-request. It has no caller and is not meant to acquire one. If that reads as dead
-weight rather than evidence, it is one file and its tests to delete.
+### Where 6b went
+
+`HjsonKeys` and its tier 0 tests are gone from this repository. The check is now
+`UnreachableLocalizationKeyAnalyzer` on a tModLoader branch,
+`UnreachableLocalizationKeyAnalyzer`, based on upstream `1.4.5` at `39e7995fa5`
+and not pushed anywhere. What the move changed, beyond the language:
+
+- **The comparison unit is right.** An analyzer runs once per project, so the
+  English side is the union of every `en-US` file in the mod, which is what the
+  loader's one registry per mod actually does. `HjsonKeys.Unreachable` compared
+  two files, and would have reported a key that merely moved between files.
+- **Two false positives are gone.** A key holding a `$` is a variant, added by
+  `LanguageManager.AddVariant` for whatever culture declares it and reachable
+  with no English counterpart, and `$parentVal` is resolved to the key above it
+  by `LoadTranslations`. Both were in the corpus's blind spot and neither was
+  handled here.
+- **A mod declaring `translationMod` is skipped**, because its English keys
+  belong to the mod it translates and no compilation of it can see them.
+
+Measured against ten published mods, Calamity and BossChecklist among them: 99
+localization files, 12554 `en-US` keys and 2858 translated keys read, nothing
+reported. Renaming one block of BossChecklist's `pl-PL` file reports exactly the
+seven keys that file translates, the rest being commented out, which is how the
+updater writes an untranslated entry.
+
+**What is not established.** The analyzer's own unit tests cannot run without a
+built tModLoader, which needs the full decompile-and-patch setup, so they are
+written and syntax-checked rather than executed. Every case they assert was run
+through the same analyzer-testing library they use, with the same expected spans
+and arguments, by a standalone harness beside the branch; that harness is also
+what measured the corpus above. Only the tModLoader metadata references differ
+between the two.
 
 ## Opting in to a world per mutating test
 
