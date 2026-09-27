@@ -34,7 +34,10 @@ namespace Testaria;
 /// <para/>
 /// Detecting the real thing precisely needs the array's <i>size expression</i>,
 /// not its length, which is a syntactic question and belongs to an analyzer
-/// rather than to a sweep. What is left here is the pair of assertions a mod's
+/// rather than to a sweep. Not to <c>Testaria.Analyzers</c>, which exists to
+/// enforce this framework's tier 0 boundary and nothing else: a rule about how
+/// a mod sizes its arrays belongs to <c>tModCodeAssist</c>, which every mod
+/// already builds against. What is left here is the pair of assertions a mod's
 /// own suite can call about sets it knows the meaning of, and the bound it
 /// should use, which is the part people get wrong.
 /// </summary>

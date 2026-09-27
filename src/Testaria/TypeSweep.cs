@@ -19,6 +19,18 @@ namespace Testaria;
 /// A default constructor is the whole of the qualification. A type needing
 /// arguments cannot be built without knowing what they mean, which is exactly
 /// the knowledge these checks are meant to do without.
+/// <para/>
+/// <b>A constructed subject is not a sandbox.</b> Making the instance keeps the
+/// checks off the content the loader registered, and that is all it keeps them
+/// off: a setter is free to write somewhere the object does not own, whether a
+/// static field, something on <c>Main</c>, a registry it appends to, or a packet
+/// it sends. The value written back is the getter's own, so a property that only
+/// stores is unchanged by being asked, but a setter with a side effect runs that
+/// side effect on a throwaway object exactly as it would on a real one. Nothing
+/// here can prevent that, and a box cannot either, since what a setter reaches
+/// is not bounded by a region of the world. What a mod's author can do is say so
+/// through <c>SweepExemptions</c>, which is the same mechanism an intended
+/// answer uses.
 /// </summary>
 public static class TypeSweep
 {
@@ -130,7 +142,9 @@ public static class TypeSweep
 	/// reading <c>Projectile.ai[0]</c> and so on. An instance made by
 	/// reflection has none of that, so reading such a property throws through
 	/// no fault of the mod, and the instances the loader did make are live
-	/// content a sweep must never write to.
+	/// content a sweep must never write to. Excluding them protects that
+	/// content and nothing more: see the class summary on what a setter can
+	/// still reach from an instance the sweep made itself.
 	/// <para/>
 	/// Measured twice while narrowing this. Excluding only the entity-bound
 	/// kinds left 51 failures, every one a property tModLoader itself declares;
