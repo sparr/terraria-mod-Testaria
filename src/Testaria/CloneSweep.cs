@@ -23,6 +23,16 @@ namespace Testaria;
 /// <c>Terraria.ModLoader.CloneByReference</c>, which is tModLoader's own and
 /// says "sharing this is fine".
 /// <para/>
+/// Not every false is a defect, and the mod is sometimes the one saying so.
+/// A framework sharing one registry between clones is doing something correct
+/// that <c>IsCloneable</c> cannot tell from a mistake, and a mod may already
+/// declare which it is: Daybreak marks such a type <c>[ExpectCloneable(false)]</c>
+/// and enforces that at load. <see cref="DeclaredCloneability"/> reads any
+/// declaration of that shape, and this check defers to it instead of asking for
+/// the same fact a second time as a <see cref="SweepExemptions"/> entry. A
+/// declaration the other way round, that a type should be cloneable, withholds
+/// nothing and is reported alongside the failure it contradicts.
+/// <para/>
 /// Read rather than recomputed, deliberately. A source-level guess at which
 /// fields need deep copying was tried while surveying the corpus and was wrong:
 /// it matched local variables inside method bodies and produced seventeen
@@ -102,6 +112,17 @@ public static class CloneSweep
 		if (cloneable)
 			return;
 
+		// An author who has already declared this, in their own vocabulary, has
+		// answered the check. See DeclaredCloneability for why that is read
+		// rather than asked for again.
+		CloneabilityDeclaration declared = DeclaredCloneability.Of(type);
+
+		if (declared.Claim == CloneabilityClaim.NotCloneable) {
+			Assert.Skip($"{qualified} declares itself not cloneable with "
+				+ $"[{declared.Source}], so the sharing is intended and its author "
+				+ "has said so where the claim can be checked against the code.");
+		}
+
 		(string own, string foreign) = Blame(type);
 
 		// Restricted to the subject's own assembly, for the reason
@@ -120,14 +141,23 @@ public static class CloneSweep
 				+ "here for it to answer for.");
 		}
 
+		// A declaration the other way is not a reason to withhold anything. It
+		// is the author saying this type must be cloneable, which is what the
+		// loader has just contradicted, so it belongs in the message as a
+		// second source rather than as an exemption.
+		string against = declared.Claim == CloneabilityClaim.Cloneable
+			? $"\nIts own [{declared.Source}] says it should be cloneable, so this "
+				+ "breaks a contract the mod set for itself."
+			: "\nGive it a Clone override that copies the fields, or mark the ones that "
+				+ "may be shared with [CloneByReference]. If the sharing is intended, the "
+				+ "mod's own suite can declare it with "
+				+ $"SweepExemptions.Declare(\"{qualified}\", SweepCheck.Cloning, ...)";
+
 		Assert.True(cloneable,
 			$"{qualified} ({type.FullName}) is not cloneable, so its copies share "
 			+ "mutable state: two of the same thing in the world hold one object "
-			+ $"between them.\n  fields the mod declares: {own}\n  fields tModLoader declares: {foreign}\n"
-			+ "Give it a Clone override that copies the fields, or mark the ones that "
-			+ "may be shared with [CloneByReference]. If the sharing is intended, the "
-			+ "mod's own suite can declare it with "
-			+ $"SweepExemptions.Declare(\"{qualified}\", SweepCheck.Cloning, ...)");
+			+ $"between them.\n  fields the mod declares: {own}\n  fields tModLoader declares: {foreign}"
+			+ against);
 	}
 
 	/// <summary>

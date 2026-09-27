@@ -49,6 +49,12 @@ public enum SweepCheck
 /// An exemption is reported as a skip carrying its reason, never as a pass. A
 /// check that is not being applied has to say so and say why, which is the
 /// same argument <c>UNCOVERED</c> makes for a gate that will not run.
+/// <para/>
+/// A mod that already states the same thing in its own vocabulary needs no
+/// entry here. <see cref="DeclaredCloneability"/> reads such a statement where
+/// the cloning check is concerned, and a declaration that lives beside the code
+/// beats one restated here: it cannot drift from the type it describes, and its
+/// author maintains it without knowing this framework exists.
 /// </summary>
 public static class SweepExemptions
 {
