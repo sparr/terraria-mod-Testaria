@@ -28,6 +28,18 @@ MODE="${MODE:-run}"
 # tests marked [FreshWorld] be honoured rather than skipped.
 FRESH_ARG=""
 [ "${FRESH_WORLD:-0}" = "1" ] && FRESH_ARG="-testariafreshworld"
+# ISOLATE_MUTATORS=1 asks that every test marked [MutatesGlobalState] be given a
+# world of its own, rather than trusting it to put back what it changed. Off by
+# default. It needs FRESH_WORLD=1 as well, since a world per test is something
+# the harness provides; asking without it is reported as a skip per test rather
+# than silently ignored.
+ISOLATE_ARG=""
+[ "${ISOLATE_MUTATORS:-0}" = "1" ] && ISOLATE_ARG="-testariaisolatemutators"
+# BEHAVIOUR=1 asks for the sweep's behaviour tests, which spawn every piece of
+# content and run its own update rather than reading it. Off by default: the
+# cost is a box per piece of content across every enabled mod.
+BEHAVIOUR_ARG=""
+[ "${BEHAVIOUR:-0}" = "1" ] && BEHAVIOUR_ARG="-testariabehaviour"
 # BLANK=1 replaces world generation with Testaria's blank substrate.
 BLANK_ARG=""
 [ "${BLANK:-0}" = "1" ] && BLANK_ARG="-testariablank"
@@ -232,6 +244,8 @@ nice -n 19 "${CAP[@]}" \
     -seed "$SEED" \
     $BLANK_ARG \
     $FRESH_ARG \
+    $ISOLATE_ARG \
+    $BEHAVIOUR_ARG \
     $SPEED_ARG \
     $RUN_SEED_ARG \
     $REQUIRE_MODS_ARG \

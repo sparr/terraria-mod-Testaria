@@ -1,3 +1,4 @@
+using System.Reflection;
 using Terraria.ModLoader;
 
 namespace Testaria;
@@ -57,6 +58,50 @@ public static class ContentSweep
 			Assert.Skip($"{qualified} no longer resolves, so there is nothing to check.");
 
 		return found;
+	}
+
+	/// <summary>
+	/// Whether a piece of content overrides one of the hooks named, by exact
+	/// signature.
+	/// <para/>
+	/// The signature is not optional, and the corpus is why. <c>GetMethod(name)</c>
+	/// with no parameter types throws <c>AmbiguousMatchException</c> as soon as a
+	/// type has an overload, and DragonLens has a <c>ModSystem</c> carrying its
+	/// own generic <c>NetSend&lt;T&gt;(int, int)</c> alongside the
+	/// <c>NetSend(BinaryWriter)</c> it inherits. Asking by name alone turned
+	/// three case sources into discovery errors, which is a failure of the sweep
+	/// rather than a finding about the mod.
+	/// <para/>
+	/// Either hook counts, not both. tModLoader already refuses a type that
+	/// overrides one of a required pair alone, so finding one is finding both.
+	/// </summary>
+	public static bool Overrides<T>(string qualified, params (string Name, Type[] Parameters)[] hooks)
+		where T : class, ILoadable, IModType
+	{
+		int split = qualified.IndexOf(Separator);
+
+		if (split <= 0 || !ModContent.TryFind(qualified[..split], qualified[(split + 1)..], out T found))
+			return false;
+
+		Type type = found.GetType();
+
+		foreach ((string name, Type[] parameters) in hooks) {
+			MethodInfo? hook;
+
+			try {
+				hook = type.GetMethod(name, parameters);
+			}
+			catch {
+				// A type whose hierarchy cannot be reflected over is not a
+				// subject, and is certainly not a finding about the hook.
+				continue;
+			}
+
+			if (hook is not null && hook.DeclaringType != typeof(T))
+				return true;
+		}
+
+		return false;
 	}
 
 	/// <summary>The mod a swept name belongs to, for a message that should say so.</summary>

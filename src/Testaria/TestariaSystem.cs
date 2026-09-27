@@ -468,16 +468,21 @@ public sealed class TestariaSystem : ModSystem
 
 		List<TestCase> tests = [.. TestDiscovery.Discover(types).Tests.Where(filter.Matches)];
 
+		// The catalogue is what a harness reads to decide which tests need a
+		// process of their own, so it has to agree with the run about the
+		// isolation switch rather than reporting only the attributes.
+		bool isolate = Program.LaunchParameters.ContainsKey(TestSession.IsolateMutatorsFlag);
+
 		try {
 			string path = Path.Combine(ResultsLocation.Directory(Main.SavePath), "tests.tsv");
 
 			Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-			File.WriteAllText(path, TestCatalog.ToTsv(tests));
+			File.WriteAllText(path, TestCatalog.ToTsv(tests, isolate));
 
-			return (path, TestCatalog.Summarize(tests));
+			return (path, TestCatalog.Summarize(tests, isolate));
 		}
 		catch (Exception ex) {
-			return (null, $"{TestCatalog.Summarize(tests)} (could not write the catalogue: {ex.GetType().Name}: {ex.Message})");
+			return (null, $"{TestCatalog.Summarize(tests, isolate)} (could not write the catalogue: {ex.GetType().Name}: {ex.Message})");
 		}
 	}
 
@@ -569,6 +574,16 @@ public sealed class TestariaSystem : ModSystem
 		// and answer the next run with the previous build's code.
 		ClientQuery.Clear();
 		ClientLink.Reset();
+
+		// Both sweep registries are filled by other mods' suites during their
+		// load. SweepExemptions has always said in its own documentation that
+		// it is cleared here and was not: the call was missing, so one run's
+		// declarations carried into the next, where the mod that made them may
+		// not even be loaded. SweepDeclarations matters more again, because it
+		// holds a reference to an array inside a mod's assembly and would keep
+		// that assembly alive across a reload.
+		SweepExemptions.Clear();
+		SweepDeclarations.Clear();
 	}
 
 	private void Report(TestSession finished)

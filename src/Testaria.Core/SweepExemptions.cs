@@ -11,6 +11,18 @@ public enum SweepCheck
 
 	/// <summary>That writing a value back twice changes nothing the second time.</summary>
 	Settling,
+
+	/// <summary>
+	/// That a piece of content can be safely cloned, which tModLoader computes
+	/// for every registered type and only warns about.
+	/// <para/>
+	/// The one check here whose exemptions are expected rather than unusual. A
+	/// framework mod deliberately sharing a registry between clones is doing
+	/// something correct that <c>IsCloneable</c> cannot distinguish from a
+	/// mistake, and the surveyed corpus contains exactly such a case, annotated
+	/// by its author as intended.
+	/// </summary>
+	Cloning,
 }
 
 /// <summary>

@@ -53,6 +53,31 @@ public sealed class TestSession
 	public const string FreshWorldFlag = "-testariafreshworld";
 
 	/// <summary>
+	/// Launch parameter asking that every test marked
+	/// <c>[MutatesGlobalState]</c> be given a world of its own.
+	/// <para/>
+	/// One switch for the whole run, because the cost is a world per test and
+	/// that is a decision about the run rather than about any one test. Needs
+	/// <see cref="FreshWorldFlag"/> as well: the runner can honour the request
+	/// only where the harness has promised a world per process.
+	/// </summary>
+	public const string IsolateMutatorsFlag = "-testariaisolatemutators";
+
+	/// <summary>
+	/// Launch parameter asking for the behaviour tests, which run a mod's content
+	/// rather than reading it.
+	/// <para/>
+	/// Off by default because the cost is a box per piece of content, across
+	/// every mod a run enables, where the rest of the sweep costs a reflection
+	/// call. A run that wants them asks.
+	/// </summary>
+	public const string BehaviourFlag = "-testariabehaviour";
+
+	/// <summary>Whether this run asked for the behaviour tests.</summary>
+	public static bool BehaviourRequested
+		=> Terraria.Program.LaunchParameters.ContainsKey(BehaviourFlag);
+
+	/// <summary>
 	/// Launch parameter shifting every test's seed at once, for rerunning a
 	/// suite against different rolls without editing it.
 	/// </summary>
@@ -159,6 +184,10 @@ public sealed class TestSession
 			// its own. Claiming otherwise would let a [FreshWorld] test run in
 			// a world shared with everything else and report a pass.
 			SupportsFreshWorld = Program.LaunchParameters.ContainsKey(FreshWorldFlag),
+			// Off unless asked for. These tests are written to restore what they
+			// change, so the shared world is the ordinary case; the switch is
+			// for a run that would rather pay a world per test than trust that.
+			IsolateMutatingTests = Program.LaunchParameters.ContainsKey(IsolateMutatorsFlag),
 			CreateContext = lease => {
 				// A question belongs to the test that asked it. The runner
 				// makes a context as each test begins and before its body
