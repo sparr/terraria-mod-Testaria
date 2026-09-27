@@ -112,6 +112,33 @@ public sealed class TestariaSystem : ModSystem
 	/// </summary>
 	public override void Load()
 	{
+		// A skip is not an incident, and the log is where modders look.
+		//
+		// Assert.Skip throws, and tModLoader's first-chance handler writes every
+		// throw to the log as a Silently Caught Exception, deduplicated by the
+		// text of the exception rather than by its type. A skip names its
+		// subject, so each one is its own entry: measured on a seven-mod sweep,
+		// 177 of the log's 206 entries were skips, in front of whatever was
+		// actually wrong.
+		//
+		// Logging.ignoreContents is matched against the stack trace the handler
+		// takes at throw time rather than against the exception, so naming the
+		// throwing method suppresses exactly our skips. Not the assembly,
+		// through IgnoreExceptionSource: that would also silence a failing
+		// assertion, which is an incident worth logging.
+		//
+		// This takes the same sweep from 177 skip entries to 3. The three are
+		// second events for the same exception, raised where it crosses back
+		// through reflection, with a stack that no longer names Assert.Skip;
+		// tModLoader's own identity check would have caught them had the first
+		// event been logged. What distinguishes those three from the other 242
+		// is not established.
+		//
+		// There is no removal API and no need for one. The list ignores a
+		// duplicate, so a reload adds nothing, and the pattern names a method
+		// by string rather than holding anything of this assembly alive.
+		Logging.IgnoreExceptionContents($"{typeof(Assert).FullName}.{nameof(Assert.Skip)}");
+
 		// The freeze gate is what pause and single stepping are built on, and
 		// it works wherever a world ticks, so it goes in before the
 		// server-only pacing work below.

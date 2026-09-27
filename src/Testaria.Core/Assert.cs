@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Reflection;
 
 namespace Testaria;
@@ -60,8 +61,19 @@ public static class Assert
 	/// <para/>
 	/// Reported as skipped, never as passed: a vacuous pass claims coverage
 	/// that never happened.
+	/// <para/>
+	/// <c>NoInlining</c> is here to keep this frame on the stack. A skip inside
+	/// the game is a throw, and tModLoader's first-chance handler logs every
+	/// throw by taking its own stack trace, so the only way to tell it that
+	/// skips are not incidents is to name a frame it will see;
+	/// <c>TestariaSystem.Load</c> names this one. A one-line throw helper is
+	/// exactly what the JIT would inline once its caller is hot, which would
+	/// defeat that. Insurance rather than a measured fix: the count of logged
+	/// skips was the same with and without it, so inlining was not what the
+	/// remaining handful came from.
 	/// </summary>
 	[DoesNotReturn]
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static void Skip(string reason) => throw new SkipTestException(reason);
 
 	/// <summary>Asserts that a condition holds.</summary>
