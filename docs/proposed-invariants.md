@@ -902,6 +902,7 @@ to calibrate, not a plan.
 | 8a to 8c, tier 2 family | `BehaviourSweep`, `BehaviourTests` | swept behind `BEHAVIOUR=1`, nothing found |
 | 9a, vanilla-sized arrays | its own tModLoader branch, when somebody writes it | not started, and not ours |
 | 9b, self-duplicating recipe | `RecipeShape` in the core, `RecipeSweep`, `RecipeTests` | swept behind `ECONOMY=1`, nothing found |
+| 9d, free-output recipe loop | `RecipeLoops` in the core, `RecipeSweep`, `RecipeTests` | swept behind `ECONOMY=1`, nothing found |
 | 9c, town NPC head texture | an upstream analyzer, when somebody writes it | not started, and not ours |
 
 Ordered by item rather than by the order they were written, because this is now
@@ -1022,6 +1023,69 @@ add no recipes at all, which is what a corpus of tools and frameworks looks like
 they hand out items through their own UI rather than through crafting. So "nothing
 found" here is one content mod's worth of evidence, and should be read the way the
 content invariants are read rather than as a verdict on the ecosystem.
+
+### 9d, the same defect spread over several recipes
+
+Not from the survey: 9b asks about one recipe, and the form that survives review
+is the one no single recipe is guilty of. Wood into sticks into wood, where the
+round trip comes back with more wood than it started with. Each recipe is
+defensible alone.
+
+**The model.** Every recipe with exactly one ingredient slot is an edge from each
+type that can satisfy it to its result, carrying the two stacks. A loop is a cycle
+in that graph, and what it yields is the product of the edges' ratios, computed
+exactly in `BigInteger` rather than in logs, because the case that must not be
+reported is the one where the product is exactly 1. Reversible conversions are
+everywhere: coins, and ExampleMod's own blocks and walls. A loop is reported only
+when the product is strictly greater than 1.
+
+Recipes with two ingredients form no edge. The second is consumed, so the loop
+costs something unless that ingredient is itself free, and deciding *that* is
+reachability over multisets rather than a cycle in a graph: a solver with a
+timeout instead of a search with an answer. The restriction is also what makes the
+arithmetic exact, since one slot in and one stack out is a ratio.
+
+**The two kinds of free output, which is the distinction a report has to make.**
+A gainful loop makes every item it passes through unlimited, and those items are
+its own ingredients: more of what it consumed. Everything else that becomes free
+is a different item, reached by closure: any recipe all of whose slots can be
+satisfied from something already unlimited produces another unlimited item, and so
+on until nothing new appears. `RecipeLoop` carries the two as `Items` and
+`NewItems`, and the message names them separately, because "this loop duplicates
+your ore" and "this loop makes your endgame sword free" are different sentences to
+the person fixing it.
+
+**Vanilla's recipes are in the graph, and only a mod's are cases.** A mod can
+close a loop through vanilla with one recipe of its own, and that loop is the
+mod's to answer for. Every recipe in a loop reports the whole loop rather than one
+of them being named the culprit: each is defensible alone and any one of them can
+be the edit that breaks the cycle.
+
+**Two caps, and neither is silent.** A loop may be at most 8 recipes long, and the
+search stops after 500,000 steps, since cycle enumeration is exponential in the
+worst case over somebody else's data. `The_free_output_loop_search_finished` is one
+case for the whole run that fails if the budget ran out, because a bounded search
+that gave up looks exactly like a clean one.
+
+**Measured on the seven-mod corpus: 138 cases, nothing found.** The search runs
+once, on the first case that asks, over every loaded recipe including vanilla's,
+and takes 0.64 seconds; every other case reads the cached answer in under a
+millisecond.
+
+**Nothing found is not the same as working, so it was checked from the other
+side.** Relaxing the threshold from "returns more than it took" to "returns at
+least what it took" made the same run report **10 loops in ExampleMod**, all of
+them block and wall and platform conversions of the form 1 block to 4 walls and 4
+walls back to 1 block. That is the graph built from real recipes, cycles found
+through them, and the strict comparison being the only thing keeping ten
+legitimate conversions out of the report. The threshold went back afterwards.
+
+**What it does not catch.** A loop that needs a second ingredient, per the model
+above. A loop that exists only through vanilla's hardcoded substitutions, since
+`useWood`, `useSand`, `useIronBar`, `usePressurePlate` and `useFragment` are
+private predicates on `Recipe` rather than recipe groups, and only groups are
+followed. And a recipe with no ingredients at all, which `Register` permits and
+which is free output without any loop: a sibling check rather than this one.
 
 **What it does not catch**, recorded so nobody assumes otherwise: a two-ingredient
 loop whose second ingredient is effectively free, a recipe whose `Condition`

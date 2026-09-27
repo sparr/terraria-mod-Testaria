@@ -40,22 +40,172 @@ public static class RecipeSweep
 	/// vanilla item is answerable for it.
 	/// </summary>
 	public static IEnumerable<string> EveryModRecipe()
+		=> Named()
+			.Where(entry => entry.recipe.Mod is not null
+				&& ContentSweep.IsSubjectMod(entry.recipe.Mod.Name))
+			.Select(entry => entry.name);
+
+	/// <summary>
+	/// The name a vanilla recipe is reported under. Not a mod, and a loop through
+	/// one still has to be printable.
+	/// </summary>
+	public const string Vanilla = "Terraria";
+
+	/// <summary>
+	/// Every loaded recipe with the name it is reported under, vanilla's included,
+	/// in the order the game holds them.
+	/// <para/>
+	/// One numbering for everything, so that a name means the same thing to the
+	/// case list and to the loop search. Numbering only the subjects would give
+	/// the same recipe two names depending on who was asking.
+	/// </summary>
+	private static IEnumerable<(Recipe recipe, string name)> Named()
 	{
 		Dictionary<string, int> seen = [];
 
 		for (int i = 0; i < Recipe.numRecipes; i++) {
 			Recipe? recipe = Main.recipe[i];
 
-			if (recipe?.Mod is null || !ContentSweep.IsSubjectMod(recipe.Mod.Name))
+			if (recipe is null)
 				continue;
 
-			string result = $"{recipe.Mod.Name}{ContentSweep.Separator}{ItemName(recipe.createItem.type)}";
+			string result = $"{recipe.Mod?.Name ?? Vanilla}{ContentSweep.Separator}{ItemName(recipe.createItem.type)}";
 			seen.TryGetValue(result, out int n);
 			seen[result] = n + 1;
 
-			yield return $"{result}{Ordinal}{n}";
+			yield return (recipe, $"{result}{Ordinal}{n}");
 		}
 	}
+
+	/// <summary>
+	/// Asserts that this recipe is not part of a loop of recipes that hands back
+	/// more than it was given.
+	/// <para/>
+	/// The loop is the subject rather than any one recipe in it, so every recipe
+	/// in a loop reports the same loop. That is deliberate: each of them is
+	/// defensible alone and any of them can be the one that breaks the cycle, so
+	/// naming one of them the culprit would be the check inventing a judgement.
+	/// <para/>
+	/// <b>The graph includes vanilla's recipes</b>, because a mod can close a loop
+	/// through them with a single recipe of its own, and that loop is the mod's to
+	/// answer for. Only recipes a mod added are cases, so a loop made entirely of
+	/// vanilla recipes is found and reported against nobody; there is none in
+	/// 1.4.5.8, and if there were it would not be a mod author's problem.
+	/// </summary>
+	public static void IsNotPartOfAFreeOutputLoop(string qualified)
+	{
+		RecipeLoop[] loops = [.. Analysis().Loops.Where(loop => loop.Recipes.Contains(qualified))];
+
+		Assert.True(loops.Length == 0, loops.Length == 0 ? null : Describe(qualified, loops));
+	}
+
+	/// <summary>
+	/// Asserts that the loop search finished rather than running out of its own
+	/// budget.
+	/// <para/>
+	/// One case for the whole run, because the answer is about the search and not
+	/// about any recipe. Without it a bounded search that gave up looks exactly
+	/// like a clean one, which is the failure mode a report cannot afford.
+	/// </summary>
+	public static void LoopSearchFinished()
+	{
+		RecipeLoopSearch search = Analysis();
+
+		Assert.True(search.Complete,
+			$"the search for free-output loops ran out of budget after "
+			+ $"{RecipeLoops.DefaultBudget} steps, so it found {search.Loops.Count} "
+			+ "and cannot say there are no others");
+	}
+
+	private static string Describe(string qualified, IReadOnlyList<RecipeLoop> loops)
+	{
+		var said = new System.Text.StringBuilder();
+
+		said.Append(qualified).Append(" is part of ").Append(loops.Count == 1
+			? "a loop that hands back more than it takes:"
+			: $"{loops.Count} loops that hand back more than they take:");
+
+		foreach (RecipeLoop loop in loops) {
+			said.AppendLine().Append("  ")
+				.Append(string.Join(" then ", loop.Recipes))
+				.Append(", which returns ").Append(loop.GainNumerator)
+				.Append(" for every ").Append(loop.GainDenominator).Append(" consumed")
+				.AppendLine()
+				.Append("    more of its own ingredients: ")
+				.Append(string.Join(", ", loop.Items.Select(ItemName)));
+
+			said.AppendLine().Append("    ").Append(loop.NewItems.Count == 0
+				? "and nothing else becomes free through it"
+				: "and these become free through it: "
+					+ string.Join(", ", loop.NewItems.Select(ItemName)));
+		}
+
+		return said.ToString();
+	}
+
+	/// <summary>
+	/// The loop search, run once and kept until the recipe list changes.
+	/// <para/>
+	/// Recipes are fixed after load, so this is computed on the first case that
+	/// asks and reused by the rest: the alternative is the same graph search once
+	/// per recipe. Keyed on the recipe count so a reload cannot be answered with
+	/// the previous world's graph, and <see cref="Forget"/> drops it outright.
+	/// </summary>
+	public static RecipeLoopSearch Analysis()
+	{
+		if (analysis is not null && analysedAt == Recipe.numRecipes)
+			return analysis;
+
+		analysedAt = Recipe.numRecipes;
+
+		return analysis = RecipeLoops.Find([.. Named().Select(entry => Step(entry.recipe, entry.name))]);
+	}
+
+	/// <summary>Drops the cached search, for a framework unload.</summary>
+	public static void Forget()
+	{
+		analysis = null;
+		analysedAt = -1;
+	}
+
+	/// <summary>
+	/// One recipe as the search needs it: its result, and a slot per ingredient
+	/// carrying every type that can satisfy it.
+	/// </summary>
+	private static RecipeStep Step(Recipe recipe, string name)
+		=> new(
+			name,
+			recipe.createItem.type,
+			recipe.createItem.stack,
+			[.. recipe.requiredItem.Select(item => new RecipeSlot(item.stack, Accepts(recipe, item.type)))]);
+
+	/// <summary>
+	/// Every item type that satisfies an ingredient of this type: itself, plus the
+	/// contents of any accepted group that holds it.
+	/// <para/>
+	/// That is exactly <c>Recipe.AcceptedByItemGroups</c>, which asks whether some
+	/// accepted group holds both what the player has and what the recipe wants.
+	/// Vanilla's hardcoded substitutions are <b>not</b> followed: <c>useWood</c>,
+	/// <c>useSand</c>, <c>useIronBar</c>, <c>usePressurePlate</c> and
+	/// <c>useFragment</c> are private predicates on <c>Recipe</c> rather than
+	/// groups, so a loop that exists only through one of them is missed here.
+	/// </summary>
+	private static IReadOnlySet<int> Accepts(Recipe recipe, int type)
+	{
+		HashSet<int> accepts = [type];
+
+		foreach (int group in recipe.acceptedGroups) {
+			if (RecipeGroup.recipeGroups.TryGetValue(group, out RecipeGroup? valid)
+				&& valid.ValidItems.Contains(type)) {
+				accepts.UnionWith(valid.ValidItems);
+			}
+		}
+
+		return accepts;
+	}
+
+	private static RecipeLoopSearch? analysis;
+	private static int analysedAt = -1;
 
 	/// <summary>
 	/// Asserts that a recipe does not produce its own ingredient in at least the

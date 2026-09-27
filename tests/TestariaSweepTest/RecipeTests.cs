@@ -40,4 +40,33 @@ public class RecipeTests
 
 		RecipeSweep.DoesNotDuplicateItsIngredient(qualified);
 	}
+
+	/// <summary>
+	/// The same defect spread over several recipes, which is the form it survives
+	/// review in: wood into sticks into wood, where the round trip comes back with
+	/// more wood than it started with. The message distinguishes what the loop
+	/// hands back more of, which is one of its own ingredients, from what becomes
+	/// free through it, which is a different item entirely.
+	/// </summary>
+	[LoadedTest]
+	[CaseSource(nameof(Recipes))]
+	public void A_recipe_is_not_part_of_a_free_output_loop(string qualified)
+	{
+		OnlyWhenAsked();
+
+		RecipeSweep.IsNotPartOfAFreeOutputLoop(qualified);
+	}
+
+	/// <summary>
+	/// One case for the run rather than one per recipe, because it is about the
+	/// search and not about any recipe: a bounded search that gave up looks
+	/// exactly like a clean one unless somebody asks.
+	/// </summary>
+	[LoadedTest]
+	public void The_free_output_loop_search_finished()
+	{
+		OnlyWhenAsked();
+
+		RecipeSweep.LoopSearchFinished();
+	}
 }
