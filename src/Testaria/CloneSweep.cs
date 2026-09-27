@@ -23,15 +23,22 @@ namespace Testaria;
 /// <c>Terraria.ModLoader.CloneByReference</c>, which is tModLoader's own and
 /// says "sharing this is fine".
 /// <para/>
-/// Not every false is a defect, and the mod is sometimes the one saying so.
-/// A framework sharing one registry between clones is doing something correct
-/// that <c>IsCloneable</c> cannot tell from a mistake, and a mod may already
-/// declare which it is: Daybreak marks such a type <c>[ExpectCloneable(false)]</c>
-/// and enforces that at load. <see cref="DeclaredCloneability"/> reads any
-/// declaration of that shape, and this check defers to it instead of asking for
-/// the same fact a second time as a <see cref="SweepExemptions"/> entry. A
-/// declaration the other way round, that a type should be cloneable, withholds
-/// nothing and is reported alongside the failure it contradicts.
+/// Not every false is a defect, and the mod is sometimes the one saying so. A
+/// mod sharing one object between clones on purpose is doing something correct
+/// that <c>IsCloneable</c> cannot tell from a mistake, and mods do say which it
+/// is: by overriding <c>IsCloneable</c> with a constant, which is the common
+/// way and tModLoader's own vocabulary, or with an <c>ExpectCloneable</c>
+/// attribute. <see cref="DeclaredCloneability"/> reads both, and this check
+/// defers to a declaration of intended sharing instead of asking for the same
+/// fact a second time as a <see cref="SweepExemptions"/> entry.
+/// <para/>
+/// A declaration the other way round cuts differently, because an overridden
+/// <c>IsCloneable</c> stands in place of the loader's computation rather than
+/// beside it. Asserting <c>true</c> leaves nothing for this check to read, so
+/// unless the mod also declares a <c>Clone</c> of its own, the case is reported
+/// as measuring nothing rather than as passing. An attribute claiming the same
+/// thing withholds nothing, since the computation still ran, and is quoted in
+/// the failure it contradicts.
 /// <para/>
 /// Read rather than recomputed, deliberately. A source-level guess at which
 /// fields need deep copying was tried while surveying the corpus and was wrong:
@@ -109,18 +116,34 @@ public static class CloneSweep
 			return;
 		}
 
-		if (cloneable)
-			return;
-
-		// An author who has already declared this, in their own vocabulary, has
-		// answered the check. See DeclaredCloneability for why that is read
-		// rather than asked for again.
+		// An author who has already answered this, in whichever vocabulary, has
+		// answered the check. See DeclaredCloneability for both of them and for
+		// why they are read rather than asked for again.
 		CloneabilityDeclaration declared = DeclaredCloneability.Of(type);
 
+		if (cloneable) {
+			// An overridden IsCloneable is not a measurement. The mod replaced
+			// the loader's computation with a constant, so true here is an
+			// assertion and nothing readable afterwards says whether it holds.
+			// A Clone override in the mod's own code is the one thing that
+			// corroborates it, and is what the loader looks for first.
+			if (declared.ReplacesComputation
+				&& declared.Claim == CloneabilityClaim.Cloneable
+				&& !DeclaredCloneability.OverridesCloneItself(type)) {
+				Assert.Skip($"{qualified} asserts it is cloneable by overriding "
+					+ $"{declared.Source}, which replaces what tModLoader would have "
+					+ "computed, and declares no Clone of its own to back the assertion. "
+					+ "Nothing here can tell a true assertion from a mistaken one, so "
+					+ "this passed without measuring anything.");
+			}
+
+			return;
+		}
+
 		if (declared.Claim == CloneabilityClaim.NotCloneable) {
-			Assert.Skip($"{qualified} declares itself not cloneable with "
-				+ $"[{declared.Source}], so the sharing is intended and its author "
-				+ "has said so where the claim can be checked against the code.");
+			Assert.Skip($"{qualified} declares itself not cloneable, in "
+				+ $"{declared.Source}, so the sharing is intended and its author has "
+				+ "said so where the claim can be checked against the code.");
 		}
 
 		(string own, string foreign) = Blame(type);
@@ -146,7 +169,7 @@ public static class CloneSweep
 		// loader has just contradicted, so it belongs in the message as a
 		// second source rather than as an exemption.
 		string against = declared.Claim == CloneabilityClaim.Cloneable
-			? $"\nIts own [{declared.Source}] says it should be cloneable, so this "
+			? $"\nIts own {declared.Source} says it should be cloneable, so this "
 				+ "breaks a contract the mod set for itself."
 			: "\nGive it a Clone override that copies the fields, or mark the ones that "
 				+ "may be shared with [CloneByReference]. If the sharing is intended, the "
