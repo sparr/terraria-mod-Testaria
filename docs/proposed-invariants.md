@@ -858,9 +858,13 @@ all:
 
 - `Assert.Skip` writes 173 `Silently Caught Exception` entries into the game
   log in a single sweep run. The log is where modders look; the sweep should
-  not flood it.
+  not flood it. **Done**, and measured again on the way: see "The log flood,
+  and the three that survived it" below.
 - `TypeSweep`'s notes should record that a setter can reach global state, not
-  only that live content must not be written.
+  only that live content must not be written. **Done**: the class summary now
+  says a constructed subject is not a sandbox, and `IsLoaderBound` says that
+  excluding the loader's own instances protects those instances and nothing
+  else.
 
 # What is implemented
 
@@ -870,19 +874,80 @@ to calibrate, not a plan.
 
 | Item | Where | State |
 |---|---|---|
-| 3d, ID set sizing | `IdSetSweep.VanillaSizedSets`, `IdSetTests` | swept |
-| 3e to 3g, redirection flatness | `IdSetSweep.RedirectionIsFlat` | written, no caller, untested |
-| 6a, keys are filled in | `LocalizationSweep`, `LocalizationTests` | swept |
-| 6b, unreachable translations | a tModLoader branch, not here | written as an analyzer, handed over |
-| 4a, cloneable as declared | `CloneSweep`, `CloneTests` | swept, 2 findings |
-| 2a to 2d, persistence ladder | `PersistenceSweep`, `PersistenceTests` | swept |
-| 2e, lengthened-list mutation | none | not written |
-| 1a to 1c, net symmetry ladder | `NetSweep`, `NetSymmetryTests` | swept |
-| 5a to 5d, config ladder | `ConfigSweep`, `ConfigTests` | swept, 1 finding |
-| 3a, item ID references | `ReferenceSweep`, `ReferenceTests` | swept |
+| 1a to 1c, net symmetry ladder | `NetSweep`, `NetSymmetryTests` | swept, nothing found |
+| 2a to 2d, persistence ladder | `PersistenceSweep`, `PersistenceTests` | swept, 2 findings |
+| 2e, lengthened-list mutation | `PersistenceSweep`, `PersistenceTests` | swept, 1 finding |
+| 3a, item ID references | `ReferenceSweep`, `ReferenceTests` | swept, nothing found |
 | 3b, NPC banner agreement | `ReferenceSweep.NpcBannerAgrees` | swept, public half only |
+| 3d, ID set sizing | `IdSetSweep.IsSizedForLoadedContent` | for a mod's own suite; the sweep was withdrawn |
+| 3e to 3g, redirection flatness | `IdSetSweep.RedirectionIsFlat`, `SweepDeclarations` | swept where declared, tested |
+| 4a, cloneable as declared | `CloneSweep`, `CloneTests` | swept, 5 findings |
+| 5a to 5d, config ladder | `ConfigSweep`, `ConfigTests` | swept, 1 declared intended |
+| 6a, keys are filled in | `LocalizationSweep`, `LocalizationTests` | swept, nothing found |
+| 6b, unreachable translations | a tModLoader branch, not here | written as an analyzer, handed over |
 | 7a, 7b, placeability | withdrawn | invalid: framed tiles place by the plain path |
-| tier 2 family | none | not written |
+| 8a to 8c, tier 2 family | `BehaviourSweep`, `BehaviourTests` | swept behind `BEHAVIOUR=1`, nothing found |
+| 9a, vanilla-sized arrays | its own tModLoader branch, when somebody writes it | not started, and not ours |
+
+Ordered by item rather than by the order they were written, because this is now
+a state table rather than a record of an afternoon. The findings column counts
+the twelve-mod run at the end of this document, not the ExampleMod-only run
+below; "nothing found" means the check ran against that corpus and reported
+nothing, which is a different claim from "no defect exists".
+
+### 9a is not ours to ship
+
+The precise form of 9a needs an array's *size expression* rather than its
+length, which makes it a syntactic question and therefore an analyzer's. This
+repository has an analyzer project, and it is not the place for it.
+`Testaria.Analyzers` exists to enforce the tier 0 boundary, `TSTA001` and
+`TSTA002`, which is a claim about this framework's own tiers and means nothing
+to anybody else. A rule about how a mod sizes its arrays is a general mod
+authoring rule with no connection to tiers, and shipping it here would mean a
+modder installing a test framework to be told about their arrays.
+
+So it goes where 6b went: its own branch on tModLoader, against
+`tModCodeAssist`, which mods already build against. Not started. What it has to
+decide is recorded in `IdSetSweep`'s own notes and in section 9a above: a
+vanilla-only lookup is legitimate, so the rule is about `new T[XID.Count]`
+sized from a vanilla count and then indexed by something that can exceed it,
+which is the part only the syntax knows.
+
+## The log flood, and the three that survived it
+
+`TestariaSystem.Load` now calls
+`Logging.IgnoreExceptionContents("Testaria.Assert.Skip")`, which is the hook
+tModLoader offers for exactly this: `ignoreContents` is matched against the
+stack trace the first-chance handler takes at throw time, so naming the throwing
+method suppresses skips and leaves everything else alone. Not
+`IgnoreExceptionSource`, which would silence a failing assertion too.
+
+Measured on a seven-mod sweep, `Testaria TestariaSweepTest ExampleMod
+CheatSheet DragonLens InnoVault Daybreak`, 2135 tests with 245 skips:
+
+| | `Silently Caught Exception` entries | of those, skips |
+|---|---|---|
+| Before | 206 | 177 |
+| After | 32 | 3 |
+
+The 29 that are not skips are the same in both columns: the self-test's
+deliberate throws, the eight findings, and one read of `/proc`.
+
+**Three skips still reach the log, and the reason is worth keeping.** Their
+stacks begin inside `RuntimeMethodHandle.InvokeMethod` with no
+`Assert.Skip` frame, so they are second events for the same exception, raised
+where it crosses back out through the reflection call that invoked the test.
+tModLoader's handler would have deduplicated them against `previousException`,
+but it only records that after deciding to log, and our pattern returns first.
+What distinguishes those three from the other 242 is not established. The way to
+remove them is to stop crossing a reflection boundary at all, by invoking test
+methods through a delegate made once rather than `MethodInfo.Invoke`, which is a
+change to `TestRunner` worth making for its own reasons rather than for three log
+lines.
+
+`Assert.Skip` also carries `[MethodImpl(MethodImplOptions.NoInlining)]` now, so
+the frame the pattern names cannot be optimised away once a caller is hot. That
+is insurance rather than a fix: the count was 3 with and without it.
 
 ## The ladder is one vocabulary, and it paid for itself immediately
 
@@ -934,19 +999,31 @@ fields belong to tModLoader is reported as a skip naming them, not as a failure.
 
 Worth knowing about the original warning, too, because it changes what this
 check is for. `Cloning.WarnNotCloneable` is called from inside `Clone()`, not at
-load, for everything except `ModItem`. So tModLoader does not warn about a
-non-cloneable `ModNPC` until something actually clones one in play, which is why
-the ten-mod corpus log showed a single warning while this check finds more. The
-check is not merely surfacing an existing warning: for most kinds it is earlier
-than the warning.
+load, for everything except `ModItem` and `GlobalItem`, which warn from
+`ValidateType`. So tModLoader does not warn about a non-cloneable `ModNPC` until
+something actually clones one, which is why the ten-mod corpus log showed a
+single warning while this check finds more. The check is not merely surfacing an
+existing warning: for most kinds it is earlier than the warning.
+
+*(Corrected later, by reading the callers rather than the warning.* **Nothing
+clones an NPC or a projectile.** *`Item.Clone()` is the only place in the 1.4.5
+tree that propagates to a mod's own instances, calling `ModItem.Clone` and
+`GlobalItem.Clone` (`Item.cs.patch`); per-entity instances everywhere else come
+from `NewInstance`, which builds a fresh object with `Activator.CreateInstance`
+unless the type sets `CloneNewInstances`. So for every kind but the two item
+ones, this check reports a conditional: what would be shared if something cloned
+the subject. That is still tModLoader's own contract, and Daybreak enforces it at
+load with an attribute, but it is not a live defect. See
+`findings-in-other-mods.md`, which is where the corrected wording lives.)*
 
 ### The two that survive
 
 Both name a field the mod declares, and one of them is a real defect in the
 reference mod:
 
-- `ExampleJavelinProjectile.stickingJavelins (Point[])` — every javelin shares
-  one array.
+- `ExampleJavelinProjectile.stickingJavelins (Point[])` — one array per clone of
+  a javelin, which today is never made. *(Said "every javelin shares one array"
+  until the clone callers were read.)*
 - `ExampleTownPet.NameList0` through `NameList6` (`List<string>`) — name tables
   that almost certainly want `[CloneByReference]`.
 
@@ -957,6 +1034,12 @@ is what the exemption mechanism is for.
 ## Known gaps
 
 Recorded plainly rather than left to be discovered.
+
+- **`CloneSweep` does not say which findings are conditional.** Only `ModItem`
+  and `GlobalItem` are ever cloned by the game, so for every other kind the
+  finding is about a clone nobody currently makes. The condition is still
+  tModLoader's own, and worth reporting, but the message should distinguish the
+  two rather than leaving the reader to work out which they have.
 
 - **`IdSetSweep.RedirectionIsFlat` has no caller and no test.** *(Resolved: it is
   now exercised by a test and reachable through `SweepDeclarations`. See
@@ -1248,7 +1331,7 @@ records.
 
 ## Findings on their end
 
-### A player file that will not load
+### A player file that will not load, one release from now
 
 **`DragonLens/MOTDPlayer`** fails two rungs of the persistence ladder:
 
@@ -1263,11 +1346,18 @@ wrote, for a player whose version field has not been set. `PlayerIO.LoadModData`
 turns that throw into a `CustomModDataException`, and **the player file stops
 opening.**
 
-DragonLens is installed as a `.tmod` with no source in the corpus, so the exact
-line is unread and the description above is inferred from the exception and the
-two rungs that fail. The severity does not depend on the inference.
+*(Both the inference and the severity were corrected afterwards by reading the
+source, which is on GitHub even though the corpus carries only the `.tmod`.
+`LoadData` is `Version.Parse(tag.GetString("seenMotd") ?? "0.0.0")`, and the
+fallback is dead: `GetString` returns `""` rather than null for a missing key, so
+`Version.Parse` is handed the empty string. The severity is lower than the
+sentence above claims, and not by much: `PlayerIO.SaveModData` skips a `ModPlayer`
+that wrote no keys, so no file carries the condition today, and the first release
+whose `SaveData` writes any second key unconditionally gives it to every player
+who has not seen the message. Written up properly in
+`findings-in-other-mods.md`.)*
 
-### Five types whose clones share state
+### Five types whose clones would share state
 
 | Subject | Field the mod declares |
 |---|---|
