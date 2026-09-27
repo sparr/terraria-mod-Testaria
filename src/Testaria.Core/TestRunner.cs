@@ -31,6 +31,13 @@ public sealed class TestRunner
 	private readonly List<TestCase> queue;
 	private readonly List<TestResult> results = [];
 	private readonly TestRunnerOptions options;
+
+	// One invoker per method, built on first use. Held by the runner rather
+	// than statically: a compiled invoker closes over a MethodInfo belonging to
+	// a test mod's assembly, and a static cache would keep that assembly alive
+	// across a reload. A null value records a signature that could not be
+	// bound, so it is tried once rather than on every case.
+	private readonly Dictionary<MethodInfo, Func<object?, object?[], object?>?> invokers = [];
 	private int next;
 
 	private TestCase? current;
@@ -253,7 +260,7 @@ public sealed class TestRunner
 
 		try {
 			instance = test.Method.IsStatic ? null : Instantiate(test.Method.DeclaringType!);
-			body = test.Method.Invoke(instance, BuildArguments(test));
+			body = Call(test, instance);
 		}
 		catch (Exception ex) {
 			Complete(Classify(Unwrap(ex)), Describe(Unwrap(ex)), Unwrap(ex).StackTrace);
@@ -323,6 +330,25 @@ public sealed class TestRunner
 			$"{stats.Retained} of {stats.SlotsCarved} slots are retained from earlier failures and are never reused, " +
 			"so that the state a failing test left behind survives for you to go and look at. " +
 			"Inspect them, then rerun. Set KeepFailedBoxes to false to give that ground up instead.";
+	}
+
+	/// <summary>
+	/// Calls the test's method, through <see cref="TestInvoker"/> where the
+	/// signature allows and reflection where it does not.
+	/// <para/>
+	/// The difference is what reaches the game's log rather than what reaches
+	/// the caller: <see cref="TestInvoker"/> explains it.
+	/// </summary>
+	private object? Call(TestCase test, object? instance)
+	{
+		object?[] arguments = BuildArguments(test);
+
+		if (!invokers.TryGetValue(test.Method, out Func<object?, object?[], object?>? invoker))
+			invokers[test.Method] = invoker = TestInvoker.For(test.Method);
+
+		return invoker is not null
+			? invoker(instance, arguments)
+			: test.Method.Invoke(instance, arguments);
 	}
 
 	private object? Instantiate(Type type)

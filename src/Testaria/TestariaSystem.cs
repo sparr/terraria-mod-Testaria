@@ -127,12 +127,12 @@ public sealed class TestariaSystem : ModSystem
 		// through IgnoreExceptionSource: that would also silence a failing
 		// assertion, which is an incident worth logging.
 		//
-		// This takes the same sweep from 177 skip entries to 3. The three are
-		// second events for the same exception, raised where it crosses back
-		// through reflection, with a stack that no longer names Assert.Skip;
-		// tModLoader's own identity check would have caught them had the first
-		// event been logged. What distinguishes those three from the other 242
-		// is not established.
+		// This takes the same sweep from 177 skip entries to 3, and the last
+		// three needed the other half of the fix: they were second events for
+		// the same exception, raised where reflection handed it back, with a
+		// stack that no longer named Assert.Skip. TestInvoker removed the
+		// reflection, and with it those three. The sweep now logs none, with 245
+		// skips in it.
 		//
 		// There is no removal API and no need for one. The list ignores a
 		// duplicate, so a reload adds nothing, and the pattern names a method

@@ -69,8 +69,9 @@ public static class Assert
 	/// <c>TestariaSystem.Load</c> names this one. A one-line throw helper is
 	/// exactly what the JIT would inline once its caller is hot, which would
 	/// defeat that. Insurance rather than a measured fix: the count of logged
-	/// skips was the same with and without it, so inlining was not what the
-	/// remaining handful came from.
+	/// skips was the same with and without it, because what the pattern was
+	/// missing at the time was a second event raised by reflection rather than
+	/// an inlined frame. See <see cref="TestInvoker"/> for that half.
 	/// </summary>
 	[DoesNotReturn]
 	[MethodImpl(MethodImplOptions.NoInlining)]
