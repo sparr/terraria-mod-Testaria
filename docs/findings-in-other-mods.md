@@ -4,12 +4,33 @@ Eight failures the sweeping checks reported against mods this repository did
 not write, from the twelve-mod run recorded at the end of
 `proposed-invariants.md`, on tModLoader `1.4.5.8+9999.0|2026.07|1.4.5|dev`.
 
-**Nothing here has been sent anywhere.** No issue, no pull request, no
-message. This is the working document behind those, and the reason it exists
+This is the working document behind the reports, and the reason it exists
 separately is that a report to somebody else's project has to survive their
 reading of it: every claim below was re-derived from source after the run, and
 three of the eight turned out to be weaker than the run's own description of
 them.
+
+## Where each one stands
+
+| # | Subject | State |
+|---|---|---|
+| 1 | `CheatSheet/CheatSheetPlayer` | Reported upstream. Identifier not recorded here yet. |
+| 2 | `DragonLens/MOTDPlayer` | Reported upstream. Identifier not recorded here yet. |
+| 3 | `TestingEfficiency/DamageStatsRecorder` | Reported upstream. Still failing the sweep. |
+| 4 | `TestingEfficiency/ProjectileSourceManager` | Reported upstream. Still failing the sweep. |
+| 5 | `ExampleMod/ExampleJavelinProjectile` | Fixed, `ead01a5b5e` on tModLoader's `examplemod-tests`. |
+| 6 | `ExampleMod/ExampleTownPet` | Fixed, `210d13831b` on the same branch. |
+| 7 | `Daybreak/ItemDataProviderImpl` | Declared intended, `2dce2ef` in `DaybreakTests`. |
+
+Nothing is pushed: the two ExampleMod fixes and the Daybreak declaration are
+local commits on branches in those checkouts. The three reports were sent by
+hand, and this document does not carry their issue numbers or links; they
+belong in the table above once somebody pastes them in.
+
+A cloning sweep over `Testaria TestariaSweepTest ExampleMod CheatSheet
+DragonLens InnoVault Daybreak DaybreakTests TestingEfficiency` now reports 278
+cases, 2 failed, 16 skipped. The two failures are findings 3 and 4, which are
+the mod author's to act on.
 
 ## What changed under checking, before anything else
 
@@ -68,11 +89,17 @@ was larger holds more entries than the array a later session allocates.
 (`PlayerIO.cs:267`), which is a player file that will not open.
 
 **How reachable it is, stated honestly.** Nothing in Cheat Sheet assigns
-`MaxExtraAccessories`; it is 6 in every build we can see. The field is public and
-static, so another mod can raise it, and Cheat Sheet itself can lower it in any
-release. Both produce the failure for a file saved beforehand. The run produced
-the condition synthetically rather than finding a file in the wild, and the
-report should say so.
+`MaxExtraAccessories`; it is 6 in every build we can see. Cheat Sheet itself can
+lower it in any release, which breaks every file saved beforehand. Another mod
+can raise it, but not by referencing it: `CheatSheetPlayer` is `internal`
+(`CheatSheetPlayer.cs:9`), there is no `Mod.Call` message for it
+(`CheatSheet.cs:384-403`), and the only `InternalsVisibleTo` is for
+`CheatSheetTests` (`TestVisibility.cs:11`). The route is reflection, which is
+ordinary enough in this ecosystem where no cross-mod API exists. The sequence
+that kills a file is install-then-remove: an add-on raises the number, the
+player saves ten entries, the add-on is disabled, and the next load allocates
+six. The run produced the condition synthetically rather than finding a file in
+the wild, and the report should say so.
 
 **Suggested fix.** Copy what fits rather than asserting that it does:
 
@@ -128,6 +155,12 @@ produces an entry that `LoadData` throws on, and
 `PlayerIO.LoadModData` turns that into a `CustomModDataException` and an
 unopenable player file.
 
+It has to be an unconditional key, and a second conditional one changes
+nothing. `tag["seenMotd"] = seenMotd?.ToString()` is not a trigger either, since
+`TagCompound.Set` removes the key when the value is null
+(`TagCompound.cs:74-79`), leaving the entry empty as before. Only
+`MOTDPlayer`'s own keys matter: entries are per `ModPlayer`.
+
 **Suggested fix.** `Version.TryParse`, or read the key defensively:
 
 ```csharp
@@ -155,11 +188,24 @@ ever cloned, by a future tModLoader or by another mod calling `Clone`, the copie
 share the array and the source, and for a mod whose purpose is measuring damage
 per NPC that would be a silent wrong number rather than a crash.
 
+Why `sourceData` is exempt and `source` is not, since a report will be asked:
+`DeepCloning.NeedsFieldClone` recurses into a struct and asks the same question
+of its fields (`Testing/Cloning/StructTypeInfo.cs:12`). `DamageSourceData` holds
+two `int`s and two enums, so a memberwise copy gives each instance its own, and
+the struct is skipped. A reference field is copied as a pointer, so both
+instances name one object. "It is a struct" alone would not be the reason: a
+struct holding a `List<T>` is reported like any other field.
+
 **Suggested fix**, whichever is true of the field: a `Clone` override that
 copies the array, or `[CloneByReference]` where sharing is intended. The second
-is a one-line statement that the author looked.
+is a one-line statement that the author looked. For `source` the annotation is
+probably right, since an `IEntitySource` is a record of where something came
+from; for `PlayerMiscDamage`, accumulated per NPC, it is not.
 
-## 5 and 6. ExampleMod: two subjects that want the annotation
+**Reported upstream.** Both still fail the sweep, which is expected until the
+mod acts, and they are the only failures left in the corpus run.
+
+## 5 and 6. ExampleMod: two subjects that wanted the annotation, and got it
 
 **Subjects** `ExampleMod/ExampleJavelinProjectile` and
 `ExampleMod/ExampleTownPet`.
@@ -175,9 +221,20 @@ The name tables are constant data that nothing mutates, which is exactly what
 since `ModProjectile` is never cloned by the game it is never shared; if it
 were, two javelins would share one sticking list.
 
-Worth saying plainly in any report to the reference mod: this is the loader's own
-cloneability contract, and the file that teaches people how to write mods is a
-good place to show the annotation being used.
+**Fixed rather than reported**, since this repository holds a branch on
+tModLoader. `210d13831b` annotates the six name tables; `ead01a5b5e` gives the
+javelin a `Clone` override that copies the buffer, which meant dropping
+`readonly` from the field. The two resolve differently on purpose, and each
+file's comment says why and points at the other: the annotation is for constant
+data that is only read, the override for scratch space that is written per
+entity. `ModType.NewInstance` calls `Clone` whenever `CloneNewInstances` is
+true, so a mod opting into that flag gets the sharing immediately, and a
+reference mod demonstrating the opt-in is the right place to demonstrate the
+contract that goes with it.
+
+Afterwards the javelin passes outright and `ExampleTownPet` reports the skip
+fifteen other ExampleMod NPCs already report: not cloneable, with every
+remaining field belonging to tModLoader rather than to the mod.
 
 ## 7. Daybreak: declared intended, and the one live clone path
 
@@ -191,16 +248,38 @@ the type `[ExpectCloneable(false)]` and enforces that expectation at load
 `src/Daybreak/Common/Features/Models/ItemDataProvider.cs:31`). Our check and
 their attribute agree, which is the most useful thing about this entry.
 
-**No report to send.** What it wants is an exemption on our side, declared by
-whoever knows, which is what `SweepExemptions` is for. Recorded here so that the
-count of eight is accounted for rather than quietly reduced to seven.
+**No report to send, and now a declaration.** `2dce2ef` on the checkout's
+`testaria-tests` branch adds `src/DaybreakTests/SweepDeclarations.cs`, which
+declares the exemption with the mod's own reason: the `DataProviders` map is
+rebuilt by hand in `NewInstance`, cloning each provider into a fresh dictionary,
+rather than carried over by a memberwise copy. It sits beside the attribute it
+agrees with, where one reader can check both.
 
-## What each of these needs before it goes anywhere
+**What was tried instead, and withdrawn.** The sweep briefly read
+`ExpectCloneable`-shaped attributes directly, so that no declaration would be
+needed. It was withdrawn: GitHub code search finds the name in exactly one
+repository, and one assembly of the 53 installed here, so the code was a special
+case for Daybreak wearing a general shape. What replaced it is the convention
+mods do share, an override of tModLoader's own `IsCloneable`, which
+`DeclaredCloneability` reads and Daybreak does not use. A mod whose only
+statement is in a library's vocabulary declares it through `SweepExemptions`,
+which is where this started.
 
-- Issue text reflowed rather than wrapped, per this repository's own convention
-  for text aimed at humans on GitHub.
-- A repro a maintainer can run without installing this framework: for 1 and 2,
-  a player file plus the two lines that break it; for 3 to 6, the sentence from
-  `Cloning.IsCloneable` and the field name.
-- A decision per mod about whether it is worth their time. Findings 3 to 6 are
-  contract hygiene and should be offered as such, not as bug reports.
+## What is left
+
+- The issue numbers or links for 1 to 4, which only whoever sent them has. The
+  table at the top has a column waiting for them.
+- Nothing is pushed. The ExampleMod fixes sit on `examplemod-tests` in the
+  tModLoader checkout, the declaration on `testaria-tests` in the Daybreak
+  checkout, and pushing either is a separate decision.
+- Findings 3 and 4 stay open in the sweep until their author acts, which is the
+  correct state for a reported finding rather than something to silence.
+
+The standards these were written to, kept here because the next report will
+want them: issue text reflowed rather than wrapped, per this repository's own
+convention for text aimed at humans on GitHub; a repro a maintainer can run
+without installing this framework, which for 1 and 2 is a player file plus the
+two lines that break it and for 3 to 6 is the sentence from
+`Cloning.IsCloneable` and the field name; and a decision per mod about whether
+it is worth their time, since 3 to 6 are contract hygiene and were offered as
+such rather than as bug reports.
