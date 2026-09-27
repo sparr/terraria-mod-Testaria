@@ -31,6 +31,7 @@ public static class TestDiscovery
 
 		foreach (Type type in types) {
 			bool typeFreshWorld = type.GetCustomAttribute<FreshWorldAttribute>() is not null;
+			bool typeMutates = type.GetCustomAttribute<MutatesGlobalStateAttribute>() is not null;
 			bool typeRealTime = type.GetCustomAttribute<RealTimeAttribute>() is not null;
 			bool typeStartPaused = type.GetCustomAttribute<StartPausedAttribute>() is not null;
 			int? typeSeed = type.GetCustomAttribute<SeedAttribute>()?.Seed;
@@ -47,6 +48,7 @@ public static class TestDiscovery
 				}
 
 				bool freshWorld = typeFreshWorld || method.GetCustomAttribute<FreshWorldAttribute>() is not null;
+				bool mutates = typeMutates || method.GetCustomAttribute<MutatesGlobalStateAttribute>() is not null;
 				bool realTime = typeRealTime || method.GetCustomAttribute<RealTimeAttribute>() is not null;
 				bool startPaused = typeStartPaused || method.GetCustomAttribute<StartPausedAttribute>() is not null;
 				int? seed = method.GetCustomAttribute<SeedAttribute>()?.Seed ?? typeSeed;
@@ -63,6 +65,7 @@ public static class TestDiscovery
 					TimeoutTicks = marker.Timeout,
 					Box = marker is IBoxedTest boxed ? boxed.ToRequest() : null,
 					FreshWorld = freshWorld,
+					MutatesGlobalState = mutates,
 					RealTime = realTime,
 					StartPaused = startPaused,
 					Seed = seed,

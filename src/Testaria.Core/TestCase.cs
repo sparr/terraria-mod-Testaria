@@ -62,6 +62,23 @@ public sealed record TestCase
 	/// <summary>True when the test asked for a fresh world instead of a box.</summary>
 	public bool FreshWorld { get; init; }
 
+	/// <summary>
+	/// True when the test changes state no box can contain and would prefer a
+	/// world of its own, if the run has opted in to giving it one.
+	/// </summary>
+	public bool MutatesGlobalState { get; init; }
+
+	/// <summary>
+	/// Whether this test needs a world to itself under the given options.
+	/// <para/>
+	/// Either because it said so outright, or because it said it mutates global
+	/// state and the run chose to isolate such tests. Asked in one place so that
+	/// the runner's skip and anything else reasoning about worlds cannot drift
+	/// apart.
+	/// </summary>
+	public bool NeedsOwnWorld(bool isolateMutatingTests)
+		=> FreshWorld || (MutatesGlobalState && isolateMutatingTests);
+
 	/// <summary>True when the test opted out of the run's fast forward.</summary>
 	public bool RealTime { get; init; }
 

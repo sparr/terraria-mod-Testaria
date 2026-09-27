@@ -146,6 +146,33 @@ public sealed class NetTestAttribute : TestariaTestAttribute, IBoxedTest
 public sealed class FreshWorldAttribute : Attribute;
 
 /// <summary>
+/// Marks a test that changes state no box can contain, and which would rather
+/// have a world of its own when the run is willing to pay for one.
+/// <para/>
+/// Distinct from <see cref="FreshWorldAttribute"/>, and the difference is who
+/// decides. <c>[FreshWorld]</c> is a requirement: the test cannot mean anything
+/// without its own world, so a runner that cannot provide one reports a skip.
+/// This is a preference: the test is written to put back what it changes and is
+/// honest in a shared world, but its subject is world-global, so isolating it is
+/// strictly better if the run can afford it.
+/// <para/>
+/// Off by default. A run opts in once, for every test marked this way at once,
+/// with <see cref="TestRunnerOptions.IsolateMutatingTests"/>. Off, these tests
+/// run in the world that is already loaded; on, each is treated exactly as if it
+/// declared <c>[FreshWorld]</c>.
+/// <para/>
+/// The persistence and net ladders are what prompted it. Both call a mod's real
+/// hooks, and both restore what they found, but world data and a
+/// <c>ModSystem</c>'s synced state are global: the calibration notes already
+/// record that a box isolates a region and not a flag. A mod whose load is not
+/// the inverse of its save cannot be perfectly restored, which is the very thing
+/// the settling rung reports, so the run that is most likely to need isolation
+/// is the one that is about to find something.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+public sealed class MutatesGlobalStateAttribute : Attribute;
+
+/// <summary>
 /// Pins this test's randomness to a particular seed instead of the one
 /// derived from its name.
 /// <para/>

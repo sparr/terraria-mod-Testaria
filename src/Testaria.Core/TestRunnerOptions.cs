@@ -45,6 +45,24 @@ public sealed record TestRunnerOptions
 	public bool SupportsFreshWorld { get; init; }
 
 	/// <summary>
+	/// Whether to give every test marked <c>[MutatesGlobalState]</c> a world of
+	/// its own, as though it had declared <c>[FreshWorld]</c>.
+	/// <para/>
+	/// False by default, which is the cheap and slightly dishonest answer: such
+	/// a test restores what it changed and is written to be safe in a shared
+	/// world, but its subject is global and restoration cannot be guaranteed for
+	/// a subject that is already misbehaving. One switch opts the whole run in,
+	/// rather than each suite deciding, because the cost is a world per test and
+	/// that is a decision about the run rather than about any one test.
+	/// <para/>
+	/// Opting in also needs <see cref="SupportsFreshWorld"/>, for the same
+	/// reason a <c>[FreshWorld]</c> test does: a world per test is something the
+	/// host provides, not something the runner can conjure. Asking for isolation
+	/// the host cannot give is reported as a skip rather than quietly ignored.
+	/// </summary>
+	public bool IsolateMutatingTests { get; init; }
+
+	/// <summary>
 	/// Keep the box of a failing test for inspection instead of recycling it,
 	/// so an author can fly out and look at the wreckage.
 	/// </summary>

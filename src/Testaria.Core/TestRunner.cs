@@ -155,12 +155,20 @@ public sealed class TestRunner
 				continue;
 			}
 
-			if (test.FreshWorld && !options.SupportsFreshWorld) {
+			if (test.NeedsOwnWorld(options.IsolateMutatingTests) && !options.SupportsFreshWorld) {
 				// Reported, never quietly run. A [FreshWorld] test turned loose
 				// in whatever world happens to be loaded would pass while
 				// proving nothing.
+				//
+				// A [MutatesGlobalState] test reaches here only when the run
+				// asked for it to be isolated, so the same rule applies: the run
+				// asked for something the host cannot give, and running anyway
+				// would answer a question nobody asked. Turning the isolation
+				// off is the fix, and the message says which switch did it.
 				results.Add(TestResult.Skip(test.ClassName, test.Name,
-					"Declares [FreshWorld], which this runner cannot provide. Running it in the current world would report a pass without testing what it asked for.") with { Tier = test.Tier });
+					test.FreshWorld
+						? "Declares [FreshWorld], which this runner cannot provide. Running it in the current world would report a pass without testing what it asked for."
+						: "Declares [MutatesGlobalState] and this run asked for such tests to be isolated, which this runner cannot provide. Either give the run a world of its own or stop asking for the isolation.") with { Tier = test.Tier });
 				continue;
 			}
 
