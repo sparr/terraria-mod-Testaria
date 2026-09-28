@@ -1045,7 +1045,7 @@ tModLoader's own build job runs on `windows-latest` (their `documentation` and `
 
 #### 8.7b What a hosted runner cannot do, and saying so out loud
 
-The draft workflow is `.github/workflows/game-tiers.yml`. It runs seven of the eight gates and cannot run the eighth.
+The workflow is `.github/workflows/game-tiers.yml`. It runs seven of the eight gates and cannot run the eighth.
 
 **Terraria's content is not obtainable on a hosted runner.** The assumption throughout section 8.3a was that the public dedicated-server zip supplies it. It does not: `terraria-server-1458.zip` is 45 MB and holds 77 files, of which none is a `Content` directory and none is an `.xnb`. Terraria's `Content` is 755 MB and comes only from an owned installation. A dedicated server does not care (section 8.7a: `dedServ` returns before content is resolved), so tiers 1 and 2 and everything around them are unaffected, but a tier 3 **client** exits fatally without it.
 

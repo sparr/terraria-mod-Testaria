@@ -1,7 +1,8 @@
-# DRAFT. Never run, and reachable only by hand: this repository has no remote
-# yet, and the two secrets it names do not exist until somebody creates them.
-#
 # Tiers 1 through 3, on a runner that has to build the game first.
+#
+# Needs two repository secrets, TERRARIA_OWNERSHIP_KEY and
+# SETUP_ASSETS_PASSPHRASE. Without them the decompile step fails; the
+# comment on that step says where the key comes from.
 #
 # The core tiers need only the SDK and are covered by ci.yml on three
 # operating systems. Everything above tier 0 needs a tModLoader install, and a
@@ -34,8 +35,12 @@
 name: Game tiers
 
 on:
-  # Deliberately manual for now. Wire push and pull_request once the cache is
-  # warm: the first run pays for a decompile, and every later one should not.
+  # The first run pays for a decompile and every later one restores it from
+  # the cache, so a warm run is a build plus roughly five minutes of gates.
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
