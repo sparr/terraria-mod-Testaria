@@ -97,14 +97,27 @@ public static class Program
 
 		var harness = new ServerHarness(tml, scratch, progress, options.Verbose);
 
-		harness
-			.Run(
-				ServerArguments.For(options, scratch, enabled),
-				command,
-				resultsPath,
-				TimeSpan.FromSeconds(options.TimeoutSeconds),
-				clientSaves,
-				display?.Name);
+		try {
+			harness
+				.Run(
+					ServerArguments.For(options, scratch, enabled),
+					command,
+					resultsPath,
+					TimeSpan.FromSeconds(options.TimeoutSeconds),
+					TimeSpan.FromSeconds(options.JoinTimeoutSeconds),
+					clientSaves,
+					display?.Name);
+		}
+		finally {
+			// Before the scratch directory goes, and on the failing path above
+			// all: the logs are the only account of what the game did, and a
+			// run that dies with the clients unaccounted for is exactly the
+			// run whose client log somebody needs. Measured: a tier 3 timeout
+			// in CI named a client log that had already been deleted by the
+			// time anybody read the report.
+			if (options.ResultsOut is string reportPath)
+				CopyLogsBeside(reportPath, scratch, clientSaves, progress);
+		}
 
 		// Every mod that was asked for has to have loaded. A mod that failed
 		// to load is disabled by tModLoader and the run carries on without it,
@@ -190,6 +203,38 @@ public static class Program
 		// like a run of the code they just wrote.
 		if (build.ExitCode != 0)
 			throw new HarnessException($"Build failed: {project}");
+	}
+
+	/// <summary>
+	/// Puts the server and client logs beside the report, named after it, so
+	/// that whatever collects one collects the others.
+	/// </summary>
+	private static void CopyLogsBeside(
+		string reportPath,
+		ScratchSave scratch,
+		IReadOnlyList<string> clientSaves,
+		TextWriter progress)
+	{
+		string stem = Path.ChangeExtension(reportPath, null);
+
+		TryCopy(scratch.LogPath, stem + "-server.log");
+
+		for (int i = 0; i < clientSaves.Count; i++)
+			TryCopy(Path.Combine(scratch.ClientDirectory(i), "client.log"), stem + $"-client-{i}.log");
+
+		void TryCopy(string from, string to)
+		{
+			// Never throws: this runs while an exception may already be on its
+			// way out, and a missing log must not replace the failure that
+			// explains the run with one about copying a file.
+			try {
+				if (File.Exists(from))
+					File.Copy(from, to, overwrite: true);
+			}
+			catch (Exception) {
+				progress.WriteLine($"could not keep {from}");
+			}
+		}
 	}
 
 	private static void Copy(string from, string to, TextWriter progress)

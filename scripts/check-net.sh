@@ -28,6 +28,13 @@ TOOL="$ROOT/src/Testaria.Tool"
 # convention to be right.
 FILTER="${FILTER:-}"
 TIMEOUT="${TIMEOUT:-600}"
+# Budgeted apart from TIMEOUT, and deliberately short: a client that cannot
+# reach the world will not reach it later, so the run says so in a minute
+# rather than in ten. Raise it for a runner slow enough that a healthy client
+# needs longer, which its own log will show.
+JOIN_TIMEOUT="${JOIN_TIMEOUT:-}"
+JOIN_ARGS=()
+[ -n "$JOIN_TIMEOUT" ] && JOIN_ARGS=(--join-timeout "$JOIN_TIMEOUT")
 WORK="$(mktemp -d -t testaria-net-XXXXXX)"
 # Only pass the flag when there is something to filter by; an empty regex
 # is not the same thing as no filter.
@@ -43,6 +50,17 @@ cleanup() {
 	if [ -n "${RESULTS_DIR:-}" ]; then
 		[ -f "$WORK/net.xml" ] && cp "$WORK/net.xml" "$RESULTS_DIR/tier-3.xml"
 		[ -f "$WORK/alone.xml" ] && cp "$WORK/alone.xml" "$RESULTS_DIR/tier-3-no-client.xml"
+
+		# The tool leaves the server and client logs beside each report. They
+		# are the only account of a client that never arrived, and the scratch
+		# directory holding the originals is gone by now, so a run whose tier 3
+		# failed is precisely the run that needs them kept.
+		for log in "$WORK"/net-*.log; do
+			[ -f "$log" ] && cp "$log" "$RESULTS_DIR/tier-3-${log##*/net-}"
+		done
+		for log in "$WORK"/alone-*.log; do
+			[ -f "$log" ] && cp "$log" "$RESULTS_DIR/tier-3-no-client-${log##*/alone-}"
+		done
 	fi
 	rm -rf "$WORK"
 }
@@ -58,7 +76,7 @@ echo
 echo "=== with a client ==="
 if nice -n 19 dotnet run --project "$TOOL" -- run \
 	--mod TestariaSelfTest --client --blank \
-	"${FILTER_ARGS[@]}" --name NetTests --timeout "$TIMEOUT" \
+	"${FILTER_ARGS[@]}" "${JOIN_ARGS[@]}" --name NetTests --timeout "$TIMEOUT" \
 	--results "$WORK/net.xml"; then
 	echo "--- tier 3 with a client: ok"
 else

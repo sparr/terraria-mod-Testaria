@@ -45,6 +45,19 @@ public sealed record RunOptions
 	/// <summary>Seconds the whole run may take before the harness gives up.</summary>
 	public int TimeoutSeconds { get; init; } = 600;
 
+	/// <summary>
+	/// Seconds to wait for the first client to join, which is budgeted apart
+	/// from the rest of the run.
+	/// <para/>
+	/// A client that cannot get into the world usually cannot at all, and
+	/// nothing about waiting longer changes that: on a hosted runner the whole
+	/// tier spent ten minutes proving what the first thirty seconds had
+	/// already shown. The rest of the run keeps the long budget, because a
+	/// suite legitimately takes minutes; getting a client as far as the world
+	/// does not.
+	/// </summary>
+	public int JoinTimeoutSeconds { get; init; } = 90;
+
 	/// <summary>Where to copy the report once the run finishes.</summary>
 	public string? ResultsOut { get; init; }
 
@@ -163,6 +176,9 @@ public static class CommandLine
 		  --fresh-world          Promise this process has a world to itself, so
 		                         [FreshWorld] tests are honoured rather than skipped.
 		  --timeout <seconds>    Give up after this long. Default 600.
+		  --join-timeout <secs>  Give up if the first client has not joined in
+		                         this long, budgeted apart from the run's own
+		                         timeout. Default 90.
 		  --config <path>        Seed a mod config, named as tModLoader names it:
 		                         <ModName>_<ConfigClassName>.json. Repeatable.
 		  --require <n>          Fail unless at least n tests actually ran. Guards
@@ -288,6 +304,15 @@ public static class CommandLine
 					if (!int.TryParse(timeoutText, out int timeout) || timeout <= 0)
 						return new ParseResult { Error = $"--timeout needs a positive number of seconds, got '{timeoutText}'." };
 					options = options with { TimeoutSeconds = timeout };
+					break;
+
+				case "--join-timeout":
+					string? joinText = Value();
+					if (joinText is null)
+						return Missing()!;
+					if (!int.TryParse(joinText, out int joinTimeout) || joinTimeout <= 0)
+						return new ParseResult { Error = $"--join-timeout needs a positive number of seconds, got '{joinText}'." };
+					options = options with { JoinTimeoutSeconds = joinTimeout };
 					break;
 
 				case "--config":

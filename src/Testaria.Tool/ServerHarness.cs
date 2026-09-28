@@ -45,6 +45,7 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	/// <param name="command">The console command to send once the world is up.</param>
 	/// <param name="resultsPath">The file the command is expected to write.</param>
 	/// <param name="timeout">How long the whole business may take.</param>
+	/// <param name="joinTimeout">How long the first client may take to join, budgeted apart from <paramref name="timeout"/>.</param>
 	/// <param name="clientSaves">Prepared save directories, one per client to start, or none.</param>
 	/// <param name="display">Display for the clients to draw into, or null where they need none.</param>
 	/// <exception cref="HarnessException">The server died, or nothing arrived in time.</exception>
@@ -53,6 +54,7 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 		string command,
 		string resultsPath,
 		TimeSpan timeout,
+		TimeSpan joinTimeout,
 		IReadOnlyList<string>? clientSaves = null,
 		string? display = null)
 	{
@@ -79,7 +81,7 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			progress.WriteLine($"world ready after {deadline.Elapsed.TotalSeconds:F0}s");
 
 			if (clientSaves is { Count: > 0 })
-				JoinClients(clientSaves, display, deadline, timeout);
+				JoinClients(clientSaves, display, deadline, timeout, joinTimeout);
 
 			progress.WriteLine($"sending: {command}");
 
@@ -134,7 +136,12 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	/// process that is running but has not finished the handshake is no use to
 	/// a netcode test, and the server is the side that knows the difference.
 	/// </summary>
-	private void JoinClients(IReadOnlyList<string> saves, string? display, Stopwatch deadline, TimeSpan timeout)
+	private void JoinClients(
+		IReadOnlyList<string> saves,
+		string? display,
+		Stopwatch deadline,
+		TimeSpan timeout,
+		TimeSpan joinTimeout)
 	{
 		foreach (string save in saves) {
 			var start = new ProcessStartInfo("dotnet") {
@@ -206,11 +213,30 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			progress.WriteLine($"client:   pid {client.Id}, log {logPath}");
 		}
 
+		// The first join gets a budget of its own, started here rather than at
+		// the beginning of the run. A client that cannot reach the world does
+		// not reach it later either, and waiting out the run's whole timeout
+		// to learn that buries the failure: measured on a hosted runner, ten
+		// minutes of waiting to report something the first half minute knew.
+		var joining = Stopwatch.StartNew();
+
 		WaitFor(
-			() => Occurrences(Log, JoinedMarker) >= saves.Count,
-			deadline,
-			timeout,
-			$"{saves.Count} client(s) to join");
+			() => Occurrences(Log, JoinedMarker) >= 1,
+			joining,
+			joinTimeout,
+			"the first client to join",
+			ClientLogPaths());
+
+		// Any others share the run's budget, because by now the environment
+		// has been shown to work and what remains is only more of it.
+		if (saves.Count > 1) {
+			WaitFor(
+				() => Occurrences(Log, JoinedMarker) >= saves.Count,
+				deadline,
+				timeout,
+				$"the other {saves.Count - 1} client(s) to join",
+				ClientLogPaths());
+		}
 
 		progress.WriteLine($"clients joined after {deadline.Elapsed.TotalSeconds:F0}s");
 	}
@@ -295,7 +321,21 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 	private string ClientLogPath(Process client)
 		=> clientLogs.TryGetValue(client.Id, out string? path) ? path : "the scratch directory";
 
-	private void WaitFor(Func<bool> done, Stopwatch elapsed, TimeSpan timeout, string what)
+	/// <summary>Every client's log, for a diagnostic about the clients.</summary>
+	private string? ClientLogPaths()
+		=> clientLogs.Count == 0 ? null : string.Join(", ", clientLogs.Values);
+
+	// logPath is the log to read about this particular wait, or null for the
+	// server's. A wait on the clients that sends its reader to the server log
+	// sends them to the one file that cannot explain it, which is how a tier 3
+	// timeout on a runner arrived with a tail showing a perfectly healthy
+	// server.
+	private void WaitFor(
+		Func<bool> done,
+		Stopwatch elapsed,
+		TimeSpan timeout,
+		string what,
+		string? logPath = null)
 	{
 		while (!done()) {
 			if (server!.HasExited) {
@@ -320,7 +360,10 @@ public sealed class ServerHarness(string tmlPath, ScratchSave scratch, TextWrite
 			if (elapsed.Elapsed > timeout) {
 				WriteLog();
 				Kill();
-				throw new HarnessException($"Timed out after {timeout.TotalSeconds:F0}s waiting for {what}. Its log is at {scratch.LogPath}.{Tail()}");
+				throw new HarnessException(
+					$"Timed out after {timeout.TotalSeconds:F0}s waiting for {what}. "
+					+ $"Its log is at {logPath ?? scratch.LogPath}. "
+					+ $"The server's is at {scratch.LogPath}.{Tail()}");
 			}
 
 			Thread.Sleep(250);
