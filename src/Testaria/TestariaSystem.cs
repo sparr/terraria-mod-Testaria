@@ -611,6 +611,7 @@ public sealed class TestariaSystem : ModSystem
 		// that assembly alive across a reload.
 		SweepExemptions.Clear();
 		SweepDeclarations.Clear();
+		TypeSweep.Clear();
 
 		// The recipe loop search describes the recipes of one particular set of
 		// mods. It holds only numbers and names, so it leaks nothing, but

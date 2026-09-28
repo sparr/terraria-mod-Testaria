@@ -339,10 +339,12 @@ false positives and 50 milliseconds.
 - Findings 3 and 4 stay open in the sweep until their author acts, which is the
   correct state for a reported finding rather than something to silence.
 - Nothing about `TypeSweep.Constructible`, which was the open question here
-  and is now decided and measured; see finding 8. The one thing the numbers
-  raise is presentation rather than correctness: 1015 of the 1037 new subjects
-  are one mod's generated hook types, which will pass forever and pad any
-  report that lists passing cases.
+  and is now decided and measured; see finding 8. What the numbers raised was
+  duplication rather than correctness: 1015 of the 1037 new subjects are one
+  mod's generated hook attributes, and 509 of them carry the same inherited
+  auto-property, so the round trip asked one question 509 times. Those now
+  stand aside for the first of them and say so, and the run summary groups
+  skips by reason, so the whole family is one line.
 
 The standards these were written to, kept here because the next report will
 want them: issue text reflowed rather than wrapped, per this repository's own

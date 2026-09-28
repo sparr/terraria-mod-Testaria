@@ -556,60 +556,21 @@ public static class Assert
 	/// <para/>
 	/// Public instance properties with both accessors public, excluding
 	/// indexers, which are not a value a field can hold and have no argument to
-	/// be given.
+	/// be given. Defined in <see cref="SweptProperties"/>, because the sweep
+	/// decides which subjects to ask by the same rule and a second copy of it
+	/// would drift.
 	/// </summary>
 	private static IEnumerable<PropertyInfo> RoundTrippable(Type type)
-	{
-		foreach (PropertyInfo property in OwnProperties(type)) {
-			if (property.SetMethod is not { IsPublic: true })
-				continue;
-
-			yield return property;
-		}
-	}
+		=> SweptProperties.Of(type, PropertyScope.RoundTrippable);
 
 	/// <summary>
 	/// The public instance properties a type's own assembly declares.
 	/// <para/>
-	/// Not the inherited ones from somewhere else, and that is the whole of the
-	/// rule: these checks ask about the code somebody wrote, not about the
-	/// framework it derives from. Asking otherwise is not merely noisy, it is
-	/// unanswerable. A tModLoader <c>ModType</c> gets its <c>Name</c>,
-	/// <c>FullName</c> and <c>DisplayName</c> from the loader that registered
-	/// it, so an instance built by reflection rather than by the loader throws
-	/// from all three, and the mod that declared none of them is blamed.
-	/// Measured: sweeping one corpus this way produced 51 failures, every one
-	/// of them a property tModLoader declares.
-	/// <para/>
-	/// A base class in the same assembly is still the author's own code and is
-	/// still asked about, which is why this tests the assembly rather than
-	/// simply passing <c>DeclaredOnly</c>.
+	/// Defined in <see cref="SweptProperties"/>, along with the reasoning for
+	/// the assembly test and for what is left out.
 	/// </summary>
 	private static IEnumerable<PropertyInfo> OwnProperties(Type type)
-	{
-		foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
-			if (property.GetMethod is not { IsPublic: true })
-				continue;
-
-			if (property.GetIndexParameters().Length != 0)
-				continue;
-
-			if (property.DeclaringType?.Assembly != type.Assembly)
-				continue;
-
-			// A ref struct cannot be boxed, so reflection cannot read one at
-			// all: PropertyInfo.GetValue throws NotSupportedException whatever
-			// the property does. Nothing can be asked of a Span<T> here, and
-			// reporting that as the property's fault blames the wrong thing.
-			// Measured: one mod's rigging code exposes its bones as
-			// ReadOnlySpan<int>, and twelve of its types were reported as
-			// unreadable when the only thing that could not read them was this.
-			if (property.PropertyType.IsByRefLike)
-				continue;
-
-			yield return property;
-		}
-	}
+		=> SweptProperties.Of(type, PropertyScope.Readable);
 
 	/// <summary>
 	/// The exception a reflected call actually threw, described.

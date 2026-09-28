@@ -51,6 +51,115 @@ public static class TypeSweep
 			: [];
 
 	/// <summary>
+	/// Whether another subject in the same mod already answers for this one,
+	/// and which.
+	/// <para/>
+	/// A generated family is the case this exists for. Daybreak declares one
+	/// attribute class per vanilla hook, 1015 of them, and every one inherits a
+	/// single auto-implemented <c>Side</c> from a shared base. The property
+	/// checks then ask 509 subjects the same question about the same two
+	/// accessors, and 508 of the answers are restatements: they pass together
+	/// or they fail together, and a report carrying all of them buries what is
+	/// particular to any of them.
+	/// <para/>
+	/// The condition for standing aside is <see cref="SweptProperties"/>'s, and
+	/// it is narrow on purpose: every property in scope must be inherited from
+	/// elsewhere in the mod and be auto-implemented, so that no answer can
+	/// depend on the value a particular subject holds. A property with a body
+	/// is never collapsed, which is what keeps a getter reading
+	/// constructor-set state asked of every subject that has one.
+	/// <para/>
+	/// The one that answers is the first by name, so a run is not at the mercy
+	/// of reflection's ordering, and it is a real subject that is really asked
+	/// rather than a synthetic stand-in. Reported as a skip naming it, never as
+	/// a pass: a subject that was not asked has to say so.
+	/// </summary>
+	public static bool IsAnsweredByAnother(string qualified, PropertyScope scope,
+		out string representative)
+	{
+		representative = "";
+
+		int split = qualified.IndexOf(Separator);
+
+		if (split <= 0)
+			return false;
+
+		string modName = qualified[..split];
+
+		if (!ModLoader.TryGetMod(modName, out Mod mod))
+			return false;
+
+		Type? type = mod.Code.GetType(qualified[(split + 1)..]);
+
+		if (type is null)
+			return false;
+
+		if (SweptProperties.InheritedAutoSignature(type, scope) is not { } signature)
+			return false;
+
+		string first = Representatives(mod, scope).TryGetValue(signature, out string? found)
+			? found
+			: qualified;
+
+		if (first == qualified)
+			return false;
+
+		representative = first;
+
+		return true;
+	}
+
+	/// <summary>
+	/// The first subject by name for each signature in a mod, worked out once.
+	/// <para/>
+	/// Per mod rather than per run, because the properties being collapsed are
+	/// declared in the mod's own assembly and a subject elsewhere could not be
+	/// asked about them. Cached because the answer is the same for every case
+	/// and recomputing it per case would walk every type in the mod thousands
+	/// of times; cleared on unload with everything else, since it holds types
+	/// from a mod's assembly.
+	/// </summary>
+	private static Dictionary<string, string> Representatives(Mod mod, PropertyScope scope)
+	{
+		if (representatives.TryGetValue((mod.Name, scope), out Dictionary<string, string>? known))
+			return known;
+
+		Dictionary<string, string> first = [];
+
+		foreach (string name in ConstructibleTypes(mod.Name)) {
+			Type? type = mod.Code.GetType(name);
+
+			if (type is null)
+				continue;
+
+			if (SweptProperties.InheritedAutoSignature(type, scope) is not { } signature)
+				continue;
+
+			string qualified = $"{mod.Name}{Separator}{name}";
+
+			if (!first.TryGetValue(signature, out string? standing)
+				|| string.CompareOrdinal(qualified, standing) < 0) {
+				first[signature] = qualified;
+			}
+		}
+
+		representatives[(mod.Name, scope)] = first;
+
+		return first;
+	}
+
+	private static readonly Dictionary<(string Mod, PropertyScope Scope), Dictionary<string, string>>
+		representatives = [];
+
+	/// <summary>
+	/// Forgets which subject answers for which.
+	/// <para/>
+	/// Called when the framework unloads. The cache holds names from mod
+	/// assemblies and would otherwise carry one run's mod list into the next.
+	/// </summary>
+	public static void Clear() => representatives.Clear();
+
+	/// <summary>
 	/// One of those types, made.
 	/// <para/>
 	/// A construction that throws is reported as a skip rather than a failure.

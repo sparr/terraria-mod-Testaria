@@ -47,7 +47,8 @@ public class PropertySweepTests
 	[LoadedTest]
 	[CaseSource(nameof(Everything))]
 	public void Takes_its_own_values(string qualified)
-		=> Run(qualified, SweepCheck.RoundTrip, subject => Assert.SettersAcceptTheirOwnGetters(subject));
+		=> Run(qualified, SweepCheck.RoundTrip, PropertyScope.RoundTrippable,
+			subject => Assert.SettersAcceptTheirOwnGetters(subject));
 
 	/// <summary>
 	/// And writing it back twice must change nothing the second time. The first
@@ -57,7 +58,8 @@ public class PropertySweepTests
 	[LoadedTest]
 	[CaseSource(nameof(Everything))]
 	public void Settles_after_one_write(string qualified)
-		=> Run(qualified, SweepCheck.Settling, subject => Assert.SettersSettleAfterOneWrite(subject));
+		=> Run(qualified, SweepCheck.Settling, PropertyScope.RoundTrippable,
+			subject => Assert.SettersSettleAfterOneWrite(subject));
 
 	/// <summary>
 	/// Every property can be read at all, which is the plainest of the three
@@ -67,7 +69,8 @@ public class PropertySweepTests
 	[LoadedTest]
 	[CaseSource(nameof(Everything))]
 	public void Can_be_read(string qualified)
-		=> Run(qualified, SweepCheck.GetterReads, subject => Assert.GettersDoNotThrow(subject));
+		=> Run(qualified, SweepCheck.GetterReads, PropertyScope.Readable,
+			subject => Assert.GettersDoNotThrow(subject));
 
 	/// <summary>
 	/// One case, unless the mod's own suite has declared that this check does
@@ -76,11 +79,25 @@ public class PropertySweepTests
 	/// The declaration lives with the mod that knows, not here. A list in this
 	/// file would make the sweep the keeper of facts about mods it has never
 	/// read, and would grow a line for every mod anybody ever points it at.
+	/// <para/>
+	/// Or unless another subject is asked the identical question, which
+	/// happens in bulk when a mod generates a family of types over one
+	/// inherited auto-property. <c>TypeSweep.IsAnsweredByAnother</c> holds the
+	/// condition for that; the skip names the subject that carries the
+	/// question, so a reader can go and see the answer rather than wonder
+	/// where it went.
 	/// </summary>
-	private static void Run(string qualified, SweepCheck check, Action<object> assertion)
+	private static void Run(string qualified, SweepCheck check, PropertyScope scope,
+		Action<object> assertion)
 	{
 		if (SweepExemptions.IsExempt(qualified, check, out string reason))
 			Assert.Skip($"{qualified}'s own suite says this does not apply: {reason}");
+
+		if (TypeSweep.IsAnsweredByAnother(qualified, scope, out string representative)) {
+			Assert.Skip("every property this would be asked about is an auto-property it "
+				+ $"inherits, so the question is the same one {representative} is asked and "
+				+ "is answered there.");
+		}
 
 		assertion(TypeSweep.ConstructQualified(qualified));
 	}
