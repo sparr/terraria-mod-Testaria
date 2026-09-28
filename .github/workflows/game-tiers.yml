@@ -168,7 +168,7 @@ jobs:
       # The client executable is not in that zip and is not downloadable. It
       # ships in tModLoader's own repository as an encrypted blob, and the
       # ownership key decrypts it. The key proves you own Terraria; derive it
-      # once locally with `./setup-cli.sh secrets reveal` and store it as a
+      # once locally with `./setup-cli.sh secret reveal` and store it as a
       # repository secret. It must never be committed.
       #
       # NOTE: this is the one step in the job that has never been run. The
@@ -275,6 +275,15 @@ jobs:
       # under test.
       - name: Run the gates
         working-directory: Testaria
+        # The calibration gate needs ExampleMod.tmod and ExampleModTests.tmod,
+        # and this job builds neither yet. Strict mode fails a gate that
+        # declines to run, which is the behaviour worth keeping, so the
+        # reduction is declared instead: the gate is reported as
+        # declared-uncovered, the verdict reads "pass (partial coverage)", and
+        # anything else that tries to skip still fails. Delete this when the
+        # job builds ExampleMod.
+        env:
+          UNCOVERED: calibration against ExampleMod
         run: scripts/ci-local.sh --runs-dir "${GITHUB_WORKSPACE}/ci-runs"
 
       - name: Upload the run
