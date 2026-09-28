@@ -101,9 +101,15 @@ jobs:
       # ends in a letter to be bumped by hand when ILSpy or the decompile
       # settings change and the cached output stops being what a fresh run
       # would produce.
+      # Restore and save are separate actions on purpose. actions/cache@v4
+      # saves from a post step declared `post-if: success()`, so a job that
+      # fails anywhere after it, which is every job whose gates failed, never
+      # writes the cache: measured, two runs saved nothing and each paid for a
+      # full decompile. Saving explicitly, right after the work that produced
+      # it, does not care how the rest of the job ends.
       - name: Restore the decompiled cache
         id: decompiled-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: tModLoader/decompiled.zip.gpg
           key: decompiled-${{ env.TERRARIA_VERSION }}-A
@@ -203,6 +209,13 @@ jobs:
         env:
           SETUP_ASSETS_PASSPHRASE: ${{ secrets.SETUP_ASSETS_PASSPHRASE }}
 
+      - name: Upload the decompiled cache
+        if: steps.decompiled-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tModLoader/decompiled.zip.gpg
+          key: decompiled-${{ env.TERRARIA_VERSION }}-A
+
       # Applies every patch in patches/ to the decompiled tree, producing
       # src/Terraria, src/TerrariaNetCore and src/tModLoader. --strict so that
       # a patch applying with fuzz is an error rather than a warning nobody
@@ -217,15 +230,29 @@ jobs:
       # workflow builds these two ahead of it for the same reason. Skipped, the
       # result looks like a complete install and then fails CS0006 on the first
       # mod built against it.
+      # Debug rather than Release, and this is the one thing that lets tier 3
+      # run here at all. SocialAPI.Initialize gives a client SocialMode.Steam
+      # whenever InstallVerifier reports a Steam install, and reports one here
+      # because the install sits under steamapps and because "no Terraria.exe
+      # nearby" falls back to Steam as well. CoreSocialModule.Initialize then
+      # calls SteamAPI.Init, which fails on a runner with no Steam, and the
+      # client dies with "Please ensure Steam is logged in and running" before
+      # it can join. The escape is -nosteam, which the harness already passes
+      # to every client, but SocialAPI only consults it inside #if DEBUG.
+      #
+      # What that costs: the game under test is a Debug build, where players
+      # run Release. Tiers 1 and 2 were happy either way; tier 3 has no other
+      # route on a hosted runner, since the alternative is a vanilla Terraria
+      # executable this job cannot obtain.
       - name: Build tModLoader
         working-directory: tModLoader
         run: |
           dotnet build tModCodeAssist/tModCodeAssist/tModCodeAssist.csproj \
-            -c Release --nologo -v q
+            -c Debug --nologo -v q
           dotnet build tModCodeAssist/tModCodeAssist.CodeFixes/tModCodeAssist.CodeFixes.csproj \
-            -c Release --nologo -v q
+            -c Debug --nologo -v q
           dotnet build src/tModLoader/Terraria/Terraria.csproj \
-            -c Release --nologo -v q
+            -c Debug --nologo -v q
 
           # Every file a gate will reach for. The list is the check: an earlier
           # version of it omitted the analyzers and passed on a build that
