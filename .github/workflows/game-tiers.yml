@@ -130,6 +130,41 @@ jobs:
           unzip -q terrariaserver.zip -d terraria
           test -f "terraria/${TERRARIA_VERSION}/Windows/TerrariaServer.exe"
 
+      # Decompiling a .NET Framework 4.0 assembly needs Framework reference
+      # assemblies, and a Linux runner has none: without them ILSpy stops with
+      # "Version not supported: 4.0.0.0". The setup tool fetches this very
+      # package itself, but only when an mscorlib.dll sits beside Terraria,
+      # which is what a Mono-style install looks like. That is why a rehearsal
+      # against a Steam install passed, since Terraria's Linux build ships one;
+      # the dedicated-server zip holds six files and none of them is it.
+      #
+      # So do both halves here. Staging the package where the tool looks first
+      # pins the version and saves the download, and copying its mscorlib
+      # beside the server executable is what turns the branch on.
+      # RetrieveFrameworkRefs returns this directory as-is when it exists, so a
+      # tModLoader that moves to another package version needs this step moved
+      # with it, or the decompile silently uses the older references.
+      - name: Provide .NET Framework reference assemblies
+        run: |
+          refs="${GITHUB_WORKSPACE}/tModLoader/setup/.NETFramework/v4.8.1"
+          mkdir -p "$refs"
+
+          curl -sS -L -o refassemblies.nupkg \
+            "https://www.nuget.org/api/v2/package/Microsoft.NETFramework.ReferenceAssemblies.net481/1.0.3"
+
+          # One pattern covers Facades/ too, since unzip's wildcards cross a
+          # directory separator. The .xml documentation is left behind, as the
+          # tool leaves it.
+          unzip -q refassemblies.nupkg "build/.NETFramework/v4.8.1/*.dll" -d refassemblies
+          cp -r refassemblies/build/.NETFramework/v4.8.1/. "$refs/"
+          cp "$refs/mscorlib.dll" "terraria/${TERRARIA_VERSION}/Windows/mscorlib.dll"
+
+          # What the decompile will reach for: the reference set, one of the
+          # facades, and the file the branch is decided on.
+          test -f "$refs/mscorlib.dll"
+          test -f "$refs/Facades/netstandard.dll"
+          test -f "terraria/${TERRARIA_VERSION}/Windows/mscorlib.dll"
+
       # The client executable is not in that zip and is not downloadable. It
       # ships in tModLoader's own repository as an encrypted blob, and the
       # ownership key decrypts it. The key proves you own Terraria; derive it
