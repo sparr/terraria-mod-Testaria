@@ -71,8 +71,46 @@ public static class TypeSweep
 	/// <para/>
 	/// The one that answers is the first by name, so a run is not at the mercy
 	/// of reflection's ordering, and it is a real subject that is really asked
-	/// rather than a synthetic stand-in. Reported as a skip naming it, never as
-	/// a pass: a subject that was not asked has to say so.
+	/// rather than a synthetic stand-in.
+	/// </summary>
+	public static IEnumerable<string> SubjectsFor(PropertyScope scope)
+		=> EveryConstructibleType().Where(qualified => !IsAnsweredByAnother(qualified, scope, out _));
+
+	/// <summary>
+	/// The subjects that answer for a family, one per family, sorted.
+	/// <para/>
+	/// A suite asks after these so that a family standing aside is a case in
+	/// the results rather than an absence from them. The subjects that stood
+	/// aside are not cases: they were never asked anything, and reporting a
+	/// skip apiece would say a thousand times over what one line says once.
+	/// What has to be true, and is worth a case of its own, is that whoever
+	/// answers for them is themselves asked.
+	/// </summary>
+	public static IEnumerable<string> FamiliesFor(PropertyScope scope)
+		=> EveryConstructibleType()
+			.Select(qualified => IsAnsweredByAnother(qualified, scope, out string answers)
+				? answers
+				: null)
+			.Where(answers => answers is not null)
+			.Distinct()
+			.Order()!;
+
+	/// <summary>How many subjects a given one answers for.</summary>
+	public static int StoodAsideFor(string representative, PropertyScope scope)
+		=> EveryConstructibleType()
+			.Count(qualified => IsAnsweredByAnother(qualified, scope, out string answers)
+				&& answers == representative);
+
+	/// <summary>
+	/// Whether another subject in the same mod already answers for this one,
+	/// and which.
+	/// <para/>
+	/// Used to decide what is asked, in <see cref="SubjectsFor"/>, rather than
+	/// to refuse a case that was already made. A subject nothing would learn
+	/// from is better left out of the run than reported as held back: the
+	/// argument <c>TestFilter</c> makes about an operator narrowing a run
+	/// applies here too, and a thousand skips read as coverage lost rather
+	/// than as duplication avoided.
 	/// </summary>
 	public static bool IsAnsweredByAnother(string qualified, PropertyScope scope,
 		out string representative)

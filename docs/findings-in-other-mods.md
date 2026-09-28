@@ -342,9 +342,9 @@ false positives and 50 milliseconds.
   and is now decided and measured; see finding 8. What the numbers raised was
   duplication rather than correctness: 1015 of the 1037 new subjects are one
   mod's generated hook attributes, and 509 of them carry the same inherited
-  auto-property, so the round trip asked one question 509 times. Those now
-  stand aside for the first of them and say so, and the run summary groups
-  skips by reason, so the whole family is one line.
+  auto-property, so the round trip asked one question 509 times. The 508 that
+  repeat the first are no longer subjects at all, and one case per family
+  holds the claim that whoever answers for them is really asked.
 
 The standards these were written to, kept here because the next report will
 want them: issue text reflowed rather than wrapped, per this repository's own
