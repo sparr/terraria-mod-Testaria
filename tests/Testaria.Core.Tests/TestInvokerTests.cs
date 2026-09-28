@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Testaria.Tests;
 
@@ -111,6 +112,14 @@ public class TestInvokerTests
 			yield return 1;
 		}
 
+		// NoInlining so that the frame exists to be asserted about. Release
+		// inlines a body this small, which erased the frame and failed
+		// The_throwing_frame_is_named_in_the_trace on every CI runner. What
+		// that test defends is the invoker not swallowing the frame it was
+		// given; whether the JIT keeps a caller's frame is not this
+		// framework's to decide, and cannot be, since a mod's own test
+		// methods are compiled by its author.
+		[MethodImpl(MethodImplOptions.NoInlining)]
 		public void Throws() => Assert.Skip("deliberate");
 
 		public void ByRef(ref int value) => value++;

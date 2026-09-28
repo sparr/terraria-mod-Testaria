@@ -200,8 +200,14 @@ public class ResultsLocationTests
 	[Fact]
 	public void A_hostile_run_name_cannot_walk_out_of_the_results_directory()
 	{
-		string path = ResultsLocation.ForRun("/saves", "../../etc/passwd");
-		string expectedDir = ResultsLocation.Directory("/saves");
+		// A relative root, because this is the one test here that compares a
+		// Path.Combine result against a Path.GetDirectoryName one, and those
+		// two disagree about a foreign separator: given "/saves", Combine
+		// keeps the slash and GetDirectoryName rewrites it to a backslash on
+		// Windows. The run name is what is under test, and it cannot escape
+		// from a relative root any more than an absolute one.
+		string path = ResultsLocation.ForRun("base", "../../etc/passwd");
+		string expectedDir = ResultsLocation.Directory("base");
 
 		XAssert.Equal(expectedDir, Path.GetDirectoryName(path));
 	}
