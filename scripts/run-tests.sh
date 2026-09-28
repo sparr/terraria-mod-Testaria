@@ -326,6 +326,33 @@ for case in root.iter("testcase"):
         print(f"  {bad.tag.upper()} {case.get('classname')}.{case.get('name')}:")
         for line in (bad.get("message", "") or "(no message)").splitlines():
             print(f"      {line}")
+# Skips grouped by what they say, rather than one line each. A sweep asks
+# every type in every enabled mod, so one reason routinely covers hundreds of
+# cases: a mod that generates a family of types over one inherited
+# auto-property produces 508 subjects whose skip is the same sentence naming
+# the same subject that answers for them. Printed once with its count, that is
+# a fact a reader can use; printed 508 times it buries the other reasons.
+# The XML keeps every case, because a machine reading it wants the per-case
+# truth and a person reading this does not.
+skips = {}
+for case in root.iter("testcase"):
+    for held in case.findall("skipped"):
+        key = (case.get("classname", ""), held.get("message", "") or "(no reason given)")
+        skips[key] = skips.get(key, 0) + 1
+
+if skips:
+    shown = sorted(skips.items(), key=lambda e: (-e[1], e[0]))
+    cap = 15
+    print(f"{skipped} skipped, by reason:")
+    for (where, why) in [k for k, _ in shown[:cap]]:
+        count = skips[(where, why)]
+        lines = why.splitlines() or [""]
+        more = f" (+{len(lines) - 1} more lines)" if len(lines) > 1 else ""
+        print(f"  {count:>5}  {where}: {lines[0]}{more}")
+    if len(shown) > cap:
+        rest = sum(count for _, count in shown[cap:])
+        print(f"  {rest:>5}  across {len(shown) - cap} further reasons, not listed")
+
 # A suite that skipped everything is not a suite that passed. This happened
 # for real: tModLoader updated, ExampleMod's build stopped loading against it,
 # and all 924 calibration tests skipped themselves politely while the gate
