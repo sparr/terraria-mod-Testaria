@@ -1143,6 +1143,25 @@ Naming a directory `steamapps` to satisfy a detection heuristic is a trick, and 
 
 And **this measures the suite that exists**. Every row says the current tier 3 tests need no assets, not that a client never does. Section 8.9's rendering work draws real game content by definition, and the first test that asks for a vanilla texture against a stub will find out what missing assets do, which these runs never established because nothing ever asked. That is the point at which section 8.7c's package stops being an optimization and becomes the requirement, and it is why that section is kept rather than deleted.
 
+### 8.7e One suite, however many runs it takes
+
+`[RequiresMod]` and `[RequiresModAbsent]` are implemented: a test says which mods its half of a mod's behaviour needs, discovery carries it, and the runner reports a skip carrying its reason rather than running the test against whatever happened to be installed. `TestRunnerOptions.LoadedMods` is nullable on purpose, since a runner that cannot tell must not answer "absent" and hand a fallback path a pass it never earned. The catalogue gained `requiresMods` and `requiresModsAbsent` columns so a harness can plan on them.
+
+**What is missing is the planning.** A weak reference exists to behave one way with its optional dependency and another without, so a suite that declares both halves cannot be satisfied by any single run, and today the half that does not match the installed set skips honestly and stays untested. The goal is that a mod has one in-game suite, invoked once, and the harness does whatever it takes underneath, including starting the game more than once.
+
+The shape, in the tool rather than in a script, because the tool owns process lifecycle and is what the SDK and CI paths call:
+
+1. **Catalogue once**, with every named mod installed, since what a suite requires cannot be known before it loads.
+2. **Group by requirement.** Each test has a (required, forbidden) signature; tests sharing one share a run. The common case is two groups, with the optional dependency and without, and a suite declaring nothing keeps its single run.
+3. **Run per group**, rewriting the scratch save's enabled mods and filtering to that group's tests.
+4. **Merge the reports** into one JUnit file, so a suite reports once however many times the game started.
+
+`scripts/run-fresh.sh` already does this shape in shell for `[FreshWorld]`, one process per test, and the two should end up as one planner rather than two implementations of relaunch and merge. A fresh-world test is the degenerate case of a group with one member.
+
+**Two questions to settle before building it.** Whether the planner may omit a mod the run named with `--mod`, or whether absence has to be requested explicitly, say with `--without`: the first makes a suite's declarations sufficient and the run's arguments advisory, the second keeps the run's arguments meaning what they say. And what to do with a requirement nothing can satisfy, such as a test needing a mod nobody installed: a skip is consistent with the tier and world gates, while a failure is consistent with `--require`, which exists because a run that quietly tested nothing reports success.
+
+**Cost to a mod author of the thing as it stands.** Nothing: a suite that declares no requirements behaves exactly as before. The declarations are worth adding on their own, since they turn a test that silently exercised the wrong path into one that says which path it wanted, and that is true whether or not the planner ever arrives.
+
 ### 8.8 nuget.org, once GitHub is working
 
 Artifacts B through E to nuget.org with the `Testaria.*` ID prefix reserved, after the GitHub channel has proved itself. Last because it is the least reversible step in the plan: an ID can be unlisted but never deleted, and by this point the names have been carried by a working release rather than by an intention.
