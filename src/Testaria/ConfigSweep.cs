@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Config;
+using Terraria.ModLoader.Core;
 
 namespace Testaria;
 
@@ -96,13 +97,22 @@ public static class ConfigSweep
 		return (ModConfig)instance!;
 	}
 
-	/// <summary>The config types a mod declares and the loader would register.</summary>
+	/// <summary>
+	/// The config types a mod declares and the loader would register.
+	/// <para/>
+	/// Through <c>AssemblyManager</c>, for the reason
+	/// <see cref="TypeSweep.ConstructibleTypes"/> records: a mod extending a
+	/// weakly referenced one has types that only load when that other mod is
+	/// there, and <c>Assembly.GetTypes</c> forces the attempt. The catch stays
+	/// because <c>GetLoadableTypes</c> falls back to <c>GetTypes</c> for an
+	/// assembly the loader did not load, and a partial answer beats none.
+	/// </summary>
 	private static IEnumerable<Type> ConfigTypes(Mod mod)
 	{
 		Type[] types;
 
 		try {
-			types = mod.Code.GetTypes();
+			types = AssemblyManager.GetLoadableTypes(mod.Code);
 		}
 		catch (System.Reflection.ReflectionTypeLoadException partial) {
 			types = partial.Types.Where(type => type is not null).ToArray()!;

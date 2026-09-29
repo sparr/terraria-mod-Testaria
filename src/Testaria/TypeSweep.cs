@@ -1,6 +1,7 @@
 using System.Reflection;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Config;
+using Terraria.ModLoader.Core;
 
 namespace Testaria;
 
@@ -44,10 +45,20 @@ public static class TypeSweep
 	/// <para/>
 	/// Full names, because two types in different namespaces may share a short
 	/// one and a case has to name exactly one of them.
+	/// <para/>
+	/// <see cref="AssemblyManager.GetLoadableTypes(Assembly)"/> rather than
+	/// <see cref="Assembly.GetTypes"/>, which tModLoader's own documentation on
+	/// <see cref="Mod.Code"/> asks for by name. A mod that inherits from a
+	/// weakly referenced one through <c>ExtendsFromModAttribute</c> has types
+	/// that cannot be loaded unless that other mod is present, and asking for
+	/// all of them forces the load: at best a sweep triggers work the mod
+	/// itself avoids, and at worst it throws where the mod would have run
+	/// perfectly well. The loader has already decided which types are loadable
+	/// here, so ask it rather than the runtime.
 	/// </summary>
 	public static IEnumerable<string> ConstructibleTypes(string modName)
 		=> ModLoader.TryGetMod(modName, out Mod mod)
-			? mod.Code.GetTypes().Where(Constructible).Select(t => t.FullName!).Order()
+			? AssemblyManager.GetLoadableTypes(mod.Code).Where(Constructible).Select(t => t.FullName!).Order()
 			: [];
 
 	/// <summary>

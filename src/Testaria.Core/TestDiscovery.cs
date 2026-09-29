@@ -13,7 +13,16 @@ namespace Testaria;
 /// </summary>
 public static class TestDiscovery
 {
-	/// <summary>Scans an assembly for test methods.</summary>
+	/// <summary>
+	/// Scans an assembly for test methods.
+	/// <para/>
+	/// For an assembly outside the game. Inside it, pass the types instead:
+	/// <c>Assembly.GetTypes</c> forces every type to load, including ones a
+	/// mod extends from a weakly referenced mod that is not installed, and
+	/// tModLoader offers <c>AssemblyManager.GetLoadableTypes</c> for exactly
+	/// that reason. This assembly cannot call it, having no reference to the
+	/// game, which is why the game-side caller is the one that decides.
+	/// </summary>
 	public static DiscoveryResult Discover(Assembly assembly)
 	{
 		ArgumentNullException.ThrowIfNull(assembly);
