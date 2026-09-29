@@ -205,6 +205,11 @@ public sealed class TestSession
 			// change, so the shared world is the ordinary case; the switch is
 			// for a run that would rather pay a world per test than trust that.
 			IsolateMutatingTests = Program.LaunchParameters.ContainsKey(IsolateMutatorsFlag),
+			// What [RequiresMod] and [RequiresModAbsent] are answered against.
+			// The game is the only place this is knowable, which is why the
+			// core takes it rather than asking: outside a loaded game the same
+			// field is null, and those tests skip rather than guess.
+			LoadedMods = ModLoader.Mods.Select(mod => mod.Name).ToHashSet(StringComparer.OrdinalIgnoreCase),
 			CreateContext = lease => {
 				// A question belongs to the test that asked it. The runner
 				// makes a context as each test begins and before its body

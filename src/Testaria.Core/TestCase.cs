@@ -79,6 +79,48 @@ public sealed record TestCase
 	public bool NeedsOwnWorld(bool isolateMutatingTests)
 		=> FreshWorld || (MutatesGlobalState && isolateMutatingTests);
 
+	/// <summary>Mods this test declared it needs loaded, by internal name.</summary>
+	public IReadOnlyList<string> RequiresMods { get; init; } = [];
+
+	/// <summary>Mods this test declared must not be loaded, by internal name.</summary>
+	public IReadOnlyList<string> RequiresModsAbsent { get; init; } = [];
+
+	/// <summary>
+	/// Why this test cannot run against the mods that are loaded, or null when
+	/// it can.
+	/// </summary>
+	/// <param name="loadedMods">
+	/// The mods loaded, or null where the runner cannot tell. Null is not the
+	/// same as none: a tier 0 host knows nothing about mods, and answering
+	/// "absent" there would report a pass for a fallback path nobody exercised.
+	/// </param>
+	public string? UnmetModRequirement(IReadOnlySet<string>? loadedMods)
+	{
+		if (RequiresMods.Count == 0 && RequiresModsAbsent.Count == 0)
+			return null;
+
+		if (loadedMods is null) {
+			return "Declares which mods it needs, and this runner cannot tell which are loaded. "
+				+ "Running it anyway would report on whichever half of the mod's behaviour happened to be present.";
+		}
+
+		string[] missing = [..RequiresMods.Where(mod => !loadedMods.Contains(mod))];
+
+		if (missing.Length > 0) {
+			return $"Needs {string.Join(", ", missing)} loaded, and {(missing.Length == 1 ? "it is" : "they are")} not. "
+				+ "A run without it exercises the fallback, which is not what this test asked about.";
+		}
+
+		string[] present = [..RequiresModsAbsent.Where(loadedMods.Contains)];
+
+		if (present.Length > 0) {
+			return $"Needs {string.Join(", ", present)} absent, and {(present.Length == 1 ? "it is" : "they are")} loaded. "
+				+ "Only a run without it reaches the path this test is about.";
+		}
+
+		return null;
+	}
+
 	/// <summary>True when the test opted out of the run's fast forward.</summary>
 	public bool RealTime { get; init; }
 

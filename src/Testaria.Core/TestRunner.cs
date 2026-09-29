@@ -162,6 +162,14 @@ public sealed class TestRunner
 				continue;
 			}
 
+			// After the tier gate and before the world one, because a test
+			// naming mods it cannot have is answered by the mod list whatever
+			// the world looks like.
+			if (test.UnmetModRequirement(options.LoadedMods) is string unmet) {
+				results.Add(TestResult.Skip(test.ClassName, test.Name, unmet) with { Tier = test.Tier });
+				continue;
+			}
+
 			if (test.NeedsOwnWorld(options.IsolateMutatingTests) && !options.SupportsFreshWorld) {
 				// Reported, never quietly run. A [FreshWorld] test turned loose
 				// in whatever world happens to be loaded would pass while

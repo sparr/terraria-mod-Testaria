@@ -146,6 +146,49 @@ public sealed class NetTestAttribute : TestariaTestAttribute, IBoxedTest
 public sealed class FreshWorldAttribute : Attribute;
 
 /// <summary>
+/// Declares that a test needs another mod loaded, and is not to be run without
+/// it.
+/// <para/>
+/// A weak reference exists so that a mod behaves one way with its optional
+/// dependency and another way without. Both behaviours are worth testing, and
+/// neither can be tested in a run that happens to have guessed wrong: a test
+/// written for the integrated path, run without the other mod, exercises the
+/// fallback and reports a pass for something it never asked about. Saying which
+/// mods a test needs turns that into a skip carrying its reason, which is the
+/// difference between a suite that covered half the matrix and a suite that
+/// looks like it covered all of it.
+/// <para/>
+/// Applies to a class as well as a method, and several may be given. A run that
+/// cannot tell which mods are loaded, which is any tier 0 host, skips these for
+/// the same reason it skips a test whose tier it cannot reach.
+/// </summary>
+/// <param name="modName">The mod's internal name, as <c>build.txt</c> spells it.</param>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
+public sealed class RequiresModAttribute(string modName) : Attribute
+{
+	/// <summary>The mod that must be loaded.</summary>
+	public string ModName { get; } = modName;
+}
+
+/// <summary>
+/// Declares that a test needs another mod <em>not</em> loaded, and is not to be
+/// run while it is.
+/// <para/>
+/// The other half of <see cref="RequiresModAttribute"/>, and the half that
+/// cannot be arranged by installing something. A fallback path only exists when
+/// the optional dependency is absent, so proving it works means a run without
+/// that mod, and a suite that declares both halves tells a harness it needs more
+/// than one run to honour them.
+/// </summary>
+/// <param name="modName">The mod that must not be loaded.</param>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
+public sealed class RequiresModAbsentAttribute(string modName) : Attribute
+{
+	/// <summary>The mod that must not be loaded.</summary>
+	public string ModName { get; } = modName;
+}
+
+/// <summary>
 /// Marks a test that changes state no box can contain, and which would rather
 /// have a world of its own when the run is willing to pay for one.
 /// <para/>

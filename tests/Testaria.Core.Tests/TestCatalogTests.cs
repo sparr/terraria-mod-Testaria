@@ -16,11 +16,41 @@ public class TestCatalogTests
 		XAssert.Equal(Discovered().Count + 1, lines.Length);
 	}
 
+	/// <summary>
+	/// Every row has as many fields as the header names, and the readers index
+	/// by position, so a column may be appended and never moved.
+	/// </summary>
 	[Fact]
-	public void Rows_have_four_tab_separated_fields()
+	public void Rows_have_a_field_for_every_column_in_the_header()
 	{
+		int columns = TestCatalog.Header.Split('\t').Length;
+
 		foreach (string line in TestCatalog.ToTsv(Discovered()).TrimEnd('\n').Split('\n'))
-			XAssert.Equal(4, line.Split('\t').Length);
+			XAssert.Equal(columns, line.Split('\t').Length);
+	}
+
+	/// <summary>
+	/// The columns run-fresh.sh reads by number, pinned so that appending
+	/// another cannot quietly move them.
+	/// </summary>
+	[Fact]
+	public void The_first_four_columns_keep_their_positions()
+		=> XAssert.Equal(["tier", "freshWorld", "className", "name"], TestCatalog.Header.Split('\t')[..4]);
+
+	/// <summary>
+	/// A harness planning runs needs to know which mods a test asked for, since
+	/// no single run can satisfy a suite that wants one loaded and absent.
+	/// </summary>
+	[Fact]
+	public void The_mod_columns_carry_what_a_test_declared()
+	{
+		string row = TestCatalog.ToTsv(Discovered()).Split('\n')
+			.Single(l => l.Contains(nameof(Fixtures.NeedsAFriend), StringComparison.Ordinal));
+
+		string[] fields = row.Split('\t');
+
+		XAssert.Equal("Friend", fields[4]);
+		XAssert.Equal("Rival", fields[5]);
 	}
 
 	[Fact]
@@ -78,5 +108,10 @@ public class TestCatalogTests
 		[GameTest(Band = Band.Cavern)]
 		[FreshWorld]
 		public void WantsAFreshWorld() { }
+
+		[LoadedTest]
+		[RequiresMod("Friend")]
+		[RequiresModAbsent("Rival")]
+		public void NeedsAFriend() { }
 	}
 }

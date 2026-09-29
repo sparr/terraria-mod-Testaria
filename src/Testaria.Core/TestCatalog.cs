@@ -15,8 +15,13 @@ namespace Testaria;
 /// </summary>
 public static class TestCatalog
 {
-	/// <summary>Column header, written as the first line.</summary>
-	public const string Header = "tier\tfreshWorld\tclassName\tname";
+	/// <summary>
+	/// Column header, written as the first line.
+	/// <para/>
+	/// Columns are appended rather than reordered, because the readers index by
+	/// position: <c>scripts/run-fresh.sh</c> takes 2, 3 and 4 by number.
+	/// </summary>
+	public const string Header = "tier\tfreshWorld\tclassName\tname\trequiresMods\trequiresModsAbsent";
 
 	/// <summary>
 	/// Renders the catalogue, header first, one test per line.
@@ -46,7 +51,9 @@ public static class TestCatalog
 				.Append(test.Tier.ToString()).Append('\t')
 				.Append(test.NeedsOwnWorld(isolateMutatingTests) ? "yes" : "no").Append('\t')
 				.Append(Clean(test.ClassName)).Append('\t')
-				.Append(Clean(test.Name)).Append('\n');
+				.Append(Clean(test.Name)).Append('\t')
+				.Append(Clean(string.Join(",", test.RequiresMods))).Append('\t')
+				.Append(Clean(string.Join(",", test.RequiresModsAbsent))).Append('\n');
 		}
 
 		return builder.ToString();

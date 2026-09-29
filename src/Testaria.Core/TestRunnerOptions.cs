@@ -45,6 +45,16 @@ public sealed record TestRunnerOptions
 	public bool SupportsFreshWorld { get; init; }
 
 	/// <summary>
+	/// The mods loaded, by internal name, or null where the runner cannot tell.
+	/// <para/>
+	/// Null rather than empty outside the game, and the difference matters:
+	/// empty is a claim that a mod is absent, which is exactly what a
+	/// <c>[RequiresModAbsent]</c> test wants to hear, and a tier 0 host is in no
+	/// position to say it.
+	/// </summary>
+	public IReadOnlySet<string>? LoadedMods { get; init; }
+
+	/// <summary>
 	/// Whether to give every test marked <c>[MutatesGlobalState]</c> a world of
 	/// its own, as though it had declared <c>[FreshWorld]</c>.
 	/// <para/>

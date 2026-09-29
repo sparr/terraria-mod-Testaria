@@ -90,6 +90,8 @@ Tests are marked with attributes, and discovery finds them by reflection.
 | `[RealTime]` | Runs a test at the vanilla 60 ticks per second instead of fast fowarding |
 | `[StartPaused]` | Freezes the world as the test begins, for a test that steps ticks by hand |
 | `[Seed]` | Pins a test's randomness to a particular seed, rather than the one derived from its name |
+| `[RequiresMod]` | A test that needs another mod loaded, skipped with its reason when it is not |
+| `[RequiresModAbsent]` | A test that needs another mod **not** loaded, which is how a weak reference's fallback gets tested |
 | `[RequiresLoadedGame]` | Declares that a member needs the game, so tier 0 code cannot reach it by accident |
 
 ## The tier 0 boundary

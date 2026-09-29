@@ -44,6 +44,8 @@ public static class TestDiscovery
 			bool typeRealTime = type.GetCustomAttribute<RealTimeAttribute>() is not null;
 			bool typeStartPaused = type.GetCustomAttribute<StartPausedAttribute>() is not null;
 			int? typeSeed = type.GetCustomAttribute<SeedAttribute>()?.Seed;
+			string[] typeNeedsMods = [..type.GetCustomAttributes<RequiresModAttribute>().Select(a => a.ModName)];
+			string[] typeNeedsModsAbsent = [..type.GetCustomAttributes<RequiresModAbsentAttribute>().Select(a => a.ModName)];
 
 			foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
 				if (method.GetCustomAttribute<TestariaTestAttribute>() is not TestariaTestAttribute marker)
@@ -61,6 +63,17 @@ public static class TestDiscovery
 				bool realTime = typeRealTime || method.GetCustomAttribute<RealTimeAttribute>() is not null;
 				bool startPaused = typeStartPaused || method.GetCustomAttribute<StartPausedAttribute>() is not null;
 				int? seed = method.GetCustomAttribute<SeedAttribute>()?.Seed ?? typeSeed;
+
+				// A class declaration applies to every test in it, and a method
+				// may add to it, so the two are unioned rather than one
+				// overriding the other: both are requirements, and dropping
+				// either would run a test in a world it said it could not.
+				string[] needsMods = [..typeNeedsMods
+					.Concat(method.GetCustomAttributes<RequiresModAttribute>().Select(a => a.ModName))
+					.Distinct(StringComparer.OrdinalIgnoreCase)];
+				string[] needsModsAbsent = [..typeNeedsModsAbsent
+					.Concat(method.GetCustomAttributes<RequiresModAbsentAttribute>().Select(a => a.ModName))
+					.Distinct(StringComparer.OrdinalIgnoreCase)];
 				bool wantsContext = WantsContext(method);
 				int dataParameters = method.GetParameters().Length - (wantsContext ? 1 : 0);
 
@@ -78,6 +91,8 @@ public static class TestDiscovery
 					RealTime = realTime,
 					StartPaused = startPaused,
 					Seed = seed,
+					RequiresMods = needsMods,
+					RequiresModsAbsent = needsModsAbsent,
 				};
 
 				if (dataParameters == 0) {
