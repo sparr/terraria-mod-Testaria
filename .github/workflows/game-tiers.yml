@@ -1,4 +1,5 @@
-# Tiers 1 through 3, on a runner that has to build the game first.
+# Tiers 1 and 2, on a runner that has to build the game first. Tier 3 is
+# declared uncovered here; see below for why.
 #
 # Needs two repository secrets, TERRARIA_OWNERSHIP_KEY and
 # SETUP_ASSETS_PASSPHRASE. Without them the decompile step fails; the
@@ -15,22 +16,33 @@
 # decompile, the patches (no failures and no fuzz), the Release build, and
 # both Testaria gate suites against the result. See PLAN.md section 8.7a.
 #
-# TIER 3 WITHOUT OWNING TERRARIA
+# TIER 3 IS NOT COVERED HERE, AND SAYS SO
 #
-# A client will not start unless a content directory sits beside the install,
-# and Terraria's is 755 MB available only from an owned copy. It does not
-# follow that a runner needs one. The check tests that two paths exist and
-# never opens them, and nothing in the suite asks for a vanilla asset, so two
-# empty files named after them satisfy a client completely: measured by
-# trimming 755 MB to nothing a row at a time with tier 3 green at every step,
-# the last of those rows being this configuration exactly (PLAN.md 8.7d).
+# A tier 3 client is a real game process, and a hosted runner cannot give it
+# two things it needs. Measured rather than assumed, both of them:
 #
-# So this job creates a stub and covers every gate. Two caveats, both real.
-# The stub defeats a check meant to tell a person their Terraria is out of
-# date, which is harmless where there is no person and no Terraria, and must
-# never be done on top of an installation. And it measures the suite that
-# exists: the first test that wants a real texture will need real content,
-# which is what PLAN.md 8.7c is for and where 8.9 is going.
+# Steam. InstallVerifier reports a Steam install (the working directory is
+# under steamapps, and "no Terraria.exe nearby" falls back to Steam anyway),
+# so SocialAPI gives a client SocialMode.Steam, CoreSocialModule calls
+# SteamAPI.Init, and a runner with no Steam dies on "Please ensure Steam is
+# logged in and running". The escape is -nosteam, which the harness passes and
+# which SocialAPI only consults inside #if DEBUG. Building the game Debug does
+# work, and was tried here, but it means testing a configuration players do
+# not run.
+#
+# Content. Past that, the client dies on "PixelShader". Terraria's content is
+# 755 MB and comes only from an owned installation; the audio-less subset is
+# 104 MB and is confirmed sufficient for the whole tier 3 suite (PLAN.md
+# 8.7c), but it is Re-Logic's to distribute, not ours, and this is a public
+# repository. PLAN.md 8.7d's older claim that two empty files suffice is
+# withdrawn: that measurement trimmed a directory the client never read,
+# because Steam answers GetAppInstallDir with the real installation.
+#
+# So this job declares tier 3 uncovered rather than faking it. Netcode
+# coverage lives on a machine that owns the game, which is the local gate
+# matrix, and PLAN.md 8.7b already argues that runner is the more capable of
+# the two. The declaration is loud on purpose: a run that covers less than the
+# whole matrix must not read like one that covers all of it.
 
 name: Game tiers
 
@@ -90,7 +102,9 @@ jobs:
 
       # Xvfb is the one package the runner lacks. rsync, python3 and flock are
       # already present; scripts/ci-local.sh preflights all of them and names
-      # whatever is missing rather than failing inside a gate.
+      # whatever is missing rather than failing inside a gate. It preflights
+      # Xvfb unconditionally, so this stays installed even though the gate
+      # that needs a display is declared uncovered here.
       - name: Install Xvfb
         run: |
           sudo apt-get update
@@ -230,29 +244,15 @@ jobs:
       # workflow builds these two ahead of it for the same reason. Skipped, the
       # result looks like a complete install and then fails CS0006 on the first
       # mod built against it.
-      # Debug rather than Release, and this is the one thing that lets tier 3
-      # run here at all. SocialAPI.Initialize gives a client SocialMode.Steam
-      # whenever InstallVerifier reports a Steam install, and reports one here
-      # because the install sits under steamapps and because "no Terraria.exe
-      # nearby" falls back to Steam as well. CoreSocialModule.Initialize then
-      # calls SteamAPI.Init, which fails on a runner with no Steam, and the
-      # client dies with "Please ensure Steam is logged in and running" before
-      # it can join. The escape is -nosteam, which the harness already passes
-      # to every client, but SocialAPI only consults it inside #if DEBUG.
-      #
-      # What that costs: the game under test is a Debug build, where players
-      # run Release. Tiers 1 and 2 were happy either way; tier 3 has no other
-      # route on a hosted runner, since the alternative is a vanilla Terraria
-      # executable this job cannot obtain.
       - name: Build tModLoader
         working-directory: tModLoader
         run: |
           dotnet build tModCodeAssist/tModCodeAssist/tModCodeAssist.csproj \
-            -c Debug --nologo -v q
+            -c Release --nologo -v q
           dotnet build tModCodeAssist/tModCodeAssist.CodeFixes/tModCodeAssist.CodeFixes.csproj \
-            -c Debug --nologo -v q
+            -c Release --nologo -v q
           dotnet build src/tModLoader/Terraria/Terraria.csproj \
-            -c Debug --nologo -v q
+            -c Release --nologo -v q
 
           # Every file a gate will reach for. The list is the check: an earlier
           # version of it omitted the analyzers and passed on a build that
@@ -274,22 +274,17 @@ jobs:
       # verify. If this ever stops working the symptom is a fatal error naming
       # a version it could not match.
       #
-      # The stub beside it is the whole of the content a client needs: two
-      # empty files at the paths the startup check tests for and never reads.
-      # Never do this on top of a real installation.
+      # No Terraria content is staged beside it, because nothing here runs a
+      # client: a dedicated server returns before content is resolved, and
+      # tier 3 is declared uncovered above.
       #
       # MODS_SRC needs no special value, because a source build reports the Dev
       # purpose and writes its .tmod where a dev install would, but the
       # directory has to exist before the first build writes into it.
-      - name: Lay out the install and a stub Terraria
+      - name: Lay out the install
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/steamapps/common"
           mv tModLoader/steam_build "${GITHUB_WORKSPACE}/steamapps/common/tModLoader"
-
-          stub="${GITHUB_WORKSPACE}/steamapps/common/Terraria/Content/Images"
-          mkdir -p "$stub"
-          : > "$stub/Projectile_651.xnb"
-          : > "$stub/Projectile_981.xnb"
 
           echo "TML_PATH=${GITHUB_WORKSPACE}/steamapps/common/tModLoader" >> "$GITHUB_ENV"
           echo "EXAMPLEMOD_SRC=${GITHUB_WORKSPACE}/tModLoader/ExampleMod" >> "$GITHUB_ENV"
@@ -302,15 +297,25 @@ jobs:
       # under test.
       - name: Run the gates
         working-directory: Testaria
-        # The calibration gate needs ExampleMod.tmod and ExampleModTests.tmod,
-        # and this job builds neither yet. Strict mode fails a gate that
-        # declines to run, which is the behaviour worth keeping, so the
-        # reduction is declared instead: the gate is reported as
-        # declared-uncovered, the verdict reads "pass (partial coverage)", and
-        # anything else that tries to skip still fails. Delete this when the
-        # job builds ExampleMod.
+        # Two gates this job cannot run, declared rather than skipped. Strict
+        # mode fails a gate that quietly declines to run, which is the
+        # behaviour worth keeping, so each is reported as declared-uncovered,
+        # the verdict reads "pass (partial coverage)", and anything else that
+        # tries to skip still fails.
+        #
+        # tier 3 needs a client, which needs Steam and Terraria's content; see
+        # the header. Calibration needs ExampleMod.tmod and ExampleModTests
+        # .tmod, which this job does not build yet, and that one is worth
+        # fixing: delete the line when it does.
         env:
-          UNCOVERED: calibration against ExampleMod
+          # SKIP_NET stops the gate being attempted; UNCOVERED is what turns
+          # that skip into a declared reduction rather than a strict failure.
+          # Both are needed: either alone is a run that lies in one direction
+          # or the other.
+          SKIP_NET: 1
+          UNCOVERED: |
+            tier 3
+            calibration against ExampleMod
         run: scripts/ci-local.sh --runs-dir "${GITHUB_WORKSPACE}/ci-runs"
 
       - name: Upload the run

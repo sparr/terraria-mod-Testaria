@@ -583,7 +583,11 @@ scripts/run-fresh.sh                                   # a dedicated server per 
 scripts/ci-local.sh
 ```
 
-The game tiers need a tModLoader install, and a hosted CI runner has none. Obtaining one there is real work: download the public dedicated-server zip, decompile and build tModLoader with an ownership key held as a repository secret, and cache the result. That job is planned, and everything it does is a reconstruction of what a machine with the game already has. So the gates can be run under CI discipline here first.
+The game tiers need a tModLoader install, and a hosted CI runner has none. Obtaining one there is real work, and `.github/workflows/game-tiers.yml` now does it: download the public dedicated-server zip, decompile and build tModLoader with an ownership key held as a repository secret, and cache the result so later runs skip the decompile.
+
+**That job covers tiers 1 and 2, and declares tier 3 uncovered.** A tier 3 client is a real game process and a hosted runner cannot give it two things. Without Steam running, a Release build of the game exits at startup, since the `-nosteam` escape is compiled out of anything but a Debug build. Past that, the client needs Terraria's content, which comes only from an owned installation: the audio-less subset is 104 MB and is enough for the whole tier 3 suite, but moving it onto a public repository's runner is a licensing question rather than a technical one. So the hosted run says `NOT COVERED: tier 3` and reports `pass (partial coverage)`, and netcode coverage lives on a machine that owns the game.
+
+That is worth knowing before adopting this framework: **tier 3 works on your own machine and is hard to get onto a hosted runner.** Locally there is nothing to arrange, since any machine that can run tModLoader already has everything a client needs.
 
 `ci-local.sh` wraps `run-all.sh` with the parts that make a run worth keeping:
 
